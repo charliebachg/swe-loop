@@ -73,7 +73,6 @@ def test_dashboard_renders_and_shows_sql_on_request(tmp_path, monkeypatch):
             assert must in html
         assert "SELECT COUNT" not in html
         assert "SELECT COUNT" in c.get("/report?sql=1").text
-        assert "tkt_A" in c.get("/partials/board").text
         # a person merges: the endpoint refuses an unready ticket and records a ready one
         assert c.post("/tickets/tkt_C/merge", json={"actor": "someone"}).status_code == 200
         assert c.post("/tickets/tkt_E/merge", json={"actor": "someone"}).status_code == 409
@@ -136,11 +135,11 @@ def test_ops_page_lists_sessions_and_the_feed(tmp_path, monkeypatch):
     assert {"L2 route", "L4 dispatch", "L4 poll", "L5 gate", "L7 reduce", "escalate"} <= layers
     app = build_app(Settings.from_env(), st, seed_replay=False)
     with TestClient(app) as c:
-        html = c.get("/board").text
-        assert "Devin sessions" in html and "Live feed" in html and "fake-" in html
+        html = c.get("/devin/sessions").text
+        assert "Sessions" in html and "time left" in html and "fake-" in html
         assert "1. The answer" in c.get("/report").text
         sid = o["sessions"][0]["id"]
         det = c.get(f"/sessions/{sid}").json()
         assert det["timeline"] and det["work_order"]["files"]
         assert c.get("/timeline?limit=5").json()
-        assert c.get("/partials/ops").status_code == 200
+        assert c.get("/partials/sessions").status_code == 200

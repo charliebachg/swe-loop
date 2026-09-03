@@ -65,24 +65,30 @@ worktree, diffs it against the base for the paths a session may not touch (`test
 Evidence is bound to the tree hash it was produced on; evidence from any other tree is
 invisible. A session that finishes without structured output is a failure, not a pass.
 
-## What the dashboard answers
+## The app
 
-One question, the one an engineering leader asks: *how would I know this is working?*
+One process, one SQLite file, a sidebar of modules. Each module owns one kind of object; the
+others link to it.
 
-1. **The answer.** Verified changes (gate passed and a person merged) over decided tickets; ACU
-   per verified change, median and p95; self-reported versus verified; budget against cap.
-2. **Status, success and failure, progress.** The ticket board; the funnel with every drop named;
-   the inventory burn-down.
-3. **How we know it fixed it.** Per session: the Devin session, the PR, T0, T1, the gate's
-   result, retries, ACU, session size. Every cell links to its evidence.
-4. **Tripwires, pre-registered.** Oracle touched; merged without a human; retries p95; ACU p95
-   against the cap; review minutes and 30-day survival marked as not measured rather than claimed.
-5. **The routing table.** Per class of change: attempted, verified, cost, and whether the verdict
-   was autonomous, assisted, or human-only. The artefact a team would hand over after week one.
-6. **Escalations, with reasons, and the metrics not shown on purpose:** lines of code, PRs
-   opened, acceptance rate, share of AI-authored code, tokens, self-reported time saved.
+| module | owns |
+|---|---|
+| **Home** | what is happening now, what needs a person, what just happened |
+| **Automations** | how work enters: the Repair automation (trigger, native Devin Automation, run now) and the Scan automation (next) |
+| **Tickets** | the tickets, grouped by source, with the router's decision and reason |
+| **Tracker** | each ticket's run through the layers: sessions as stages, the gate's receipts, the review stage, the merge control |
+| **Report** | effectiveness: verified changes, cost per verified change, said-done versus verified, tripwires, the routing table, what is deliberately not shown |
+| **Devin · Sessions** | every session as Devin sees it: status, ACU, size, parent and children, time left |
+| **Devin · Playbooks** | the procedures each session follows, with their structured output schemas |
+| **Devin · Knowledge** | the notes a session retrieves by trigger, grouped by agent |
+| **Devin · Insights** | Session Insights: size and ACU per session |
+| **Devin · Review** | Devin Review requests, made only after a gate pass |
+| **Devin · Integrations** | the org's side: GitHub App, secrets, security profile, snapshot |
+| **Devin · Next** | Computer Use, DeepWiki, Security Swarm, a scan session, an evaluator, MCP: where each plugs in |
+| **Settings** (gear) | our side: the connected repository, the seam, budget caps, live connection checks |
 
-The dashboard measures the system, never a named engineer.
+The Report answers the question an engineering leader asks: *how would I know this is
+working?* Every number on it is a query; every tile shows its SQL on request. The dashboard
+measures the system, never a named engineer.
 
 ## The seam
 
@@ -106,8 +112,8 @@ knowledge/         repo-pinned Knowledge notes with trigger descriptions
 fork_files/        SKILL.md and the PR template committed to the target fork
 data/inventory/    the measured inventory and the tickets filed from it
 data/replay/       a recorded run for replay mode
-templates/         the dashboard
-tests/             80 tests; the gate is tested on a real git fixture
+templates/         the app: one template per module
+tests/             90 tests; the gate is tested on a real git fixture
 ```
 
 ## Receipts

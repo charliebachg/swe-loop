@@ -33,7 +33,7 @@ def test_home_shows_now_needs_you_and_recent(client):
     assert "tkt_E" in html and "human_only" in html  # the escalation
     assert "ready to merge" in html  # C and D passed and were reviewed
     assert "REPLAY" in html and "charliebachg/superset" in html
-    assert "—" not in html
+    assert "\u2014" not in html  # no em dashes
     assert c.get("/partials/home").status_code == 200
 
 
@@ -222,4 +222,4 @@ def test_capability_pages_render_real_state(client):
         "/devin/integrations",
         "/devin/next",
     ):
-        assert "—" not in c.get(path).text
+        assert "\u2014" not in c.get(path).text

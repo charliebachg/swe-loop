@@ -278,18 +278,6 @@ def build_app(
     def next_page(request: Request) -> HTMLResponse:
         return _render(request, "next.html", "next", nx=pages.next_page())
 
-    @app.get("/board", response_class=HTMLResponse)
-    def board_page(request: Request) -> HTMLResponse:
-        o = ops.build(request.app.state.store)
-        return TEMPLATES.TemplateResponse(
-            request, "ops.html", {"o": o, "mode": settings.mode, "target": cfg.name}
-        )
-
-    @app.get("/partials/ops", response_class=HTMLResponse)
-    def ops_partial(request: Request) -> HTMLResponse:
-        o = ops.build(request.app.state.store)
-        return TEMPLATES.TemplateResponse(request, "ops_body.html", {"o": o})
-
     @app.get("/sessions/{sid}")
     def session(sid: str) -> dict[str, Any]:
         d = ops.session_detail(app.state.store, sid)
@@ -318,11 +306,6 @@ def build_app(
                 **vm,
             },
         )
-
-    @app.get("/partials/board", response_class=HTMLResponse)
-    def board(request: Request) -> HTMLResponse:
-        vm = report.build(request.app.state.store, INVENTORY)
-        return TEMPLATES.TemplateResponse(request, "board.html", {"board": vm["board"]})
 
     @app.post("/tickets/{ticket_id}/merge")
     async def merge(ticket_id: str, request: Request) -> dict[str, Any]:
