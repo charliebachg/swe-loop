@@ -23,6 +23,7 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -129,6 +130,9 @@ def absolutize_command(cmd: str, repo_root: Path) -> str:
     clone's environments."""
     parts = shlex.split(cmd)
     parts = [str(repo_root / p) if p.startswith(".venv") else p for p in parts]
+    if "swe_loop" in cmd:
+        # this repository's own tooling: run it with the interpreter that runs the gate
+        parts = [sys.executable if p in ("python", "python3") else p for p in parts]
     return shlex.join(parts)
 
 
@@ -261,7 +265,9 @@ class Gate:
             # ---------------- T1: every acceptance command, run here, must exit 0
             env = {
                 **os.environ,
-                "PYTHONPATH": str(path),
+                "PYTHONPATH": os.pathsep.join(
+                    [str(path), str(Path(__file__).resolve().parents[1])]
+                ),
                 **{k: str(v) for k, v in self.cfg.detector.get("env", {}).items()},
             }
             failures: list[str] = []

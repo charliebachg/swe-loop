@@ -83,7 +83,9 @@ def test_repair_spec_carries_sites_constraints_and_cap(tmp_path):
     assert "client_processing.py:639" in prompt and "client_processing.py:754" in prompt
     assert ">=2.3.3, <3.1" in prompt and "lower bound does not move" in prompt
     assert "tests/" in prompt and "ruff" in prompt and "fix(pandas)" in prompt
-    assert "silently" in prompt  # review required adds the explanation requirement
+    assert (
+        "Review is required for this shard" in prompt
+    )  # review required adds the explanation requirement
     assert "pandas_3_0_5" in prompt and "pandas_2_3_3_warnings_as_errors" in prompt
 
 
@@ -103,3 +105,64 @@ def test_dispatch_reserves_before_start_and_is_idempotent(tmp_path):
     # dispatching again while the session is live returns the same row
     assert dispatch(st, client, wo, CFG) == sid
     assert len([c for c in client.t.calls if c[0] == "create_session"]) == 1
+
+
+def test_repair_prompt_carries_the_prescribed_fix_and_marks_gate_only_commands(tmp_path):
+    from swe_loop.dispatch import build_repair_prompt, gate_only
+    from swe_loop.store import Store
+
+    st = Store(tmp_path / "t.sqlite")
+    verdict = {
+        "summary": "One site; semantic; preserve wall clock.",
+        "review": "required",
+        "sites": [
+            {
+                "file": "superset/models/helpers.py",
+                "line": 345,
+                "class": "to_datetime-mixed-tz",
+                "kind": "semantic",
+                "prescribed_fix": "Do NOT take utc=True; fall back to element-wise pd.Timestamp parsing.",
+            }
+        ],
+        "acceptance_cmd": {
+            "p3": "true",
+            "detector": "REPO_ROOT=$PWD python -m swe_loop.detect.pandas_warnings",
+        },
+    }
+    st.upsert_ticket(
+        id="tkt_X", source="manual", title="x", status="triaged", triage_verdict=verdict
+    )
+    wid = st.insert_work_order(
+        ticket_id="tkt_X",
+        shard_id="X",
+        files=["superset/models/helpers.py"],
+        tests=["t"],
+        acceptance=verdict["acceptance_cmd"],
+    )
+    wo = st.get_work_order(wid)
+    prompt = build_repair_prompt(wo, st.get_ticket("tkt_X"), CFG, "required")
+    assert "Prescribed fix from triage: Do NOT take utc=True" in prompt
+    assert "(semantic)" in prompt and "Triage verdict: One site" in prompt
+    assert (
+        "Review is required for this shard" in prompt
+        and "did not fail on the new one" not in prompt
+    )
+    assert (
+        "gate only" in prompt
+        and gate_only(verdict["acceptance_cmd"]["detector"])
+        and not gate_only("true")
+    )
+
+
+def test_absolutize_command_runs_our_tooling_with_the_gate_interpreter():
+    import sys
+
+    from swe_loop.gate import absolutize_command
+
+    real = absolutize_command(
+        "REPO_ROOT=$PWD python -m swe_loop.detect.pandas_warnings", Path("/repo")
+    )
+    assert sys.executable in real and "swe_loop.detect.pandas_warnings" in real
+    assert absolutize_command(".venv-p3/bin/python -m pytest x", Path("/repo")).startswith(
+        "/repo/.venv-p3/bin/python"
+    )

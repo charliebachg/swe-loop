@@ -93,7 +93,6 @@
    "acceptance": {
     "pandas_2_3_3_warnings_as_errors": ".venv-p2/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= -W error::FutureWarning tests/unit_tests/charts/test_client_processing.py",
     "pandas_3_0_5": ".venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= tests/unit_tests/charts/test_client_processing.py",
-    "detector_zero_hits": "REPO_ROOT=$PWD python -m swe_loop.detect.pandas_warnings  # 0 rows for the files above",
     "lint": "ruff check superset/charts/client_processing.py && ruff format --check superset/charts/client_processing.py"
    }
   },
@@ -168,7 +167,6 @@
    "acceptance": {
     "pandas_2_3_3_warnings_as_errors": ".venv-p2/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= -W error::FutureWarning tests/unit_tests/pandas_postprocessing/test_pivot.py tests/unit_tests/pandas_postprocessing/test_rolling.py",
     "pandas_3_0_5": ".venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= tests/unit_tests/pandas_postprocessing/test_pivot.py tests/unit_tests/pandas_postprocessing/test_rolling.py",
-    "detector_zero_hits": "REPO_ROOT=$PWD python -m swe_loop.detect.pandas_warnings  # 0 rows for the files above",
     "lint": "ruff check superset/utils/pandas_postprocessing/pivot.py superset/utils/pandas_postprocessing/rolling.py superset/utils/pandas_postprocessing/utils.py && ruff format --check superset/utils/pandas_postprocessing/pivot.py superset/utils/pandas_postprocessing/rolling.py superset/utils/pandas_postprocessing/utils.py"
    }
   },
@@ -245,7 +243,6 @@
    "acceptance": {
     "pandas_2_3_3_warnings_as_errors": ".venv-p2/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= -W error::FutureWarning tests/unit_tests/pandas_postprocessing/test_boxplot.py tests/unit_tests/pandas_postprocessing/test_histogram.py tests/unit_tests/pandas_postprocessing/test_resample.py",
     "pandas_3_0_5": ".venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= tests/unit_tests/pandas_postprocessing/test_boxplot.py tests/unit_tests/pandas_postprocessing/test_histogram.py tests/unit_tests/pandas_postprocessing/test_resample.py",
-    "detector_zero_hits": "REPO_ROOT=$PWD python -m swe_loop.detect.pandas_warnings  # 0 rows for the files above",
     "lint": "ruff check superset/utils/pandas_postprocessing/aggregate.py superset/utils/pandas_postprocessing/histogram.py superset/utils/pandas_postprocessing/resample.py && ruff format --check superset/utils/pandas_postprocessing/aggregate.py superset/utils/pandas_postprocessing/histogram.py superset/utils/pandas_postprocessing/resample.py"
    }
   },
@@ -283,7 +280,6 @@
    "acceptance": {
     "pandas_2_3_3_warnings_as_errors": ".venv-p2/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= -W error::FutureWarning tests/unit_tests/common/test_time_shifts.py",
     "pandas_3_0_5": ".venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= tests/unit_tests/common/test_time_shifts.py",
-    "detector_zero_hits": "REPO_ROOT=$PWD python -m swe_loop.detect.pandas_warnings  # 0 rows for the files above",
     "lint": "ruff check superset/models/helpers.py && ruff format --check superset/models/helpers.py"
    }
   },

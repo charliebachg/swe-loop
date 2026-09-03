@@ -39,6 +39,12 @@ def identity_tags(cfg: TargetConfig, wo: dict[str, Any]) -> list[str]:
     return [cfg.session.get("tags_prefix", "swe-loop"), f"wo:{wo['id']}"]
 
 
+def gate_only(cmd: str) -> bool:
+    """Acceptance commands that use this repository's own tooling run on the verification
+    machine, not in the session's VM."""
+    return "swe_loop" in cmd
+
+
 def build_repair_prompt(
     wo: dict[str, Any], ticket: dict[str, Any], cfg: TargetConfig, review: str
 ) -> str:
@@ -55,9 +61,18 @@ def build_repair_prompt(
     site_lines = []
     for s in sites:
         lines = ",".join(str(x) for x in (s.get("lines") or [s.get("line")]) if x)
-        msg = s.get("r3") or s.get("r2") or s.get("prescribed_fix") or ""
         classes = ", ".join(s.get("classes") or [s.get("class", "")])
-        site_lines.append(f"- `{s['file']}:{lines}` [{classes}] {msg[:200]}")
+        kind = f" ({s['kind']})" if s.get("kind") else ""
+        msg = (s.get("r3") or s.get("r2") or "")[:200]
+        fix = (s.get("prescribed_fix") or "")[:900]
+        line = f"- `{s['file']}:{lines}` [{classes}]{kind} {msg}".rstrip()
+        if fix and fix[:60] != msg[:60]:
+            line += f"\n  Prescribed fix from triage: {fix}"
+        elif fix:
+            line = f"- `{s['file']}:{lines}` [{classes}]{kind} Prescribed fix from triage: {fix}"
+        site_lines.append(line)
+    verdict = _verdict(ticket) or {}
+    summary = (verdict.get("summary") or "")[:900]
     if not site_lines:
         site_lines = [
             f"- every site in `{f}` that the acceptance commands expose" for f in wo["files"]
@@ -77,9 +92,9 @@ def build_repair_prompt(
     ]
     if review == "required":
         dos.append(
-            "- These sites warned on the current version but did not fail on the new one: the "
-            "behaviour changes silently. State in the PR what the old and new behaviour are and "
-            "why the fix preserves the intent."
+            "- Review is required for this shard: the triage verdict flags a behaviour change that "
+            "tests may not catch. Preserve the current behaviour as the prescribed fix describes. "
+            "State in the PR what the old and new behaviour are and why the fix preserves the intent."
         )
     donts = [
         "Don't:",
@@ -88,15 +103,27 @@ def build_repair_prompt(
         "- Run the full test suite; run the acceptance commands only.",
         "- Rewrite chained-assignment or copy-on-write sites whose meaning depends on surrounding data; report them.",
     ]
-    acc = [f"- `{k}`: `{v}`" for k, v in wo["acceptance"].items()]
+    acc = [
+        f"- `{k}`: `{v}`"
+        + (
+            " (gate only: uses tooling on the verification machine; report exit code null)"
+            if gate_only(v)
+            else ""
+        )
+        for k, v in wo["acceptance"].items()
+    ]
     result = (
-        "All acceptance commands exit 0 on your branch:\n" + "\n".join(acc) + "\n"
+        "All acceptance commands exit 0 on your branch; the gate re-runs every one of them from a clean checkout:\n"
+        + "\n".join(acc)
+        + "\n"
         "A pull request exists against the fork with a conventional-commit title. "
         "Provide structured output matching the repair result schema and call "
         "provide_structured_output with is_final=true: shard, self_reported_done, files_changed, "
         "call_sites_fixed (file, line, change), tests_run, tests_passed, acceptance (exit codes), "
         "pr_url, branch, needs_human (site, reason)."
     )
+    if summary:
+        what += f"\n\nTriage verdict: {summary}"
     return (
         f"## What\n{what}\n\nSites:\n" + "\n".join(site_lines) + "\n\n"
         "## How\n" + "\n".join(dos) + "\n" + "\n".join(donts) + "\n\n"
