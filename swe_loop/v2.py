@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
@@ -1690,14 +1691,30 @@ def report(
         for v in verd
     ]
     bd0 = rep["burndown"]
+    # sites, not sessions: the inventory's site count per shard, for shards that passed and wait
+    sites_by_shard: dict[str, int] = {}
+    try:
+        inv = json.loads((Path(inventory_dir) / "tickets.json").read_text())
+        sites_by_shard = {sh["id"]: len(sh.get("sites") or []) for sh in inv.get("shards", [])}
+    except (OSError, ValueError, TypeError):
+        pass
     verified_unmerged = sum(
-        1 for r in rep["receipts"] if r.get("gate") == "pass" and r.get("merged_by") in (None, "no")
+        sites_by_shard.get(r["shard"], 0)
+        for r in rep["receipts"]
+        if r.get("gate") == "pass" and r.get("merged_by") in (None, "no")
     )
     stack = [
         ("fixed and merged", bd0.get("fixed", 0), PL["ok"][0]),
         ("verified, unmerged", verified_unmerged, PL["gate"][0]),
         ("to a person", bd0.get("human", 0), PL["person"][0]),
-        ("remaining", max(0, bd0.get("remaining", 0) - verified_unmerged), "#c9c5bb"),
+        (
+            "remaining",
+            max(
+                0,
+                bd0.get("total", 0) - bd0.get("fixed", 0) - bd0.get("human", 0) - verified_unmerged,
+            ),
+            "#c9c5bb",
+        ),
     ]
     chart_svgs = {
         "funnel": charts.funnel(fun_rows),
