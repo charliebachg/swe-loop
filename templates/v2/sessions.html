@@ -1,0 +1,78 @@
+{% extends "shell.html" %}{% block title %}Sessions{% endblock %}{% block content %}
+        <div style="display:flex;align-items:stretch;border-top:1px solid #e2dfd8;border-bottom:1px solid #e2dfd8;padding:12px 0;margin-bottom:24px">
+          <div style="padding:0 20px 0 0"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ now.runningColor }}">{{ now.running }}</div><div style="font-size:12px;color:#626b78;margin-top:3px">running</div></div>
+          <div style="padding:0 20px;border-left:1px solid #e2dfd8"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ now.waitingColor }}">{{ now.waiting }}</div><div style="font-size:12px;color:#626b78;margin-top:3px">waiting on a person</div></div>
+          <div style="padding:0 20px;border-left:1px solid #e2dfd8"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ now.passedColor }}">{{ now.passed }}</div><div style="font-size:12px;color:#626b78;margin-top:3px">passed the gate</div></div>
+          <div style="padding:0 20px;border-left:1px solid #e2dfd8"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ now.failedColor }}">{{ now.failed }}</div><div style="font-size:12px;color:#626b78;margin-top:3px">failed or escalated</div></div>
+          <div style="padding:0 20px;border-left:1px solid #e2dfd8"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums">{{ acuSpent }}<span style="font-size:12px;font-weight:400;color:#8f97a3"> / {{ acuCap }}</span></div><div style="font-size:12px;color:#626b78;margin-top:3px">ACU spent · cap {{ perSession }} per session</div></div>
+          <div style="padding:0 20px;border-left:1px solid #e2dfd8"><div style="font:600 14px/1.3 'Instrument Sans',system-ui,sans-serif;color:#626b78;padding-top:5px;min-height:24px">{{ managed }}</div><div style="font-size:12px;color:#626b78;margin-top:3px">Managed Devins · coordinator and children</div></div>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:10px;margin:0 0 10px">
+          <span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Sessions</span><span style="font-size:12px;color:#8f97a3">{{ sessionRows | length }} · click a row for its structured output, evidence and verdicts · the pipeline view is the <a href="{{ goTracker }}">Tracker</a></span>
+          <span style="margin-left:auto;font:11px/18px 'JetBrains Mono',monospace;padding:0 7px;border-radius:4px;background:#f1eafa;color:#7a4fb5">GET /sessions · /sessions/insights</span>
+        </div>
+        <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden;overflow-x:auto">
+          <div style="display:grid;grid-template-columns:22px 112px 100px 94px 96px 108px 32px 52px 50px 54px 64px 52px 86px 44px;gap:10px;padding:9px 16px;border-bottom:1px solid #e2dfd8;font:500 10.5px/1.4 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#8f97a3;white-space:nowrap;min-width:1100px"><span></span><span>session</span><span>ticket · shard</span><span>source</span><span>status</span><span>ACU of cap</span><span>size</span><span>parent</span><span>PR</span><span>gate</span><span>started</span><span>elapsed</span><span>left, est.</span><span></span></div>
+          {% for s in sessionRows %}
+            <div hx-get="{{ s.open }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="display:grid;grid-template-columns:22px 112px 100px 94px 96px 108px 32px 52px 50px 54px 64px 52px 86px 44px;gap:10px;padding:9px 16px;border-bottom:1px solid #ecebe6;font-size:13px;align-items:center;cursor:pointer;background:{{ s.bg }};white-space:nowrap;min-width:1100px" data-hover="background:#faf9f6">
+              <span style="width:22px;height:22px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;font:600 10.5px/1 'JetBrains Mono',monospace;background:{{ s.dotBg }};color:{{ s.dotFg }};box-shadow:inset 0 0 0 2px {{ s.color }}">{{ s.L }}</span>
+              <a href="{{ s.url }}" target="_blank" onclick="event.stopPropagation()" style="font:12.5px/1.4 'JetBrains Mono',monospace">{{ s.id }}</a>
+              <span><a href="{{ s.track }}" style="font:500 12px/1.4 'JetBrains Mono',monospace;color:{{ s.color }}">{{ s.tk }}</a> <span style="color:#626b78">· {{ s.L }}</span></span>
+              <span style="font-size:12.5px">{{ s.source }}</span>
+              <span><span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ s.stBg }};color:{{ s.stFg }}">{{ s.status }}</span></span>
+              <span style="display:flex;align-items:center;gap:8px"><span style="width:44px;height:6px;background:#e9e7e1;border-radius:3px;overflow:hidden;flex:none"><span style="display:block;height:100%;width:{{ s.acuPct }}%;background:#7a4fb5"></span></span><span style="font:12px/1.4 'JetBrains Mono',monospace">{{ s.acu }}<span style="color:#8f97a3"> / {{ s.cap }}</span></span></span>
+              <span><span style="display:inline-flex;width:20px;height:20px;border-radius:4px;align-items:center;justify-content:center;background:{{ s.sizeBg }};color:{{ s.sizeFg }};font:600 11px/1 'JetBrains Mono',monospace">{{ s.size }}</span></span>
+              <span style="font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ s.parent }}</span>
+              <a href="{{ s.prUrl }}" target="_blank" onclick="event.stopPropagation()" style="font:12.5px/1.4 'JetBrains Mono',monospace">{{ s.pr }}</a>
+              <span><span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ s.gateBg }};color:{{ s.gateFg }}">{{ s.gate }}</span></span>
+              <span style="font:12px/1.4 'JetBrains Mono',monospace">{{ s.started }}</span>
+              <span style="font:12px/1.4 'JetBrains Mono',monospace">{{ s.elapsed }}</span>
+              <span style="font:12px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ s.eta }}</span>
+              <a href="{{ s.open }}" style="font-size:12.5px">detail</a>
+            </div>
+          {% endfor %}
+          <div style="padding:10px 16px;font-size:12px;color:#8f97a3;text-wrap:pretty">{{ etaFoot }}</div>
+        </div>
+      {% if drawerOpen %}
+    <div hx-get="{{ closeDrawer }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="position:fixed;inset:0;background:rgba(20,24,31,.32);z-index:19"></div>
+    <div style="position:fixed;top:0;right:0;bottom:0;width:680px;max-width:92vw;background:#fff;z-index:20;overflow-y:auto;display:flex;flex-direction:column;box-shadow:inset 4px 0 0 {{ d.color }}, -12px 0 36px rgba(20,24,31,.18)">
+      <div style="display:flex;align-items:center;gap:12px;padding:14px 20px 12px 24px;border-bottom:1px solid #e2dfd8;position:sticky;top:0;background:#fff">
+        <span style="font:500 10.5px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Session</span><span style="font:600 13px/1.4 'JetBrains Mono',monospace">{{ d.id }}</span><span style="font:12px/1.4 'JetBrains Mono',monospace;color:{{ d.color }}">{{ d.tk }} · shard {{ d.L }}</span>
+        <span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ d.stBg }};color:{{ d.stFg }}">{{ d.status }}</span>
+        <button hx-get="{{ closeDrawer }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" title="Close" style="margin-left:auto;border:1px solid #d6d2c9;background:#fff;border-radius:7px;width:28px;height:28px;cursor:pointer;color:#626b78;font-size:14px;line-height:1" data-hover="background:#f3f1ec">✕</button>
+      </div>
+      <div style="padding:16px 20px 30px 24px;display:flex;flex-direction:column;gap:18px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+          <div><div style="font:500 10.5px/1.5 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#8f97a3">ACU of cap</div><div style="display:flex;align-items:center;gap:8px;margin-top:4px"><span style="font:600 18px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums">{{ d.acu }}<span style="font-size:12px;font-weight:400;color:#8f97a3"> / {{ d.cap }}</span></span></div><div style="width:100%;height:5px;background:#e9e7e1;border-radius:3px;overflow:hidden;margin-top:6px"><span style="display:block;height:100%;width:{{ d.acuPct }}%;background:#7a4fb5"></span></div></div>
+          <div><div style="font:500 10.5px/1.5 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#8f97a3">size</div><div style="font:600 18px/1.1 'Instrument Sans',system-ui,sans-serif;margin-top:4px">{{ d.size }}</div></div>
+          <div><div style="font:500 10.5px/1.5 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#8f97a3">retries</div><div style="font:600 18px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;margin-top:4px">{{ d.retries }}</div></div>
+          <div><div style="font:500 10.5px/1.5 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#8f97a3">PR</div><div style="font:600 18px/1.1 'Instrument Sans',system-ui,sans-serif;margin-top:4px"><a href="{{ d.prUrl }}" target="_blank" style="font-family:'JetBrains Mono',monospace">{{ d.pr }}</a></div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div style="border-radius:7px;padding:9px 11px;font-size:12.5px;background:#f1eafa"><div style="font:500 10px/1.5 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#7a4fb5;margin-bottom:3px">the session said</div>{{ d.said }}</div>
+          <div style="border-radius:7px;padding:9px 11px;font-size:12.5px;background:#e0f3f1"><div style="font:500 10px/1.5 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#1f8a80;margin-bottom:3px">the gate found</div><span style="font-weight:600">{{ d.gate }}</span> → {{ d.decision }} · review {{ d.review }}<div style="color:#626b78;font-size:12px">{{ d.gateNote }}</div></div>
+        </div>
+        <div>
+          <div style="font:500 10.5px/1.5 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f97a3;margin-bottom:6px">timeline</div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            {% for e in d.timeline %}<div style="display:grid;grid-template-columns:58px 82px 1fr;gap:10px;font-size:12px;align-items:baseline;padding:2px 0 2px 10px;border-left:3px solid {{ e.fg }}"><span style="font:11px/1.5 'JetBrains Mono',monospace;color:#8f97a3">{{ e.time }}</span><span style="font:11px/1.5 'JetBrains Mono',monospace;color:{{ e.fg }}">{{ e.layer }}</span><span style="min-width:0"><span style="font-weight:500;color:{{ e.evColor }}">{{ e.event }}</span> <span style="font:11px/1.5 'JetBrains Mono',monospace;color:#626b78;word-break:break-all">{{ e.detail }}</span></span></div>{% endfor %}
+          </div>
+        </div>
+        <div>
+          <div style="font:500 10.5px/1.5 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#1f8a80;margin-bottom:6px">evidence · exit codes</div>
+          <div style="border:1px solid #ecebe6;border-radius:7px;overflow:hidden">
+            <div style="display:grid;grid-template-columns:36px 1fr 44px 90px;gap:10px;padding:5px 10px;border-bottom:1px solid #ecebe6;font:500 10px/1.5 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#8f97a3"><span>tier</span><span>command</span><span>exit</span><span>log</span></div>
+            {% for v in d.evidence %}<div style="display:grid;grid-template-columns:36px 1fr 44px 90px;gap:10px;padding:5px 10px;border-bottom:1px solid #f1efe9;font-size:12px;align-items:center"><span style="font:11.5px/1.5 'JetBrains Mono',monospace">{{ v.tier }}</span><span style="font:11.5px/1.5 'JetBrains Mono',monospace;color:#626b78;word-break:break-all">{{ v.cmd }}</span><span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ v.bg }};color:{{ v.fg }};justify-self:start">{{ v.exit }}</span><span style="font:11px/1.5 'JetBrains Mono',monospace;color:#8f97a3">{{ v.log }}</span></div>{% endfor %}
+          </div>
+        </div>
+        <div>
+          <div style="font:500 10.5px/1.5 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f97a3;margin-bottom:6px">verdicts</div>
+          {% for x in d.verdicts %}<div style="display:grid;grid-template-columns:70px auto 1fr;gap:12px;font-size:12.5px;align-items:baseline"><span style="font:11.5px/1.5 'JetBrains Mono',monospace;color:#8f97a3">{{ x.time }}</span><span><span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ x.bg }};color:{{ x.fg }}">{{ x.gate }}</span> → {{ x.decision }}</span><span style="color:#626b78">{{ x.reason }}</span></div>{% else %}<div style="font-size:12.5px;color:#8f97a3">no verdict yet</div>{% endfor %}
+        </div>
+        <div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px"><span style="font:500 10.5px/1.5 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#7a4fb5">structured output</span><span style="font-size:12px;color:#8f97a3">the session's own claim, recorded next to the gate's result</span></div>
+          <pre style="background:#f3f1ec;padding:8px 10px;font:11px/1.5 'JetBrains Mono',monospace;overflow-x:auto;border-radius:5px;margin:0;white-space:pre-wrap;color:#14181f">{{ d.output }}</pre>
+        </div>
+      </div>
+    </div>
+  {% endif %}{% endblock %}

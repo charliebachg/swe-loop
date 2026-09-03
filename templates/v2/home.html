@@ -1,0 +1,77 @@
+{% extends "shell.html" %}{% block title %}Home{% endblock %}{% block content %}
+        <div style="display:flex;align-items:stretch;border-top:1px solid #e2dfd8;border-bottom:1px solid #e2dfd8;padding:12px 0;margin-bottom:26px">
+          <div style="display:flex;flex-direction:column;justify-content:center;padding-right:18px;font:500 10.5px/1.4 'JetBrains Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#626b78">Now<br><span style="letter-spacing:0;text-transform:none;color:#5b6f8a;font-weight:400">refreshes every 5s</span></div>
+          <div style="padding:0 20px;border-left:1px solid #e2dfd8"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ now.runningColor }}">{{ now.running }}</div><div style="font-size:12px;color:#626b78;margin-top:3px">sessions running</div></div>
+          <div style="padding:0 20px;border-left:1px solid #e2dfd8"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ now.waitingColor }}">{{ now.waiting }}</div><div style="font-size:12px;color:#626b78;margin-top:3px">waiting on a person</div></div>
+          <div style="padding:0 20px;border-left:1px solid #e2dfd8"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ now.gatedColor }}">{{ now.gated }}</div><div style="font-size:12px;color:#626b78;margin-top:3px">at the gate</div></div>
+          <div style="padding:0 20px;border-left:1px solid #e2dfd8"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ now.passedColor }}">{{ now.passed }}</div><div style="font-size:12px;color:#626b78;margin-top:3px">passed the gate</div></div>
+          <div style="padding:0 20px;border-left:1px solid #e2dfd8"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ now.failedColor }}">{{ now.failed }}</div><div style="font-size:12px;color:#626b78;margin-top:3px">failed or escalated</div></div>
+          <div style="padding:0 20px;border-left:1px solid #e2dfd8"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ now.mergedColor }}">{{ now.merged }}</div><div style="font-size:12px;color:#626b78;margin-top:3px">merged by a person</div></div>
+          <div style="padding:0 0 0 20px;border-left:1px solid #e2dfd8"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums">{{ acuSpent }}<span style="font-size:12px;font-weight:400;color:#8f97a3"> / {{ acuCap }}</span></div><div style="font-size:12px;color:#626b78;margin-top:3px">ACU spent</div></div>
+        </div>
+
+        <div style="display:flex;align-items:baseline;gap:12px;margin:0 0 10px">
+          <span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">The loop</span><span style="font-size:12.5px;color:#8f97a3">eight stages · the dots are the {{ ticketWord }}, where they are now</span>
+          <a href="{{ goTracker }}" style="margin-left:auto;font-size:12.5px">Tracker →</a>
+        </div>
+        <div style="background:#fff;border:1px solid #e2dfd8;border-radius:12px;padding:0 6px 14px;display:grid;grid-template-columns:repeat(8,1fr);margin-bottom:26px">
+          {% for st in loop %}
+            <div style="padding:14px 14px 0;border-top:3px solid {{ st.color }};margin-top:-1px">
+              <div style="display:flex;align-items:baseline;gap:8px"><span style="font:500 11px/1.3 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#14181f">{{ st.name }}</span><span style="font:11px/1.3 'JetBrains Mono',monospace;color:{{ st.color }}">{{ st.actor }}</span></div>
+              <div style="font:600 30px/1.05 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;margin-top:10px;color:{{ st.numColor }}">{{ st.count }}</div>
+              <div style="font-size:12px;color:#626b78;margin-top:4px;min-height:36px;text-wrap:pretty">{{ st.context }}</div>
+              <div style="display:flex;gap:6px;margin-top:10px;min-height:22px;flex-wrap:wrap">
+                {% for d in st.dots %}<a href="{{ d.go }}" title="{{ d.title }}" style="width:22px;height:22px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;font:600 10.5px/1 'JetBrains Mono',monospace;background:{{ d.bg }};color:{{ d.fg }};box-shadow:inset 0 0 0 2px {{ d.ring }}" data-hover="text-decoration:none">{{ d.L }}</a>{% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:26px;align-items:start">
+          <section style="min-width:0">
+            <div style="display:flex;align-items:baseline;gap:10px;margin:0 0 10px">
+              <span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Needs you</span><span style="font-size:12px;color:#8f97a3">{{ needs | length }}</span>
+              <span style="margin-left:auto;font:11px/18px 'JetBrains Mono',monospace;padding:0 7px;border-radius:4px;background:#fff3d6;color:#b8862a">a person</span>
+            </div>
+            <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
+              {% for n in needs %}
+                <div hx-get="{{ n.go }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="display:grid;grid-template-columns:22px 118px 1fr auto;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid #ecebe6;cursor:pointer" data-hover="background:#faf9f6">
+                  <span style="width:22px;height:22px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;font:600 10.5px/1 'JetBrains Mono',monospace;background:#fff;color:{{ n.color }};box-shadow:inset 0 0 0 2px {{ n.color }}">{{ n.L }}</span>
+                  <span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ n.bg }};color:{{ n.fg }};white-space:nowrap;justify-self:start">{{ n.kind }}</span>
+                  <span style="font-size:13px;text-wrap:pretty">{{ n.reason }}</span>
+                  <span style="font:11.5px/1.4 'JetBrains Mono',monospace;color:#8f97a3;white-space:nowrap">{{ n.action }}</span>
+                </div>
+              {% endfor %}
+            </div>
+          </section>
+          <section style="min-width:0">
+            <div style="display:flex;align-items:baseline;gap:10px;margin:0 0 10px">
+              <span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Recent</span><span style="font-size:12px;color:#8f97a3;white-space:nowrap">{{ countLabel }}</span>
+              <span style="margin-left:auto;display:flex;gap:2px;font:11px/18px 'JetBrains Mono',monospace;white-space:nowrap"><button hx-get="{{ setGrouped }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="border:0;background:{{ gBg }};color:{{ gFg }};padding:0 7px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:inherit;line-height:18px;white-space:nowrap">grouped</button><button hx-get="{{ setRaw }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="border:0;background:{{ rBg }};color:{{ rFg }};padding:0 7px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:inherit;line-height:18px;white-space:nowrap">every event</button></span>
+            </div>
+            <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden;padding:6px 0">
+              {% if grouped %}
+                {% for g in groups %}
+                  <div hx-get="{{ g.toggle }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="display:grid;grid-template-columns:58px 84px 1fr auto;gap:12px;padding:6px 16px 6px 13px;font-size:13px;align-items:baseline;cursor:{{ g.cursor }};border-left:3px solid {{ g.fg }};margin:2px 0" data-hover="background:#faf9f6">
+                    <span style="font:11.5px/1.5 'JetBrains Mono',monospace;color:#8f97a3">{{ g.time }}</span>
+                    <span style="font:11px/1.5 'JetBrains Mono',monospace;color:{{ g.fg }};white-space:nowrap">{{ g.layer }}</span>
+                    <span style="min-width:0;display:flex;flex-wrap:wrap;gap:3px 8px;align-items:baseline"><a href="{{ g.link }}" style="font-weight:600;color:{{ g.evColor }}">{{ g.event }}</a><span style="font:12px/1.5 'JetBrains Mono',monospace;color:#8f97a3">{{ g.ref }}</span>{% for c in g.checks %}<span style="font:500 10.5px/16px 'JetBrains Mono',monospace;padding:0 5px;border-radius:3px;background:{{ c.bg }};color:{{ c.fg }}">{{ c.label }}</span>{% endfor %}{% if g.hasNote %}<span style="color:#626b78;font:11.5px/1.5 'JetBrains Mono',monospace">{{ g.note }}</span>{% endif %}</span>
+                    <span style="font:10.5px/1.5 'JetBrains Mono',monospace;color:#8f97a3;white-space:nowrap">{{ g.nLabel }}</span>
+                    {% if g.open %}<div style="grid-column:2 / -1;display:flex;flex-direction:column;gap:2px;padding:4px 0 2px 12px;border-left:2px solid #ecebe6">{% for e in g.raw %}<div style="font-size:12px;display:flex;gap:8px;align-items:baseline"><span style="font:11px/1.5 'JetBrains Mono',monospace;color:#8f97a3;min-width:70px">{{ e.layer }}</span><span style="font-weight:500;color:{{ e.evColor }}">{{ e.event }}</span><span style="font:11px/1.5 'JetBrains Mono',monospace;color:#626b78">{{ e.detail }}</span></div>{% endfor %}</div>{% endif %}
+                  </div>
+                {% endfor %}
+              {% endif %}
+              {% if raw %}
+                {% for e in events %}
+                  <div style="display:grid;grid-template-columns:58px 84px 1fr;gap:12px;padding:6px 16px 6px 13px;font-size:13px;align-items:baseline;border-left:3px solid {{ e.fg }};margin:2px 0" data-hover="background:#faf9f6">
+                    <span style="font:11.5px/1.5 'JetBrains Mono',monospace;color:#8f97a3">{{ e.time }}</span>
+                    <span style="font:11px/1.5 'JetBrains Mono',monospace;color:{{ e.fg }};white-space:nowrap">{{ e.layer }}</span>
+                    <span style="min-width:0"><a href="{{ e.link }}" style="font-weight:600;color:{{ e.evColor }}">{{ e.event }}</a> <span style="font:12px/1.5 'JetBrains Mono',monospace;color:#8f97a3">{{ e.ref }}</span>{% if e.hasDetail %}<span style="display:block;color:#626b78;font:11.5px/1.5 'JetBrains Mono',monospace">{{ e.detail }}</span>{% endif %}</span>
+                  </div>
+                {% endfor %}
+              {% endif %}
+            </div>
+            <div style="display:flex;gap:12px;font:10.5px/18px 'JetBrains Mono',monospace;margin-top:6px;white-space:nowrap"><span style="color:#5b6f8a">▎code</span><span style="color:#7a4fb5">▎Devin</span><span style="color:#1f8a80">▎the gate</span><span style="color:#b8862a">▎a person</span><span style="color:#8f97a3;margin-left:auto">the rail colour is who did the work</span></div>
+          </section>
+        </div>
+      {% endblock %}

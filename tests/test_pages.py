@@ -95,12 +95,12 @@ def test_tickets_page_groups_by_source(client):
     assert "Issues on the fork" in html and "Scan" in html
     assert "human-only" in html and "sessions never edit tests" in html
     assert 'href="https://github.com/charliebachg/superset/issues/4"' in html
-    assert html.count("/tracker#tkt_") == 5
+    assert html.count("/tracker?open=tkt_") >= 5
 
 
 def test_tracker_rows_stages_and_merge(client):
     c, st = client
-    html = c.get("/tracker").text
+    html = c.get("/tracker?open=tkt_A,tkt_B,tkt_D,tkt_E").text
     assert 'id="tkt_D"' in html and "the session said" in html and "the gate found" in html
     assert "retries 1" in html  # D failed T1 once and passed on retry
     assert "Merged by a person" in html  # A and B

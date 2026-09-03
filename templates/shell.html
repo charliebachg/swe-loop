@@ -3,9 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}swe-loop{% endblock %}</title>
+<title>{% block title %}swe-loop{% endblock %} · swe-loop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"><style>
+body{margin:0;background:#f3f1ec;color:#14181f;font:13.5px/1.5 "Instrument Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased} a{color:#2457a8;text-decoration:none} a:hover{text-decoration:underline} *{box-sizing:border-box} input::placeholder,textarea::placeholder{color:#a3a9b3}</style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/2.0.4/htmx.min.js"></script>
-<style>
+<script>
+document.addEventListener("mouseover", function (e) {
+  var el = e.target.closest && e.target.closest("[data-hover]"); if (!el || el.dataset.hoverOn) return;
+  el.dataset.hoverOn = "1"; el.dataset.styleWas = el.getAttribute("style") || "";
+  el.setAttribute("style", el.dataset.styleWas + ";" + el.dataset.hover);
+  el.addEventListener("mouseleave", function h() { el.setAttribute("style", el.dataset.styleWas); delete el.dataset.hoverOn; el.removeEventListener("mouseleave", h); });
+});
+</script>
+
+<style>/* legacy page styles */
+
   :root { --ink:#1a222d; --muted:#5a6574; --rule:#dfe3e9; --ground:#f4f5f7; --surface:#fff; --accent:#2c5ba6; --accent-soft:#e7eef9;
           --pass:#2e7d4f; --pass-soft:#e3f2e8; --fail:#b4452e; --fail-soft:#f9e4df; --warn:#b8862a; --warn-soft:#fff3d6; --na:#8a94a3; --na-soft:#eceff3;
           --devin:#5b7fb5; --devin-soft:#eef3fb; --gate:#8a5fb5; --gate-soft:#f4ecfa; --human:#b4452e; --side:#1a222d; --side-ink:#c9d1dc; --side-dim:#6f7a89 }
@@ -48,26 +60,43 @@
   pre.sql, pre.code { background:#eef1f5; padding:8px 10px; font-size:11px; overflow-x:auto; border-radius:4px; margin:6px 0 0; white-space:pre-wrap }
   details summary { cursor:pointer; color:var(--accent); font-size:12.5px }
   .foot { font-size:12px; color:var(--muted) }
-</style>
+
+.page-legacy{max-width:1400px}</style>
 {% block head %}{% endblock %}
 </head>
-<body>
-<div class="app">
-  <aside>
-    <div class="brand">swe-loop <small>{{ mode }}</small></div>
-    {% for key, label, href in nav %}<a class="{{ 'on' if active == key else '' }}" href="{{ href }}">{{ label }}</a>{% endfor %}
-    <hr>
-    <h4>Devin</h4>
-    {% for key, label, href, tag in nav_devin %}<a class="{{ 'on' if active == key else '' }} {{ 'next' if tag == 'next' else '' }}" href="{{ href }}"><span class="dot"></span>{{ label }}{% if tag %}<span class="tag">{{ tag }}</span>{% endif %}</a>{% endfor %}
+<body hx-boost="false">
+
+
+<div style="display:grid;grid-template-columns:232px 1fr;min-height:100vh;min-width:1200px;background:#f3f1ec">
+  <aside style="background:#14181f;color:#c8ccd3;position:sticky;top:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column;padding:22px 0 18px">
+    <div style="padding:0 22px 20px;display:flex;align-items:baseline;gap:9px"><span style="font:700 17px/1 'Instrument Sans',system-ui,sans-serif;color:#fff;letter-spacing:-.01em">swe-loop</span><span style="font:11px/1 'JetBrains Mono',monospace;color:{{ modeSideFg }}">{{ modeSmall }}</span></div>
+    <div style="margin:0 22px 8px;font:500 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#6c7380">The journey</div>
+    {% for n in nav %}
+      <a href="{{ n.href }}" style="display:flex;align-items:center;gap:12px;padding:8px 22px;font-size:13.5px;color:{{ n.color }};background:{{ n.bg }};box-shadow:{{ n.shadow }}" data-hover="background:#1f2530;text-decoration:none"><span style="width:18px;height:18px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font:500 10px/1 'JetBrains Mono',monospace;flex:none;background:{{ n.numBg }};color:{{ n.numFg }};border:1px solid {{ n.numBorder }}">{{ n.num }}</span>{{ n.label }}</a>
+    {% endfor %}
+    <div style="border-top:1px solid #242b36;margin:14px 22px"></div>
+    <div style="margin:0 22px 8px;font:500 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#6c7380">Devin</div>
+    {% for n in navDevin %}
+      <a href="{{ n.href }}" title="{{ n.title }}" style="display:flex;align-items:center;gap:12px;padding:7px 22px;font-size:13.5px;color:{{ n.color }};background:{{ n.bg }};box-shadow:{{ n.shadow }}" data-hover="background:#1f2530;text-decoration:none"><span style="width:18px;display:inline-flex;justify-content:center;flex:none"><span style="width:7px;height:7px;border-radius:4px;background:{{ n.dotBg }};border:{{ n.dotBorder }}"></span></span>{{ n.label }}<span style="margin-left:auto;font:10px/1 'JetBrains Mono',monospace;color:#6c7380">{{ n.tag }}</span></a>
+    {% endfor %}
+    <div style="flex:1"></div>
+    <a href="/settings" style="display:flex;align-items:center;gap:12px;padding:8px 22px;font-size:13px;color:#8b93a0" data-hover="background:#1f2530;text-decoration:none;color:#c8ccd3"><span style="width:18px;display:inline-flex;justify-content:center;font-size:14px;line-height:1">⚙</span>Settings<span style="margin-left:auto;font:10px/1 'JetBrains Mono',monospace;color:#6c7380">our side</span></a>
   </aside>
-  <div class="main">
-    <div class="top">
-      <h1>{% block heading %}{{ self.title() }}{% endblock %}</h1>
-      <span class="mode"><b class="{{ 'live' if mode == 'live' else '' }}">{{ mode | upper }}</b> · {{ target }} · {{ branch }} · {{ spent }}{% if cap %} / {{ cap | int }}{% endif %} ACU</span>
-      <a class="gear" href="/settings" title="Settings">⚙</a>
+
+  <main style="min-width:0;display:flex;flex-direction:column">
+    <div style="background:#f3f1ec;border-bottom:1px solid #e2dfd8;padding:0 32px;height:58px;display:flex;align-items:center;gap:18px;position:sticky;top:0;z-index:3">
+      <span style="font:500 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#8f97a3">{{ pageStep }}</span>
+      <h1 style="font:600 19px/1 'Instrument Sans',system-ui,sans-serif;margin:0;letter-spacing:-.01em">{{ pageTitle }}</h1>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:14px;font:12px/1 'JetBrains Mono',monospace;color:#626b78;white-space:nowrap">
+        <span style="padding:3px 8px;border-radius:5px;font-weight:600;letter-spacing:.06em;background:{{ modeBg }};color:{{ modeFg }}">{{ modeLabel }}</span>
+        <span>{{ repo }}</span><span style="color:#c9c5bb">/</span><span>{{ branch }}</span>
+        <span style="display:flex;align-items:center;gap:8px;padding-left:14px;border-left:1px solid #e2dfd8"><span style="width:96px;height:6px;background:#e2dfd8;border-radius:3px;overflow:hidden"><span style="display:block;height:100%;width:{{ acuPct }}%;background:#7a4fb5;min-width:3px"></span></span><span><span style="color:#14181f;font-weight:600">{{ acuSpent }}</span> / {{ acuCap }} ACU</span></span>
+      </div>
     </div>
-    <div class="page">{% block content %}{% endblock %}</div>
-  </div>
-</div>
+
+    <div style="padding:24px 32px 90px;display:flex;flex-direction:column;min-width:0">
+<div id="page">{% block content %}{% endblock %}</div>
+</div></main></div>
+
 </body>
 </html>

@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from swe_loop import connect, ops, pages, replay, report
+from swe_loop import connect, ops, pages, replay, report, v2
 from swe_loop import reduce as reduce_mod
 from swe_loop.cli import run_once
 from swe_loop.config import Settings, TargetConfig
@@ -106,7 +106,165 @@ def build_app(
     def _render(request: Request, template: str, active: str, **ctx: Any) -> HTMLResponse:
         st: Store = request.app.state.store
         return TEMPLATES.TemplateResponse(
-            request, template, {**pages.shell(settings, cfg, st, active), **ctx}
+            request,
+            template,
+            {
+                **pages.shell(settings, cfg, st, active),
+                **v2.frame(settings, cfg, st, active),
+                **ctx,
+            },
+        )
+
+    def _page(request: Request, active: str, template: str, ctx: dict[str, Any]) -> HTMLResponse:
+        """A designed page. An HTMX request gets the content block only; the frame stays."""
+        st: Store = request.app.state.store
+        full = {
+            **pages.shell(settings, cfg, st, active),
+            **v2.frame(settings, cfg, st, active),
+            **ctx,
+        }
+        if request.headers.get("HX-Request"):
+            tpl = TEMPLATES.env.get_template(template)
+            html = "".join(tpl.blocks["content"](tpl.new_context({**full, "request": request})))
+            return HTMLResponse(html)
+        return TEMPLATES.TemplateResponse(request, template, full)
+
+    def _q(request: Request) -> dict[str, str]:
+        return {k: v for k, v in request.query_params.items()}
+
+    # ---- the designed pages (registered first, so they answer before the earlier builders)
+    @app.get("/", response_class=HTMLResponse)
+    def home_v2(request: Request) -> HTMLResponse:
+        st: Store = request.app.state.store
+        return _page(request, "home", "v2/home.html", v2.home(st, cfg, _q(request)))
+
+    @app.get("/automations", response_class=HTMLResponse)
+    def automations_v2(request: Request) -> HTMLResponse:
+        st: Store = request.app.state.store
+        running = request.app.state.run_lock.locked()
+        return _page(
+            request,
+            "automations",
+            "v2/automations.html",
+            v2.automations(st, cfg, settings, request.app.state.client, running, _q(request)),
+        )
+
+    @app.get("/tickets-page", response_class=HTMLResponse)
+    def tickets_v2(request: Request) -> HTMLResponse:
+        st: Store = request.app.state.store
+        return _page(request, "tickets", "v2/tickets.html", v2.tickets(st, cfg, _q(request)))
+
+    @app.get("/tracker", response_class=HTMLResponse)
+    def tracker_v2(request: Request) -> HTMLResponse:
+        st: Store = request.app.state.store
+        return _page(request, "tracker", "v2/tracker.html", v2.tracker(st, cfg, _q(request)))
+
+    @app.get("/report", response_class=HTMLResponse)
+    def report_v2(request: Request) -> HTMLResponse:
+        st: Store = request.app.state.store
+        return _page(
+            request, "report", "v2/report.html", v2.report(st, cfg, INVENTORY, _q(request))
+        )
+
+    @app.get("/devin/sessions", response_class=HTMLResponse)
+    def sessions_v2(request: Request) -> HTMLResponse:
+        st: Store = request.app.state.store
+        return _page(request, "sessions", "v2/sessions.html", v2.sessions(st, cfg, _q(request)))
+
+    @app.get("/devin/playbooks", response_class=HTMLResponse)
+    def playbooks_v2(request: Request) -> HTMLResponse:
+        st: Store = request.app.state.store
+        return _page(
+            request,
+            "playbooks",
+            "v2/playbooks.html",
+            v2.playbooks(st, cfg, request.app.state.client, _q(request)),
+        )
+
+    def _auto_page(
+        request: Request, err: bool = False, name: str = "", sel: str | None = None
+    ) -> HTMLResponse:
+        st: Store = request.app.state.store
+        q = {**_q(request), **({"sel": sel} if sel else {})}
+        return _page(
+            request,
+            "automations",
+            "v2/automations.html",
+            v2.automations(
+                st,
+                cfg,
+                settings,
+                request.app.state.client,
+                request.app.state.run_lock.locked(),
+                q,
+                err=err,
+                name=name,
+            ),
+        )
+
+    @app.post("/automations", response_class=HTMLResponse)
+    async def automations_add_v2(request: Request) -> HTMLResponse:
+        body = (await request.body()).decode()
+        form = {k: v[0].strip() for k, v in parse_qs(body).items()}
+        if not form.get("name"):
+            return _auto_page(request, err=True, name="")
+        aid = _add_automation(request.app.state.store, form)
+        return _auto_page(request, sel=aid)
+
+    @app.post("/automations/{aid}/toggle", response_class=HTMLResponse)
+    def automations_toggle_v2(aid: str, request: Request) -> HTMLResponse:
+        _toggle_automation(request.app.state.store, aid)
+        return _auto_page(request, sel=aid)
+
+    @app.post("/automations/{aid}/delete", response_class=HTMLResponse)
+    def automations_delete_v2(aid: str, request: Request) -> HTMLResponse:
+        _delete_automation(request.app.state.store, aid)
+        return _auto_page(request)
+
+    @app.post("/automations/{aid}/run", response_class=HTMLResponse)
+    def automations_run_v2(aid: str, request: Request) -> HTMLResponse:
+        _run_automation(request, aid)
+        return _auto_page(request, sel=aid)
+
+    @app.post("/devin/playbooks", response_class=HTMLResponse)
+    async def playbooks_add_v2(request: Request) -> HTMLResponse:
+        body = (await request.body()).decode()
+        form = {k: v[0] for k, v in parse_qs(body).items()}
+        st: Store = request.app.state.store
+        if not form.get("name", "").strip() or not form.get("body", "").strip():
+            return _page(
+                request,
+                "playbooks",
+                "v2/playbooks.html",
+                v2.playbooks(
+                    st,
+                    cfg,
+                    request.app.state.client,
+                    _q(request),
+                    err=True,
+                    name=form.get("name", ""),
+                ),
+            )
+        pid = _add_playbook(st, form)
+        return _page(
+            request,
+            "playbooks",
+            "v2/playbooks.html",
+            v2.playbooks(st, cfg, request.app.state.client, {**_q(request), "sel": pid}),
+        )
+
+    @app.post("/tickets/{ticket_id}/merge-form", response_class=HTMLResponse)
+    async def merge_form_v2(ticket_id: str, request: Request) -> HTMLResponse:
+        form = parse_qs((await request.body()).decode())
+        actor = (form.get("actor") or [""])[0].strip()
+        st: Store = request.app.state.store
+        if actor:
+            try:
+                reduce_mod.record_merge(st, ticket_id, actor)
+            except ValueError:
+                pass  # not ready: the re-rendered row says why
+        return _page(
+            request, "tracker", "v2/tracker.html", v2.tracker(st, cfg, {"open": ticket_id})
         )
 
     @app.get("/", response_class=HTMLResponse)
@@ -199,26 +357,7 @@ def build_app(
             raise HTTPException(status_code=404)
         return TEMPLATES.TemplateResponse(request, "session_drawer.html", {"d": d})
 
-    def _auto_ctx(request: Request) -> dict[str, Any]:
-        st: Store = request.app.state.store
-        running = request.app.state.run_lock.locked()
-        return {"a": pages.automations(st, cfg, settings, request.app.state.client, running)}
-
-    def _auto_body(request: Request) -> HTMLResponse:
-        return TEMPLATES.TemplateResponse(request, "automations_body.html", _auto_ctx(request))
-
-    @app.get("/automations", response_class=HTMLResponse)
-    def automations_page(request: Request) -> HTMLResponse:
-        return _render(request, "automations.html", "automations", **_auto_ctx(request))
-
-    @app.get("/partials/automations", response_class=HTMLResponse)
-    def automations_partial(request: Request) -> HTMLResponse:
-        return _auto_body(request)
-
-    @app.post("/automations", response_class=HTMLResponse)
-    async def automations_add(request: Request) -> HTMLResponse:
-        form = {k: v[0].strip() for k, v in parse_qs((await request.body()).decode()).items()}
-        st: Store = request.app.state.store
+    def _add_automation(st: Store, form: dict[str, str]) -> str:
         name = form.get("name", "")
         if not name:
             raise HTTPException(status_code=400, detail="name is required")
@@ -232,7 +371,7 @@ def build_app(
         trigger: dict[str, Any] = {"source": source, "event": event, "match": match}
         if "label" in match:
             trigger["issue_label"] = match.pop("label")
-        st.upsert_automation(
+        aid = st.upsert_automation(
             name=name[:80],
             kind="custom",
             enabled=False,
@@ -246,11 +385,9 @@ def build_app(
             notes=(form.get("notes") or "")[:200] or None,
         )
         st.log("automation", f"added {name[:40]}", detail=trig)
-        return _auto_body(request)
+        return aid
 
-    @app.post("/automations/{aid}/toggle", response_class=HTMLResponse)
-    def automations_toggle(aid: str, request: Request) -> HTMLResponse:
-        st: Store = request.app.state.store
+    def _toggle_automation(st: Store, aid: str) -> None:
         a = st.get_automation(aid)
         if not a:
             raise HTTPException(status_code=404)
@@ -258,11 +395,8 @@ def build_app(
             raise HTTPException(status_code=409, detail="not available yet")
         st.set_automation(aid, enabled=0 if a["enabled"] else 1)
         st.log("automation", f"{a['name']} " + ("disabled" if a["enabled"] else "enabled"))
-        return _auto_body(request)
 
-    @app.post("/automations/{aid}/delete", response_class=HTMLResponse)
-    def automations_delete(aid: str, request: Request) -> HTMLResponse:
-        st: Store = request.app.state.store
+    def _delete_automation(st: Store, aid: str) -> None:
         a = st.get_automation(aid)
         if not a:
             raise HTTPException(status_code=404)
@@ -270,10 +404,8 @@ def build_app(
             raise HTTPException(status_code=409, detail="the built-in automations stay")
         st.delete_automation(aid)
         st.log("automation", f"removed {a['name']}")
-        return _auto_body(request)
 
-    @app.post("/automations/{aid}/run", response_class=HTMLResponse)
-    def automations_run(aid: str, request: Request) -> HTMLResponse:
+    def _run_automation(request: Request, aid: str) -> None:
         st: Store = request.app.state.store
         a = st.get_automation(aid)
         if not a:
@@ -307,11 +439,11 @@ def build_app(
         th = threading.Thread(target=_go, name="swe-loop-run", daemon=True)
         request.app.state.run_thread = th
         th.start()
-        return _auto_body(request)
 
     @app.post("/run-now", response_class=HTMLResponse)
     def run_now(request: Request) -> HTMLResponse:
-        return automations_run("auto_repair", request)
+        _run_automation(request, "auto_repair")
+        return _auto_page(request, sel="auto_repair")
 
     @app.get("/devin/playbooks", response_class=HTMLResponse)
     def playbooks_page(request: Request) -> HTMLResponse:
@@ -333,10 +465,7 @@ def build_app(
             raise HTTPException(status_code=404)
         return TEMPLATES.TemplateResponse(request, "playbook_detail.html", {"d": d})
 
-    @app.post("/devin/playbooks", response_class=HTMLResponse)
-    async def playbooks_add(request: Request) -> HTMLResponse:
-        form = {k: v[0] for k, v in parse_qs((await request.body()).decode()).items()}
-        st: Store = request.app.state.store
+    def _add_playbook(st: Store, form: dict[str, str]) -> str:
         name, body = form.get("name", "").strip(), form.get("body", "").strip()
         if not name or not body:
             raise HTTPException(status_code=400, detail="name and body are required")
@@ -355,8 +484,7 @@ def build_app(
             source="user",
         )
         st.log("playbook", f"added {name[:40]}")
-        d = pages.playbook_detail(st, pid)
-        return TEMPLATES.TemplateResponse(request, "playbook_detail.html", {"d": d})
+        return pid
 
     @app.get("/devin/knowledge", response_class=HTMLResponse)
     def knowledge_page(request: Request) -> HTMLResponse:

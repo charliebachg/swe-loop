@@ -1,0 +1,88 @@
+{% extends "shell.html" %}{% block title %}Automations{% endblock %}{% block content %}
+        <div style="display:grid;grid-template-columns:1fr 1.15fr;gap:26px;align-items:start">
+          <section style="min-width:0">
+            <div style="display:flex;align-items:baseline;gap:10px;margin:0 0 10px">
+              <span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Automations</span><span style="font-size:12px;color:#8f97a3">{{ autos | length }} configs · trigger, target, playbook, cap, concurrency</span>
+              <span style="margin-left:auto;font:11px/18px 'JetBrains Mono',monospace;padding:0 7px;border-radius:4px;background:#f1eafa;color:#7a4fb5">Devin Automations</span>
+            </div>
+            <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
+              {% for a in autos %}
+                <div hx-get="{{ a.select }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="display:grid;grid-template-columns:1fr auto;gap:14px;padding:14px 16px 14px 15px;border-bottom:1px solid #ecebe6;cursor:pointer;background:{{ a.bg }};box-shadow:{{ a.shadow }}" data-hover="background:#faf9f6">
+                  <div style="min-width:0;opacity:{{ a.opacity }}">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-weight:600;font-size:14.5px">{{ a.name }}</span><span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ a.stBg }};color:{{ a.stFg }}">{{ a.state }}</span><span style="font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ a.kind }}</span></div>
+                    <div style="font-size:12.5px;color:#626b78;margin-top:5px;display:flex;gap:8px;flex-wrap:wrap;align-items:baseline"><span style="font:11.5px/1.5 'JetBrains Mono',monospace;color:#14181f">{{ a.trigger }}</span><span>{{ a.triggerShort }}</span></div>
+                    <div style="font-size:12px;color:#8f97a3;margin-top:3px">playbook <span style="font:11.5px/1.5 'JetBrains Mono',monospace;color:#626b78">{{ a.playbook }}</span> · cap {{ a.cap }} · concurrency {{ a.conc }} · {{ a.lastRun }}</div>
+                  </div>
+                  <div style="display:flex;gap:8px;align-items:flex-start">
+                    {% if not a.isNext %}<button hx-post="{{ a.toggleUrl }}" hx-target="#page" hx-swap="innerHTML" onclick="event.stopPropagation()" style="padding:7px 12px;border-radius:7px;border:1px solid #d6d2c9;background:#fff;color:#14181f;font:500 13px/1.2 'Instrument Sans',system-ui,sans-serif;cursor:pointer;white-space:nowrap" data-hover="background:#f3f1ec">{{ a.toggleLabel }}</button>{% if a.runnable %}<button hx-post="{{ a.runUrl }}" hx-target="#page" hx-swap="innerHTML" onclick="event.stopPropagation()" {% if not a.canRun %}disabled{% endif %} style="padding:7px 12px;border-radius:7px;border:1px solid #2457a8;background:#2457a8;color:#fff;font:500 13px/1.2 'Instrument Sans',system-ui,sans-serif;cursor:pointer;white-space:nowrap" data-hover="background:#1d4a90">{{ a.runLabel }}</button>{% endif %}{% endif %}
+                    {% if a.isNext %}<button disabled style="padding:7px 12px;border-radius:7px;border:1px solid #e2dfd8;background:#fff;color:#8f97a3;font:500 13px/1.2 'Instrument Sans',system-ui,sans-serif;cursor:not-allowed;white-space:nowrap">Start</button>{% endif %}
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+            <p style="font-size:12px;color:#8f97a3;margin:10px 0 0;text-wrap:pretty">{{ autoFoot }}</p>
+            <div style="display:flex;align-items:baseline;gap:10px;margin:28px 0 10px">
+              <span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Trigger sources on this org</span>
+              <span style="margin-left:auto;font:11px/18px 'JetBrains Mono',monospace;padding:0 7px;border-radius:4px;background:#eaeef4;color:#5b6f8a">GET /automations/schemas</span>
+            </div>
+            <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden;font:12px/1.5 'JetBrains Mono',monospace">
+              <div style="display:grid;grid-template-columns:150px 1fr;gap:12px;padding:8px 16px;border-bottom:1px solid #ecebe6"><span style="color:#626b78">github</span><span style="text-wrap:pretty">issues · pull_request · check_run · push · issue_comment · pull_request_review</span></div>
+              <div style="display:grid;grid-template-columns:150px 1fr;gap:12px;padding:8px 16px;border-bottom:1px solid #ecebe6"><span style="color:#626b78">schedule</span><span>recurring</span></div>
+              <div style="display:grid;grid-template-columns:150px 1fr;gap:12px;padding:8px 16px;border-bottom:1px solid #ecebe6"><span style="color:#626b78">slack</span><span>message · reaction_added</span></div>
+              <div style="display:grid;grid-template-columns:150px 1fr;gap:12px;padding:8px 16px;border-bottom:1px solid #ecebe6"><span style="color:#626b78">webhook</span><span>incoming</span></div>
+              <div style="display:grid;grid-template-columns:150px 1fr;gap:12px;padding:8px 16px;border-bottom:1px solid #ecebe6"><span style="color:#626b78">snapshot_build</span><span>completed</span></div>
+              <div style="display:grid;grid-template-columns:150px 1fr;gap:12px;padding:8px 16px"><span style="color:#626b78;text-wrap:pretty">linear · jira · pylon · incident_io · gitlab</span><span>issue and pipeline events</span></div>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:10px;margin:22px 0 10px">
+              <span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Intake adapters</span>
+              <span style="margin-left:auto;font:11px/18px 'JetBrains Mono',monospace;padding:0 7px;border-radius:4px;background:#eaeef4;color:#5b6f8a">/intake/{source}</span>
+            </div>
+            <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden;font:12px/1.5 'JetBrains Mono',monospace">
+              <div style="display:grid;grid-template-columns:150px 1fr;gap:12px;padding:8px 16px;border-bottom:1px solid #ecebe6"><span style="color:#626b78">github</span><span>pull_request · issue · check_run</span></div>
+              <div style="display:grid;grid-template-columns:150px 1fr;gap:12px;padding:8px 16px"><span style="color:#626b78">manual</span><span>manual</span></div>
+            </div>
+            <p style="font-size:12px;color:#8f97a3;margin:8px 0 0">Any event becomes one work order. A new source is a new adapter; nothing else changes.</p>
+          </section>
+          <section style="min-width:0;display:flex;flex-direction:column;gap:24px">
+            <div>
+              <div style="display:flex;align-items:center;gap:10px;margin:0 0 10px">
+                <span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">{{ au.name }}</span>
+                <span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ au.stBg }};color:{{ au.stFg }}">{{ au.state }}</span>
+                <span style="margin-left:auto;font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ au.kind }}</span>
+              </div>
+              <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
+                <div style="padding:14px 18px;border-bottom:1px solid #ecebe6;font-size:13.5px;text-wrap:pretty">{{ au.desc }}</div>
+                {% for k in au.rows %}
+                  <div style="display:grid;grid-template-columns:140px 1fr;gap:12px;padding:8px 18px;border-bottom:1px solid #ecebe6;font-size:13px;align-items:baseline"><span style="font:500 10.5px/1.5 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f97a3">{{ k.k }}</span><span style="font-family:{{ k.font }};font-size:{{ k.size }};text-wrap:pretty;min-width:0;overflow-wrap:anywhere">{{ k.v }}</span></div>
+                {% endfor %}
+                <div style="display:flex;gap:8px;padding:14px 18px;align-items:center">
+                  {% if not au.isNext %}<button hx-post="{{ au.toggleUrl }}" hx-target="#page" hx-swap="innerHTML" style="padding:7px 12px;border-radius:7px;border:1px solid #d6d2c9;background:#fff;color:#14181f;font:500 13px/1.2 'Instrument Sans',system-ui,sans-serif;cursor:pointer;white-space:nowrap" data-hover="background:#f3f1ec">{{ au.toggleLabel }}</button>{% if au.runnable %}<button hx-post="{{ au.runUrl }}" hx-target="#page" hx-swap="innerHTML" {% if not au.canRun %}disabled{% endif %} style="padding:7px 12px;border-radius:7px;border:1px solid #2457a8;background:#2457a8;color:#fff;font:500 13px/1.2 'Instrument Sans',system-ui,sans-serif;cursor:pointer;white-space:nowrap" data-hover="background:#1d4a90">{{ au.runLabel }}</button>{% endif %}{% if au.removable %}<button hx-post="{{ au.removeUrl }}" hx-target="#page" hx-swap="innerHTML" style="padding:7px 12px;border-radius:7px;border:1px solid #d6d2c9;background:#fff;color:#14181f;font:500 13px/1.2 'Instrument Sans',system-ui,sans-serif;cursor:pointer;white-space:nowrap">Remove</button>{% endif %}<span style="font-size:12px;color:#8f97a3">{{ au.actionNote }}</span>{% endif %}
+                  {% if au.isNext %}<button disabled style="padding:7px 12px;border-radius:7px;border:1px solid #e2dfd8;background:#fff;color:#8f97a3;font:500 13px/1.2 'Instrument Sans',system-ui,sans-serif;cursor:not-allowed;white-space:nowrap">Start</button><span style="font-size:12px;color:#8f97a3">next: nothing runs until the scan session exists</span>{% endif %}
+                </div>
+              </div>
+            </div>
+            <div>
+              <div style="display:flex;align-items:baseline;gap:10px;margin:0 0 10px">
+                <span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Add an automation</span>
+                <span style="margin-left:auto;font:11px/18px 'JetBrains Mono',monospace;padding:0 7px;border-radius:4px;background:#eaeef4;color:#5b6f8a">a config, nothing runs until enabled</span>
+              </div>
+              <form hx-post="/automations" hx-target="#page" hx-swap="innerHTML" style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:8px 18px 18px">
+                <label style="display:block;font-size:12px;color:#626b78;margin:10px 0 4px">name</label>
+                <input name="name" value="{{ autoName }}" placeholder="e.g. Repair on check failure" style="width:100%;padding:8px 10px;border-radius:7px;font:13px/1.4 'Instrument Sans',system-ui,sans-serif;color:#14181f;background:#fff;border:1px solid {{ autoNameBorder }};box-shadow:{{ autoNameShadow }}">
+                {% if autoErr %}<div style="font-size:12px;color:#b4452e;margin-top:5px">name is required; nothing was saved</div>{% endif %}
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                  <div><label style="display:block;font-size:12px;color:#626b78;margin:10px 0 4px">trigger</label><select name="trigger" style="width:100%;padding:8px 10px;border:1px solid #d6d2c9;border-radius:7px;font:13px/1.4 'Instrument Sans',system-ui,sans-serif;color:#14181f;background:#fff">{% for v, l in triggerChoices %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+                  <div><label style="display:block;font-size:12px;color:#626b78;margin:10px 0 4px">playbook</label><select name="playbook" style="width:100%;padding:8px 10px;border:1px solid #d6d2c9;border-radius:7px;font:13px/1.4 'Instrument Sans',system-ui,sans-serif;color:#14181f;background:#fff">{% for n in playbookNames %}<option>{{ n }}</option>{% endfor %}</select></div>
+                  <div><label style="display:block;font-size:12px;color:#626b78;margin:10px 0 4px">target repository</label><input name="target" value="{{ repo }}" style="width:100%;padding:8px 10px;border:1px solid #d6d2c9;border-radius:7px;font:12.5px/1.4 'JetBrains Mono',monospace;color:#14181f;background:#fff"></div>
+                  <div><label style="display:block;font-size:12px;color:#626b78;margin:10px 0 4px">match (author, label, branch prefix)</label><input name="match" placeholder="author=dependabot[bot]; label=swe-loop" style="width:100%;padding:8px 10px;border:1px solid #d6d2c9;border-radius:7px;font:12.5px/1.4 'JetBrains Mono',monospace;color:#14181f;background:#fff"></div>
+                  <div><label style="display:block;font-size:12px;color:#626b78;margin:10px 0 4px">cap per session, ACU</label><input name="max_acu" type="number" value="{{ cap }}" style="width:100%;padding:8px 10px;border:1px solid #d6d2c9;border-radius:7px;font:13px/1.4 'Instrument Sans',system-ui,sans-serif;color:#14181f;background:#fff"></div>
+                  <div><label style="display:block;font-size:12px;color:#626b78;margin:10px 0 4px">concurrency</label><input name="concurrency" type="number" value="4" style="width:100%;padding:8px 10px;border:1px solid #d6d2c9;border-radius:7px;font:13px/1.4 'Instrument Sans',system-ui,sans-serif;color:#14181f;background:#fff"></div>
+                </div>
+                <label style="display:block;font-size:12px;color:#626b78;margin:10px 0 4px">schedule (for schedule:recurring)</label><input name="schedule" placeholder="every weekday at 06:00" style="width:100%;padding:8px 10px;border:1px solid #d6d2c9;border-radius:7px;font:13px/1.4 'Instrument Sans',system-ui,sans-serif;color:#14181f;background:#fff">
+                <label style="display:block;font-size:12px;color:#626b78;margin:10px 0 4px">notes</label><input name="notes" placeholder="what this automation is for" style="width:100%;padding:8px 10px;border:1px solid #d6d2c9;border-radius:7px;font:13px/1.4 'Instrument Sans',system-ui,sans-serif;color:#14181f;background:#fff">
+                <div style="display:flex;align-items:center;gap:12px;margin-top:16px"><button type="submit" style="padding:7px 14px;border-radius:7px;border:1px solid #2457a8;background:#2457a8;color:#fff;font:500 13px/1.2 'Instrument Sans',system-ui,sans-serif;cursor:pointer;white-space:nowrap" data-hover="background:#1d4a90">Add</button><span style="font-size:12px;color:#8f97a3;text-wrap:pretty">saved as a config; in live mode a native Devin Automation is created from it</span></div>
+              </form>
+            </div>
+          </section>
+        </div>
+      {% endblock %}

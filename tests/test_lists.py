@@ -65,7 +65,8 @@ def test_automation_add_toggle_delete(client):
     assert c.post("/automations/auto_repair/delete").status_code == 409  # built in
     assert c.post(f"/automations/{a['id']}/delete").status_code == 200
     assert len(st.list_automations()) == 2
-    assert c.post("/automations", content="name=", headers=FORM).status_code == 400
+    r = c.post("/automations", content="name=", headers=FORM)
+    assert r.status_code == 200 and "name is required; nothing was saved" in r.text
     assert c.post("/automations/nope/toggle").status_code == 404
 
 
@@ -79,7 +80,7 @@ def test_automation_run_now_records_last_result(client):
     app.state.run_thread.join(60)
     a = st.get_automation("auto_repair")
     assert a["last_run"] and "dispatched" in a["last_result"]
-    assert "last run" in c.get("/partials/automations").text
+    assert "last run" in c.get("/automations").text
     assert c.post("/run-now").status_code == 200  # the old button still works
     app.state.run_thread.join(60)
 
@@ -110,14 +111,16 @@ def test_playbooks_list_detail_and_add(client):
         ).status_code
         == 400
     )
-    assert c.post("/devin/playbooks", content="name=&body=", headers=FORM).status_code == 400
+    r = c.post("/devin/playbooks", content="name=&body=", headers=FORM)
+    assert r.status_code == 200 and "name is required; nothing was saved" in r.text
 
 
 def test_tickets_summary_filters_and_detail(client):
     c, _st, _ = client
     html = c.get("/tickets-page").text
-    assert "awaiting triage" in html and 'data-f="devin"' in html and "Issues on the fork" in html
-    assert 'hx-get="/partials/ticket/tkt_D"' in html
+    assert "awaiting triage" in html and "to Devin" in html and "Issues on the fork" in html
+    assert 'hx-get="/tickets-page?sel=tkt_D"' in html
+    assert "to a person" in c.get("/tickets-page?f=human").text
     d = c.get("/partials/ticket/tkt_D").text
     assert "Sites" in d and "Acceptance" in d and "routed to Devin" in d
     e = c.get("/partials/ticket/tkt_E").text
