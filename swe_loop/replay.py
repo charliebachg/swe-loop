@@ -26,18 +26,40 @@ TABLES = (
     "tickets",
     "work_orders",
     "sessions",
+    "triage_sessions",
     "evidence",
     "verdicts",
     "escalations",
     "human_actions",
     "budget",
+    "timeline",
+    "settings",
 )
 
 
-def record(store: Store, path: Path | str) -> dict[str, int]:
+def redactions(extra: list[tuple[str, str]] | None = None) -> list[tuple[str, str]]:
+    """Local absolute paths never leave the machine: the target clone, this repository, and the
+    home directory are rewritten to portable forms, longest first."""
+    import os
+
+    root = Path(__file__).resolve().parents[1]
+    pairs = [(str((root.parent / "superset-fork").resolve()), "../superset-fork"), (str(root), ".")]
+    home = os.path.expanduser("~")
+    if home and home != "/":
+        pairs.append((home, "~"))
+    pairs += extra or []
+    return sorted(pairs, key=lambda kv: -len(kv[0]))
+
+
+def record(
+    store: Store, path: Path | str, redact: list[tuple[str, str]] | None = None
+) -> dict[str, int]:
     dump = {t: store._all(f"SELECT * FROM {t}") for t in TABLES}
+    text = json.dumps(dump, indent=1, default=str)
+    for src, dst in redactions(redact):
+        text = text.replace(src, dst)
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text(json.dumps(dump, indent=1, default=str))
+    Path(path).write_text(text)
     return {t: len(rows) for t, rows in dump.items()}
 
 
