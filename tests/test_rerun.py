@@ -101,6 +101,22 @@ def test_reset_refuses_a_dirty_clone(fork, tmp_path):
         reset_shard(Settings(mode="live", devin_api_key="x"), cfg, st, "D", repo_root=clone)
 
 
+def test_replay_reset_never_touches_the_repository(tmp_path, monkeypatch):
+    """The page says the repository is not touched in replay. Prove it: a runner that would
+    raise if any git command ran at all."""
+    st = Store(tmp_path / "s.sqlite")
+    synthesise(st, CFG, INVENTORY / "tickets.json", tmp_path)
+
+    def no_git(*a, **k):
+        raise AssertionError("git ran in replay")
+
+    out = reset_shard(
+        Settings(mode="replay"), CFG, st, "D", runner=no_git, snapshot_dir=tmp_path / "snap"
+    )
+    assert out["repo"] == "replay: the repository is not touched" and not out["pushed"]
+    assert st.get_ticket("tkt_D") is None and out["store_rows"] > 0
+
+
 def test_settings_card_and_route_in_replay(tmp_path, monkeypatch):
     monkeypatch.delenv("DEVIN_API_KEY", raising=False)
     st = Store(tmp_path / "t.sqlite")

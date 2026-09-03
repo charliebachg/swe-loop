@@ -74,6 +74,7 @@ def reset_shard(
     *,
     repo_root: Path | None = None,
     files: list[str] | None = None,
+    touch_repo: bool | None = None,
     push: bool = True,
     runner: Runner = subprocess.run,
     snapshot_dir: Path | None = None,
@@ -119,7 +120,11 @@ def reset_shard(
         if repo_root is not None
         else (ROOT / cfg.gate.get("repo_root", "../superset-fork")).resolve()
     )
-    if not baseline:
+    if touch_repo is None:
+        touch_repo = settings.live
+    if not touch_repo:
+        out["repo"] = "replay: the repository is not touched"
+    elif not baseline:
         out["repo"] = "no baseline in the seam; repository untouched"
     elif not (root / ".git").exists():
         out["repo"] = f"no clone at {root}; repository untouched"
