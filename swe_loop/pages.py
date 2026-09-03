@@ -493,3 +493,283 @@ def automations(
         "sources": VERIFIED_SOURCES,
         "live": settings.live,
     }
+
+
+# ---------------------------------------------------------------------------- devin capability pages
+def _md_to_html(md: str) -> str:
+    """Just enough for the six-section playbooks: headings, numbered and bulleted lists,
+    paragraphs, inline code."""
+    import html as _html
+    import re as _re
+
+    out: list[str] = []
+    mode = None
+    for raw in md.splitlines():
+        line = raw.rstrip()
+        if line.startswith("# "):
+            continue  # the title is the card header
+        if line.startswith("## "):
+            if mode:
+                out.append(f"</{mode}>")
+                mode = None
+            out.append(f"<h4>{_html.escape(line[3:])}</h4>")
+            continue
+        m = _re.match(r"^(\d+)\.\s+(.*)", line)
+        if m:
+            if mode != "ol":
+                if mode:
+                    out.append(f"</{mode}>")
+                out.append("<ol>")
+                mode = "ol"
+            out.append(f"<li>{_inline(m.group(2))}</li>")
+            continue
+        if line.startswith("- "):
+            if mode != "ul":
+                if mode:
+                    out.append(f"</{mode}>")
+                out.append("<ul>")
+                mode = "ul"
+            out.append(f"<li>{_inline(line[2:])}</li>")
+            continue
+        if line.startswith("   ") and mode in ("ol", "ul") and out and out[-1].endswith("</li>"):
+            out[-1] = out[-1][:-5] + " " + _inline(line.strip()) + "</li>"
+            continue
+        if not line:
+            if mode:
+                out.append(f"</{mode}>")
+                mode = None
+            continue
+        if mode:
+            out.append(f"</{mode}>")
+            mode = None
+        out.append(f"<p>{_inline(line)}</p>")
+    if mode:
+        out.append(f"</{mode}>")
+    return "\n".join(out)
+
+
+def _inline(s: str) -> str:
+    import html as _html
+    import re as _re
+
+    s = _html.escape(s)
+    return _re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
+
+
+def playbooks(store: Store, cfg: TargetConfig, client: DevinClient | None) -> dict[str, Any]:
+    from swe_loop.dispatch import ROOT as _R
+    from swe_loop.dispatch import load_result_schema
+    from swe_loop.knowledge import load_playbook
+    from swe_loop.triage import TRIAGE_ACU_CAP, load_schema
+
+    org: dict[str, str] = {}
+    if client is not None and not client.is_fake:
+        try:
+            for p in client.t.list_playbooks():
+                org[p.get("name", "")] = p.get("playbook_id") or p.get("id") or ""
+        except Exception:  # noqa: BLE001
+            org = {}
+    last_verdict = store._one(
+        "SELECT triage_verdict_json FROM tickets WHERE triage_verdict_json IS NOT NULL ORDER BY updated_at DESC, rowid DESC LIMIT 1"
+    )
+    last_claim = store._one(
+        "SELECT structured_output_json FROM sessions WHERE structured_output_json IS NOT NULL ORDER BY created_at DESC, rowid DESC LIMIT 1"
+    )
+    specs = [
+        (
+            "triage-pandas3",
+            "triage session",
+            load_schema(),
+            TRIAGE_ACU_CAP,
+            "/tracker",
+            "the triage stage",
+            json.loads(last_verdict["triage_verdict_json"]) if last_verdict else None,
+        ),
+        (
+            "repair-pandas3",
+            "repair sessions",
+            load_result_schema(),
+            cfg.max_acu_limit,
+            "/devin/sessions",
+            "every repair session",
+            json.loads(last_claim["structured_output_json"]) if last_claim else None,
+        ),
+    ]
+    out = []
+    for name, agent, schema, cap, link, used_by, last in specs:
+        pb = load_playbook(_R / "playbooks" / f"{name}.md")
+        out.append(
+            {
+                "name": pb.name,
+                "agent": agent,
+                "path": f"playbooks/{name}.md",
+                "html": _md_to_html(pb.body),
+                "schema": schema,
+                "schema_fields": list(schema.get("properties", {}).keys()),
+                "last_output": last,
+                "cap": cap,
+                "used_by": used_by,
+                "used_by_link": link,
+                "org_id": org.get(pb.name),
+            }
+        )
+    return {"playbooks": out}
+
+
+def knowledge(store: Store, settings: Settings) -> dict[str, Any]:
+    from swe_loop.knowledge import load_notes
+
+    notes = load_notes()
+    groups = {"repair sessions": [], "triage session": []}
+    for n in notes:
+        groups["repair sessions"].append(
+            {"name": n.name, "trigger": n.trigger_description, "body": n.body}
+        )
+    groups["triage session"] = [
+        {
+            "name": "(inherits the repository conventions above)",
+            "trigger": "any triage session on this repository",
+            "body": "Triage reads and reasons; it needs the same conventions to judge acceptance commands, and no notes of its own yet.",
+        }
+    ]
+    accessed = (
+        "Devin lists the notes a session retrieved under Accessed Knowledge on the session page. Confirmed after the first live run; until then the notes exist on disk and are created on the org by apply-config."
+        if not settings.live
+        else "Check the session page on app.devin.ai for Accessed Knowledge; recorded here once a live session has run."
+    )
+    return {
+        "groups": [{"agent": k, "notes": v} for k, v in groups.items()],
+        "accessed_note": accessed,
+    }
+
+
+def insights(store: Store) -> dict[str, Any]:
+    from swe_loop.report import pct
+
+    rows = []
+    for s in store._all(
+        "SELECT * FROM sessions WHERE devin_session_id IS NOT NULL ORDER BY created_at DESC, rowid DESC"
+    ):
+        wo = store.get_work_order(s["work_order_id"])
+        v = store.latest_verdict(s["id"])
+        rows.append(
+            {
+                "id": s["id"],
+                "devin_id": s["devin_session_id"],
+                "url": s["url"],
+                "ticket": wo["ticket_id"] if wo else "",
+                "acus": s["acus_consumed"],
+                "size": s["session_size"],
+                "messages": None,
+                "gate": v["gate_result"] if v else None,
+                "analysis": None,
+            }
+        )
+    sizes = {r["size"].upper() for r in rows if r["size"]}
+    hist = []
+    counts = {k: 0 for k in ("XS", "S", "M", "L", "XL")}
+    for r in rows:
+        if r["size"] and r["size"].upper() in counts:
+            counts[r["size"].upper()] += 1
+    hist = [(k, n, k in ("L", "XL")) for k, n in counts.items()]
+    acus = sorted(r["acus"] for r in rows if r["acus"] is not None)
+    m = store.metrics()
+    return {
+        "rows": rows,
+        "hist": hist,
+        "max": max(counts.values() or [1]),
+        "sized": sum(counts.values()),
+        "total": len(rows),
+        "unhealthy": counts["L"] + counts["XL"],
+        "acu": {
+            "median": pct(acus, 0.5),
+            "p95": pct(acus, 0.95),
+            "total": round(sum(acus), 2),
+            "per_verified": m["acu_per_verified"]["median"],
+        },
+        "_sizes": sorted(sizes),
+    }
+
+
+def review(store: Store) -> dict[str, Any]:
+    rows = []
+    for v in store._all(
+        "SELECT * FROM verdicts WHERE review_severity IS NOT NULL ORDER BY created_at DESC, rowid DESC"
+    ):
+        s = store.get_session(v["session_id"])
+        wo = store.get_work_order(s["work_order_id"]) if s else None
+        rows.append(
+            {
+                "pr_url": s["pull_request_url"] if s else None,
+                "ticket": wo["ticket_id"] if wo else "",
+                "devin_id": s["devin_session_id"] if s else "",
+                "at": v["created_at"],
+                "result": v["review_severity"],
+            }
+        )
+    return {"rows": rows}
+
+
+def integrations(
+    settings: Settings, cfg: TargetConfig, store: Store, client: DevinClient | None
+) -> dict[str, Any]:
+    checks = {c.key: c for c in connect.run_checks(settings, cfg, store, client)}
+    app = checks.get("app")
+    secrets: list[str] = []
+    if client is not None and not client.is_fake:
+        try:
+            secrets = [s.get("name") or s.get("key") or "?" for s in client.t.list_secrets()]
+        except Exception:  # noqa: BLE001
+            secrets = []
+    return {
+        "app": {
+            "status": app.status if app else "skipped",
+            "value": app.value if app else "unknown",
+            "call": app.call if app else "",
+        },
+        "repo": cfg.repo,
+        "secrets": secrets,
+        "allowlist": ["pypi.org", "files.pythonhosted.org", "api.github.com", "github.com"],
+        "snapshot": "not built in this run",
+        "org": settings.devin_org_id or "replay",
+        "plan": "Free plan; every endpoint this system uses answers on it",
+        "live": settings.live,
+    }
+
+
+NEXT = [
+    {
+        "name": "Computer Use",
+        "what": "Every cloud session runs on a VM with a desktop and a browser. A QA session starts the application, opens it, exercises the fixed path, and reports through structured output with a screenshot.",
+        "where": "a third check after the gate, on the Tracker; enabled per org by an admin (Settings, Customization, Enable desktop mode)",
+    },
+    {
+        "name": "DeepWiki",
+        "what": "Generated documentation for the repository, kept current, so the people who merge can read what the code does before they read the diff.",
+        "where": "a link on the repository card in Settings, and context for the scan session",
+    },
+    {
+        "name": "Security Swarm",
+        "what": "Devin's own scanner, an orchestration of parallel sessions that builds a threat model and validates findings. Consumed as a ticket source, never rebuilt.",
+        "where": "a second source on the Tickets page; each finding must name the SECURITY.md row and the principal, or it is filed as a question",
+    },
+    {
+        "name": "Scan session",
+        "what": "The triage playbook pointed at a repository instead of a ticket. It reads the code and the test output and files the tickets itself, on a schedule.",
+        "where": "the Scan automation; tickets appear in the Scan group",
+    },
+    {
+        "name": "Evaluator session",
+        "what": "Reads Session Insights across completed sessions and proposes edits to the playbooks and Knowledge notes. Grades on outcomes only, never on transcripts; every proposal is approved by a person.",
+        "where": "the Insights page, as proposed diffs awaiting approval",
+    },
+    {
+        "name": "Devin MCP",
+        "what": "The MCP server exposes session creation, search, interaction and a gather primitive that waits on many sessions at once, with no REST equivalent.",
+        "where": "fan-in over MCP instead of the poller, when the orchestrator is itself agent-driven",
+    },
+]
+
+
+def next_page() -> list[dict[str, str]]:
+    return NEXT

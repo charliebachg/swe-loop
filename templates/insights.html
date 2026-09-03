@@ -1,0 +1,25 @@
+{% extends "shell.html" %}
+{% block title %}Insights{% endblock %}
+{% block head %}<style>.hist { display:flex; gap:10px; align-items:flex-end; height:120px; margin:10px 0 4px } .hist div { flex:1; background:var(--devin); border-radius:3px 3px 0 0; position:relative; min-width:50px } .hist div.bad { background:var(--fail) } .hist div span { position:absolute; top:-20px; left:0; right:0; text-align:center; font:11px "IBM Plex Mono", monospace } .hist div i { position:absolute; bottom:-18px; left:0; right:0; text-align:center; font:11px "IBM Plex Mono", monospace; color:var(--muted); font-style:normal }</style>{% endblock %}
+{% block content %}
+<p class="lede">Session Insights is Devin's per-session telemetry: size from XS to XL, ACU consumed, message counts, and an analysis. It is read from <span class="mono">/sessions/insights</span>, which is not Enterprise-gated. Their guidance calls L and XL unhealthy; a shard that lands there was sharded wrong, and the page says so.</p>
+<div class="two">
+  <div class="card"><h3>Session size <span class="who devin">from Session Insights</span></h3>
+    <div class="hist">{% for k, n, bad in i.hist %}<div class="{{ 'bad' if bad and n else '' }}" style="height:{{ (100 * n / (i.max or 1)) | round(0) | int }}%"><span>{{ n }}</span><i>{{ k }}</i></div>{% endfor %}</div>
+    <p class="foot" style="margin-top:24px">{{ i.sized }} of {{ i.total }} sessions have a size · L/XL: {{ i.unhealthy }}</p></div>
+  <div class="card"><h3>ACU per session <span class="who devin">acus_consumed</span></h3>
+    <div class="tiles">
+      <div class="tile"><div class="k">median</div><div class="v">{{ i.acu.median if i.acu.median is not none else "n/a" }}</div></div>
+      <div class="tile"><div class="k">p95</div><div class="v">{{ i.acu.p95 if i.acu.p95 is not none else "n/a" }}</div></div>
+      <div class="tile"><div class="k">total</div><div class="v">{{ i.acu.total }}</div></div>
+      <div class="tile"><div class="k">per verified change</div><div class="v">{{ i.acu.per_verified if i.acu.per_verified is not none else "n/a" }}</div><div class="d">gate passed and merged</div></div>
+    </div></div>
+</div>
+<div class="card"><h3>Per session <span class="who devin">insights</span></h3>
+  <table>
+    <tr><th>session</th><th>ticket</th><th class="num">ACU</th><th>size</th><th class="num">messages</th><th>gate</th><th class="wrap">analysis</th></tr>
+    {% for s in i.rows %}<tr><td class="mono">{% if s.url %}<a href="{{ s.url }}" target="_blank">{{ s.devin_id }}</a>{% else %}{{ s.id }}{% endif %}</td><td><a href="/tracker#{{ s.ticket }}">{{ s.ticket }}</a></td><td class="num">{{ s.acus if s.acus is not none else "" }}</td><td>{{ s.size or "" }}{% if s.size and s.size|lower in ("l","xl") %} <span class="pill p-bad">unhealthy</span>{% endif %}</td><td class="num">{{ s.messages or "" }}</td><td>{% if s.gate == "pass" %}<span class="pill p-ok">pass</span>{% elif s.gate %}<span class="pill p-bad">{{ s.gate }}</span>{% else %}<span class="pill p-na">not run</span>{% endif %}</td><td class="wrap" style="color:var(--muted)">{{ s.analysis or "no analysis recorded for this session" }}</td></tr>
+    {% else %}<tr><td colspan="7" class="empty">No sessions yet.</td></tr>{% endfor %}
+  </table>
+  <p class="foot">In the next version an evaluator session reads these insights and proposes playbook and Knowledge edits, each approved by a person. It grades on outcomes, never on transcripts.</p></div>
+{% endblock %}

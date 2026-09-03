@@ -237,6 +237,47 @@ def build_app(
         th.start()
         return TEMPLATES.TemplateResponse(request, "automations_body.html", _auto_ctx(request))
 
+    @app.get("/devin/playbooks", response_class=HTMLResponse)
+    def playbooks_page(request: Request) -> HTMLResponse:
+        return _render(
+            request,
+            "playbooks.html",
+            "playbooks",
+            p=pages.playbooks(request.app.state.store, cfg, request.app.state.client),
+        )
+
+    @app.get("/devin/knowledge", response_class=HTMLResponse)
+    def knowledge_page(request: Request) -> HTMLResponse:
+        return _render(
+            request,
+            "knowledge.html",
+            "knowledge",
+            k=pages.knowledge(request.app.state.store, settings),
+        )
+
+    @app.get("/devin/insights", response_class=HTMLResponse)
+    def insights_page(request: Request) -> HTMLResponse:
+        return _render(
+            request, "insights.html", "insights", i=pages.insights(request.app.state.store)
+        )
+
+    @app.get("/devin/review", response_class=HTMLResponse)
+    def review_page(request: Request) -> HTMLResponse:
+        return _render(request, "review.html", "review", rv=pages.review(request.app.state.store))
+
+    @app.get("/devin/integrations", response_class=HTMLResponse)
+    def integrations_page(request: Request) -> HTMLResponse:
+        return _render(
+            request,
+            "integrations.html",
+            "integrations",
+            ig=pages.integrations(settings, cfg, request.app.state.store, request.app.state.client),
+        )
+
+    @app.get("/devin/next", response_class=HTMLResponse)
+    def next_page(request: Request) -> HTMLResponse:
+        return _render(request, "next.html", "next", nx=pages.next_page())
+
     @app.get("/board", response_class=HTMLResponse)
     def board_page(request: Request) -> HTMLResponse:
         o = ops.build(request.app.state.store)

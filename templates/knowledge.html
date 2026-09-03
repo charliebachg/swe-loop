@@ -1,0 +1,16 @@
+{% extends "shell.html" %}
+{% block title %}Knowledge{% endblock %}
+{% block content %}
+<p class="lede">Knowledge notes are Devin's feature for what a session should know about a repository, each retrieved by a natural-language trigger during the session. These carry Superset's real conventions, the ones that make a bot PR fail CI when they are missed. Grouped by the agent that relies on them.</p>
+{% for g in k.groups %}
+<div class="card">
+  <h3>{{ g.agent }} <span class="who devin">{{ g.notes | length }} notes</span></h3>
+  <table>
+    <tr><th>note</th><th class="wrap">retrieved when</th><th class="wrap">what it says</th></tr>
+    {% for n in g.notes %}<tr><td class="mono" style="min-width:180px">{{ n.name }}</td><td class="wrap" style="min-width:220px;color:var(--muted)">{{ n.trigger }}</td><td class="wrap">{{ n.body }}</td></tr>{% endfor %}
+  </table>
+</div>
+{% endfor %}
+<div class="card"><h3>Accessed Knowledge <span class="who code">confirmation</span></h3>
+  <p class="foot">{{ k.accessed_note }}</p></div>
+{% endblock %}

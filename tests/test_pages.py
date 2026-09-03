@@ -185,3 +185,41 @@ def test_automations_page_toggle_and_run_now(client):
     assert st.get_setting("automation.repair.last_run")
     assert "gate" in " ".join(e["layer"] for e in st.timeline(ticket_id="tkt_X", limit=50))
     assert st.get_ticket("tkt_X")["status"] == "gated"
+
+
+def test_capability_pages_render_real_state(client):
+    c, _ = client
+    html = c.get("/devin/playbooks").text
+    assert "Repair one shard" in html and "Triage a dependency-upgrade ticket" in html
+    assert (
+        "<h4>Forbidden Actions</h4>" in html
+        and "self_reported_done" in html
+        and "acceptance_cmd" in html
+    )
+    html = c.get("/devin/knowledge").text
+    assert html.count("<tr>") >= 7 and "ruff" in html and "oxlint" in html and "lower bound" in html
+    html = c.get("/devin/insights").text
+    assert "Session size" in html and "per verified change" in html
+    html = c.get("/devin/review").text
+    assert "requested" in html and "devin-ai-integration[bot]" in html
+    html = c.get("/devin/integrations").text
+    assert "only charliebachg/superset" in html and "not checked" in html
+    html = c.get("/devin/next").text
+    for name in (
+        "Computer Use",
+        "DeepWiki",
+        "Security Swarm",
+        "Scan session",
+        "Evaluator session",
+        "Devin MCP",
+    ):
+        assert name in html
+    for path in (
+        "/devin/playbooks",
+        "/devin/knowledge",
+        "/devin/insights",
+        "/devin/review",
+        "/devin/integrations",
+        "/devin/next",
+    ):
+        assert "—" not in c.get(path).text

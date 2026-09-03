@@ -1,0 +1,13 @@
+{% extends "shell.html" %}
+{% block title %}Integrations{% endblock %}
+{% block content %}
+<p class="lede">The Devin org's side of the connection: what Devin can reach, what it holds, and what it is allowed to talk to. Our side (which repository, the seam, the budget) is under <a href="/settings">Settings</a>.</p>
+<div class="grid3">
+  <div class="chk {{ ig.app.status }}"><div class="k">GitHub App</div><div class="v">{{ ig.app.value }}</div><div class="c">{{ ig.app.call }}</div></div>
+  <div class="chk ok"><div class="k">repository access</div><div class="v">only {{ ig.repo }}</div><div class="c">read and write on contents, issues, pull requests, workflows; nothing else is selected</div></div>
+  <div class="chk {{ 'ok' if ig.secrets else 'skipped' }}"><div class="k">secrets</div><div class="v">{{ ig.secrets | length }} on the org</div><div class="c">{{ ig.secrets | join(', ') if ig.secrets else ('names only; read in live mode' if not ig.live else 'none') }}</div></div>
+  <div class="chk ok"><div class="k">security profile</div><div class="v">narrow allowlist</div><div class="c">{{ ig.allowlist | join(' · ') }} · the fork is public, so the profile is tight</div></div>
+  <div class="chk skipped"><div class="k">environment snapshot</div><div class="v">{{ ig.snapshot }}</div><div class="c">a pre-warmed snapshot saves the ACUs a cold session spends installing; measured as a before/after delta when built</div></div>
+  <div class="chk ok"><div class="k">Devin org</div><div class="v">{{ ig.org }}</div><div class="c">{{ ig.plan }} · service user with UseDevinSessions, ViewOrgSessions, ManageOrgSessions, ManageOrgPlaybooks, ManageOrgKnowledge, ManageOrgAutomations</div></div>
+</div>
+{% endblock %}

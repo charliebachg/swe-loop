@@ -1,0 +1,23 @@
+{% extends "shell.html" %}
+{% block title %}Playbooks{% endblock %}
+{% block head %}<style>.pb { display:grid; grid-template-columns:1fr 1fr; gap:16px } @media (max-width:1100px) { .pb { grid-template-columns:1fr } } .sec h4 { margin:12px 0 4px; font-size:13px } .sec p, .sec li { font-size:13px; margin:0 0 4px } .sec ol, .sec ul { margin:0; padding-left:20px }</style>{% endblock %}
+{% block content %}
+<p class="lede">A playbook is the procedure a session follows: Devin's own feature, six sections, one per agent. Each carries the structured output schema the session must satisfy before it ends. That schema is the contract; the last output received against it is shown beside it.</p>
+<div class="pb">
+{% for pb in p.playbooks %}
+<div class="card">
+  <h3>{{ pb.name }} <span class="who devin">{{ pb.agent }}</span>{% if pb.org_id %}<span class="mono" style="text-transform:none;letter-spacing:0;color:var(--muted)">on the org: {{ pb.org_id }}</span>{% endif %}</h3>
+  <p class="foot">used by <a href="{{ pb.used_by_link }}">{{ pb.used_by }}</a> · cap {{ pb.cap }} ACU · file <span class="mono">{{ pb.path }}</span></p>
+  <div class="sec">{{ pb.html | safe }}</div>
+  <details style="margin-top:10px"><summary>structured output schema · {{ pb.schema_fields | length }} top-level fields, additionalProperties false</summary>
+    <p class="foot">{{ pb.schema_fields | join(' · ') }}</p>
+    <pre class="code">{{ pb.schema | tojson(indent=1) }}</pre></details>
+  <details><summary>last output received against this schema</summary><pre class="code">{{ pb.last_output | tojson(indent=1) if pb.last_output else "none yet" }}</pre></details>
+</div>
+{% endfor %}
+<div class="card" style="opacity:.75">
+  <h3>Scan <span class="who next">next</span></h3>
+  <p class="foot">The triage playbook in investigative mode: point it at the repository instead of a ticket, and its verdict becomes the tickets. Same six sections, same schema, one line changed in Required from User.</p>
+</div>
+</div>
+{% endblock %}
