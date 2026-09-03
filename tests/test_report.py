@@ -143,4 +143,4 @@ def test_ops_page_lists_sessions_and_the_feed(tmp_path, monkeypatch):
         det = c.get(f"/sessions/{sid}").json()
         assert det["timeline"] and det["work_order"]["files"]
         assert c.get("/timeline?limit=5").json()
-        assert c.get("/partials/sessions").status_code == 200
+        assert c.get("/devin/sessions").status_code == 200

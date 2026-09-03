@@ -81,7 +81,6 @@ def test_automation_run_now_records_last_result(client):
     a = st.get_automation("auto_repair")
     assert a["last_run"] and "dispatched" in a["last_result"]
     assert "last run" in c.get("/automations").text
-    assert c.post("/run-now").status_code == 200  # the old button still works
     app.state.run_thread.join(60)
 
 

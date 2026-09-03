@@ -1,6 +1,0 @@
-{% extends "shell.html" %}
-{% block title %}Home{% endblock %}
-{% block content %}
-<p class="lede">What is happening now, what needs a person, and what just happened. Everything links to the module that owns it.</p>
-<div id="home-live" hx-get="/partials/home" hx-trigger="every 5s" hx-swap="innerHTML">{% include "home_body.html" %}</div>
-{% endblock %}

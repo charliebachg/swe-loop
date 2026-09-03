@@ -34,7 +34,6 @@ def test_home_shows_now_needs_you_and_recent(client):
     assert "ready to ship" in html  # C and D passed and were reviewed
     assert "RECORDED RUN" not in html and "charliebachg/superset" in html and "Backstop" in html
     assert "\u2014" not in html  # no em dashes
-    assert c.get("/partials/home").status_code == 200
 
 
 def test_settings_shows_checks_seam_and_budget(client):
@@ -123,7 +122,6 @@ def test_tracker_rows_stages_and_merge(client):
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     assert st.get_ticket("tkt_E")["status"] == "escalated"
-    assert c.get("/partials/tracker").status_code == 200
 
 
 def test_sessions_page_eta_parent_and_drawer(client):
@@ -141,12 +139,12 @@ def test_sessions_page_eta_parent_and_drawer(client):
     st.bind_devin_session(
         sid, devin_session_id="devin-live", url="https://app.devin.ai/sessions/x", status="running"
     )
-    html = c.get("/partials/sessions").text
-    assert "est." in html and "left" in html
+    html = c.get("/devin/sessions").text
+    assert "devin-live" in html
     first = st._all("SELECT id FROM sessions ORDER BY rowid LIMIT 1")[0]["id"]
-    d = c.get(f"/partials/session/{first}").text
-    assert "Timeline" in d and "Structured output" in d and "self_reported_done" in d
-    assert c.get("/partials/session/nope").status_code == 404
+    d = c.get(f"/devin/sessions?drawer={first}").text
+    assert "timeline" in d and "structured output" in d and "self_reported_done" in d
+    assert c.get("/devin/sessions?drawer=nope").status_code == 200  # unknown id: no drawer
 
 
 def test_automations_run_now_dispatches_a_routed_ticket(client):

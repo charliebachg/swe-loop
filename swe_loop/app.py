@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from swe_loop import connect, cost, ops, pages, replay, report, v2
+from swe_loop import connect, cost, ops, pages, replay, v2
 from swe_loop import reduce as reduce_mod
 from swe_loop.cli import run_once
 from swe_loop.config import Settings, TargetConfig
@@ -315,16 +315,6 @@ def build_app(
             request, "tracker", "v2/tracker.html", v2.tracker(st, cfg, {"open": ticket_id})
         )
 
-    @app.get("/", response_class=HTMLResponse)
-    def home(request: Request) -> HTMLResponse:
-        return _render(request, "home.html", "home", h=pages.home(request.app.state.store))
-
-    @app.get("/partials/home", response_class=HTMLResponse)
-    def home_partial(request: Request) -> HTMLResponse:
-        return TEMPLATES.TemplateResponse(
-            request, "home_body.html", {"h": pages.home(request.app.state.store)}
-        )
-
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request) -> HTMLResponse:
         st: Store = request.app.state.store
@@ -380,61 +370,12 @@ def build_app(
         connect.clear_cache()
         return RedirectResponse("/settings", status_code=303)
 
-    @app.get("/tickets-page", response_class=HTMLResponse)
-    def tickets_page(request: Request) -> HTMLResponse:
-        return _render(
-            request, "tickets.html", "tickets", tk=pages.tickets(request.app.state.store)
-        )
-
     @app.get("/partials/ticket/{ticket_id}", response_class=HTMLResponse)
     def ticket_partial(ticket_id: str, request: Request) -> HTMLResponse:
         d = pages.ticket_detail(request.app.state.store, ticket_id)
         if not d:
             raise HTTPException(status_code=404)
         return TEMPLATES.TemplateResponse(request, "ticket_detail.html", {"d": d})
-
-    @app.get("/tracker", response_class=HTMLResponse)
-    def tracker_page(request: Request) -> HTMLResponse:
-        return _render(
-            request, "tracker.html", "tracker", tr=pages.tracker(request.app.state.store)
-        )
-
-    @app.get("/partials/tracker", response_class=HTMLResponse)
-    def tracker_partial(request: Request) -> HTMLResponse:
-        return TEMPLATES.TemplateResponse(
-            request, "tracker_body.html", {"tr": pages.tracker(request.app.state.store)}
-        )
-
-    @app.post("/tickets/{ticket_id}/merge-form", response_class=HTMLResponse)
-    async def merge_form(ticket_id: str, request: Request) -> HTMLResponse:
-        form = parse_qs((await request.body()).decode())
-        actor = (form.get("actor") or [""])[0].strip()
-        st: Store = request.app.state.store
-        if actor:
-            try:
-                reduce_mod.record_merge(st, ticket_id, actor)
-            except ValueError:
-                pass  # not ready: the re-rendered row says why
-        return TEMPLATES.TemplateResponse(request, "tracker_body.html", {"tr": pages.tracker(st)})
-
-    @app.get("/devin/sessions", response_class=HTMLResponse)
-    def sessions_page(request: Request) -> HTMLResponse:
-        return _render(
-            request, "sessions.html", "sessions", ss=pages.sessions(request.app.state.store, cfg)
-        )
-
-    @app.get("/partials/sessions", response_class=HTMLResponse)
-    def sessions_partial(request: Request) -> HTMLResponse:
-        return TEMPLATES.TemplateResponse(
-            request, "sessions_body.html", {"ss": pages.sessions(request.app.state.store, cfg)}
-        )
-
-    @app.get("/partials/session/{sid}", response_class=HTMLResponse)
-    def session_drawer(sid: str, request: Request) -> HTMLResponse:
-        d = ops.session_detail(request.app.state.store, sid)
-        if not d:
-            raise HTTPException(status_code=404)
-        return TEMPLATES.TemplateResponse(request, "session_drawer.html", {"d": d})
 
     def _add_automation(st: Store, form: dict[str, str]) -> str:
         name = form.get("name", "")
@@ -519,24 +460,6 @@ def build_app(
         request.app.state.run_thread = th
         th.start()
 
-    @app.post("/run-now", response_class=HTMLResponse)
-    def run_now(request: Request) -> HTMLResponse:
-        _run_automation(request, "auto_repair")
-        return _auto_page(request, sel="auto_repair")
-
-    @app.get("/devin/playbooks", response_class=HTMLResponse)
-    def playbooks_page(request: Request) -> HTMLResponse:
-        st: Store = request.app.state.store
-        p = pages.playbooks(st, cfg, request.app.state.client)
-        first = p["rows"][0]["id"] if p["rows"] else None
-        return _render(
-            request,
-            "playbooks.html",
-            "playbooks",
-            p=p,
-            d=pages.playbook_detail(st, first) if first else None,
-        )
-
     @app.get("/partials/playbook/{pid}", response_class=HTMLResponse)
     def playbook_partial(pid: str, request: Request) -> HTMLResponse:
         d = pages.playbook_detail(request.app.state.store, pid)
@@ -609,22 +532,6 @@ def build_app(
         session_id: str | None = None, ticket_id: str | None = None, limit: int = 200
     ) -> list[dict[str, Any]]:
         return app.state.store.timeline(session_id=session_id, ticket_id=ticket_id, limit=limit)
-
-    @app.get("/report", response_class=HTMLResponse)
-    @app.get("/dashboard", response_class=HTMLResponse)
-    def dashboard(request: Request, sql: int = 0) -> HTMLResponse:
-        vm = report.build(request.app.state.store, INVENTORY)
-        return TEMPLATES.TemplateResponse(
-            request,
-            "dashboard.html",
-            {
-                "h": vm["headline"],
-                "bd": vm["burndown"],
-                "sql": bool(sql),
-                "mode": settings.mode,
-                **vm,
-            },
-        )
 
     @app.post("/tickets/{ticket_id}/merge")
     async def merge(ticket_id: str, request: Request) -> dict[str, Any]:
