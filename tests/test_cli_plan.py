@@ -36,3 +36,21 @@ def test_apply_config_refuses_in_replay(monkeypatch, capsys):
     monkeypatch.setenv("SWE_LOOP_MODE", "replay")
     assert main(["apply-config"]) == 2
     assert "refusing" in capsys.readouterr().err
+
+
+def test_triage_and_run_default_to_the_stored_playbook_ids(tmp_path, monkeypatch, capsys):
+    from swe_loop.store import Store
+
+    monkeypatch.delenv("DEVIN_API_KEY", raising=False)
+    monkeypatch.setenv("SWE_LOOP_MODE", "replay")
+    db = tmp_path / "p.sqlite"
+    monkeypatch.setenv("SWE_LOOP_DB", str(db))
+    st = Store(db)
+    st.set_budget(acu_cap=40, per_session_cap=6)
+    st.set_setting("playbook_id.triage-pandas3", "playbook-triage-1")
+    st.upsert_ticket(id="tkt_D", source="inventory", title="one site", status="new")
+    assert main(["triage", "--ticket", "tkt_D"]) == 0
+    out = capsys.readouterr().out
+    assert '"kind": "triaged"' in out
+    tr = Store(db).list_triage_sessions()[0]
+    assert tr["playbook_id"] == "playbook-triage-1"

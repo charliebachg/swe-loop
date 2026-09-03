@@ -163,7 +163,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             "mode=replay: sessions are faked; the gate is skipped",
             file=sys.stderr,
         )
-    run_once(settings, cfg, store, client, playbook_id=args.playbook_id)
+    pid = args.playbook_id or store.get_setting("playbook_id.repair-pandas3")
+    run_once(settings, cfg, store, client, playbook_id=pid)
     return 0
 
 
@@ -219,8 +220,9 @@ def cmd_triage(args: argparse.Namespace) -> int:
     if not settings.live:
         print("mode=replay: the triage session is faked", file=sys.stderr)
     inv = cfg.triage.get("inventory_url") or None
+    pid = args.playbook_id or store.get_setting("playbook_id.triage-pandas3")
     results = triage_all(
-        store, client, cfg, ticket_id=args.ticket, inventory_path=inv, playbook_id=args.playbook_id
+        store, client, cfg, ticket_id=args.ticket, inventory_path=inv, playbook_id=pid
     )
     if not results:
         print("no tickets with status new")
@@ -230,7 +232,7 @@ def cmd_triage(args: argparse.Namespace) -> int:
 
 
 def cmd_apply_config(args: argparse.Namespace) -> int:
-    settings, cfg, _, client = _ctx()
+    settings, cfg, store, client = _ctx()
     if args.dry_run:
         plan = plan_config(client if settings.live else None)
         plan["mode"] = settings.mode
@@ -256,6 +258,9 @@ def cmd_apply_config(args: argparse.Namespace) -> int:
         made[note.name] = client.t.create_knowledge_note(note.to_payload(pinned_repo=cfg.repo)).get(
             "note_id"
         )
+    for name in ("triage-pandas3", "repair-pandas3"):
+        if made.get(name):
+            store.set_setting(f"playbook_id.{name}", made[name])
     print(json.dumps(made, indent=1))
     return 0
 
