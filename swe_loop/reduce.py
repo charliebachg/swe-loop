@@ -168,7 +168,9 @@ def summary(store: Store) -> dict[str, Any]:
 _REVIEW_BOT = "devin-ai-integration[bot]"
 
 
-def _github_review_outcome(pr_url: str, token: str, fetch: Any = None) -> str | None:
+def _github_review_outcome(
+    pr_url: str, token: str, fetch: Any = None, since: str | None = None
+) -> str | None:
     """What Devin Review posted on the pull request: 'no issues' or 'N comment(s)'. None when
     it cannot be read (no token, network)."""
     import httpx
@@ -188,6 +190,14 @@ def _github_review_outcome(pr_url: str, token: str, fetch: Any = None) -> str | 
         return None
     body = mine[-1].get("body") or ""
     inline = [c for c in comments if (c.get("user") or {}).get("login") == _REVIEW_BOT]
+    if since:
+        # only what this review round added: the request time is the verdict's; GitHub timestamps are UTC
+        inline = [
+            c for c in inline if str(c.get("created_at") or "") >= since.replace("+00:00", "Z")
+        ]
+        mine = [
+            r for r in mine if str(r.get("submitted_at") or "") >= since.replace("+00:00", "Z")
+        ] or mine
     if "No Issues Found" in body and not inline:
         return "no issues"
     return f"{len(inline)} comment(s)"
@@ -197,7 +207,7 @@ def refresh_reviews(store: Store, client: Any, github_token: str = "", fetch: An
     """Read back every requested Devin Review. The request happens at the gate (L6); the result
     is read here so the Tracker and the Review page show it. Returns how many were updated."""
     rows = store._all(
-        "SELECT v.id, v.session_id, s.pull_request_url AS pr_url, s.work_order_id FROM verdicts v "
+        "SELECT v.id, v.session_id, v.created_at, s.pull_request_url AS pr_url, s.work_order_id FROM verdicts v "
         "JOIN sessions s ON s.id = v.session_id WHERE v.review_severity LIKE 'requested%' "
         "AND s.pull_request_url IS NOT NULL"
     )
@@ -212,7 +222,9 @@ def refresh_reviews(store: Store, client: Any, github_token: str = "", fetch: An
             continue
         if state.get("status") != "completed":
             continue
-        outcome = _github_review_outcome(r["pr_url"], github_token, fetch)
+        outcome = _github_review_outcome(
+            r["pr_url"], github_token, fetch, since=r.get("created_at")
+        )
         label = "completed:" + (outcome or "see the pull request")
         store.conn.execute("UPDATE verdicts SET review_severity=? WHERE id=?", (label, r["id"]))
         store.conn.commit()
