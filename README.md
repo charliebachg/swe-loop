@@ -128,21 +128,21 @@ agent: each step says who does it, the AI or a person, and every session is pric
 
 | page | shows |
 |---|---|
-| **Home** | the last run in five steps, what needs a person now with the buttons to answer, merge or dismiss, what is running, and what just happened; the equivalent engineer-hours line explains its basis on hover |
-| **Automations** | how work enters and what happens when it runs. The default automation, Issues from the fork, is on: Run pulls the repository's open issues with the label, makes a ticket of each new one, starts one triage session per ticket, routes them, starts the repair sessions, checks every PR from a clean checkout and asks Devin Review; the page follows along and keeps each run's history. Add your own with a trigger, a playbook and a session limit. Scan, a session that finds the work itself, is listed for the next version |
-| **Tickets** | every ticket in two views. The list groups them by source (General, Scan Agent, Others) and gives each a one-line account of what it is doing right now, with its live session and its PR a click away. The pipeline view shows the eight steps per ticket, who does each, and where it stands. Open a ticket for its scope, the sessions, the gate's receipts, the review and the merge control |
-| **Report** | the funnel from sites to merges, cost per verified change, where the gate said no, the burn-down against the inventory, session sizes, receipts, tripwires, routing and refusals |
-| **Devin · Sessions** | every session with its status, minutes, dollars and size; click a row for its timeline, structured output and verdicts |
-| **Devin · Playbooks** | the procedures sessions follow, with their structured output schema and last output; add one, attach it to an automation |
-| **Settings** (gear) | the connected repository, the budget caps, the console's dollars per session, live connection checks, and Rerun a shard: one button puts a fixed shard back to its broken state on the repository and in the store, so the next Run does it again for real |
-
-Further pages sit at `/devin/knowledge`, `/devin/review`, `/devin/insights`, `/devin/integrations`
-and `/devin/next`: the notes sessions retrieve, the review results, Session Insights, the org's
-side of the integration, and where Computer Use, DeepWiki, Security Swarm and MCP would plug in.
+| **Home** | the last run in five steps, what needs a person now with the buttons to answer, merge or dismiss, what is running, and what just happened |
+| **Automations** | how work enters and what happens when it runs. The default one, Issues from the fork, is on: Run pulls the repository's open issues with the label, makes a ticket of each new one, starts one triage session per ticket, routes them, starts the repair sessions, checks every pull request from a clean copy and asks Devin Review; the page follows along and keeps each run's history |
+| **Tickets** | every ticket, named by a number, in two views. The list groups them by source and gives each a one-line account of what it is doing right now. The pipeline view shows four steps per ticket: scoped, fixed, verified, merged. Open a ticket for what it covers, the sessions, the checks, the review and the merge button |
+| **Report** | three counts over stated denominators: how many changes passed checks re-run here, how many jobs ran without a person, and how many changes your team merged rather than turned down. Under them every check with its exit code and its log, where the work went, progress against the counted list, what it cost, and the log itself |
+| **Devin · Sessions** | every session: the ticket, what it was for, its status, cost, whether the checks passed, when it started and how long it took. Click a row for its timeline, the checks and what it claimed |
+| **Devin · Playbooks** | the instructions each kind of session follows and the shape its answer must have. Add one and attach it to an automation |
+| **Devin · Knowledge** | the notes a session is given about the repository, when each is read, and whether one has been |
+| **Devin · Insights** | how big each piece of work turned out to be, in Devin's own sizing, and what it cost |
+| **Settings** (gear) | the connected repository, the budget caps, the console's dollars per session, live connection checks, the reviews Devin ran, how it is connected, what a next version would add, and Rerun a shard: one button puts a fixed shard back to its broken state on the repository and in the store, so the next Run does it again for real |
 
 The Report answers the question an engineering leader asks: *how would I know this is
-working?* The app measures the system, never a named engineer; the person who merges is
-recorded as a hash.
+working?* Every number is a count with its denominator beside it, never a percentage on its own
+and never a percentile: the run is small and the page says so. It also says plainly what it
+cannot tell you, and which numbers it refuses to show, with the reason for each. The app
+measures the system, never a named engineer; the person who merges is recorded as a hash.
 
 ## Cost on a self-serve plan
 
