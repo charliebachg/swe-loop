@@ -87,3 +87,40 @@ def test_settings_store_helpers(tmp_path):
     st.set_setting("x", "1")
     st.set_setting("x", "2")
     assert st.get_setting("x") == "2"
+
+
+def test_tickets_page_groups_by_source(client):
+    c, _ = client
+    html = c.get("/tickets-page").text
+    assert "Issues on the fork" in html and "Scan" in html
+    assert "human-only" in html and "sessions never edit tests" in html
+    assert 'href="https://github.com/charliebachg/superset/issues/4"' in html
+    assert html.count("track</a>") == 5
+
+
+def test_tracker_rows_stages_and_merge(client):
+    c, st = client
+    html = c.get("/tracker").text
+    assert 'id="tkt_D"' in html and "the session said" in html and "the gate found" in html
+    assert "retries 1" in html  # D failed T1 once and passed on retry
+    assert "Merged by a person" in html  # A and B
+    assert "Ready to merge" in html  # C and D
+    assert "Routed to a person" in html  # E
+    # the strip: A has every stage done including merge
+    a = html.split('id="tkt_A"')[1].split("</summary>")[0]
+    assert a.count("done") >= 7
+    # record a merge through the form
+    r = c.post(
+        "/tickets/tkt_D/merge-form",
+        content="actor=someone",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert r.status_code == 200 and st.get_ticket("tkt_D")["status"] == "merged"
+    # not ready: E cannot be merged
+    c.post(
+        "/tickets/tkt_E/merge-form",
+        content="actor=someone",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert st.get_ticket("tkt_E")["status"] == "escalated"
+    assert c.get("/partials/tracker").status_code == 200

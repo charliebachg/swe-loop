@@ -136,6 +136,36 @@ def build_app(
         connect.clear_cache()
         return RedirectResponse("/settings", status_code=303)
 
+    @app.get("/tickets-page", response_class=HTMLResponse)
+    def tickets_page(request: Request) -> HTMLResponse:
+        return _render(
+            request, "tickets.html", "tickets", tk=pages.tickets(request.app.state.store)
+        )
+
+    @app.get("/tracker", response_class=HTMLResponse)
+    def tracker_page(request: Request) -> HTMLResponse:
+        return _render(
+            request, "tracker.html", "tracker", tr=pages.tracker(request.app.state.store)
+        )
+
+    @app.get("/partials/tracker", response_class=HTMLResponse)
+    def tracker_partial(request: Request) -> HTMLResponse:
+        return TEMPLATES.TemplateResponse(
+            request, "tracker_body.html", {"tr": pages.tracker(request.app.state.store)}
+        )
+
+    @app.post("/tickets/{ticket_id}/merge-form", response_class=HTMLResponse)
+    async def merge_form(ticket_id: str, request: Request) -> HTMLResponse:
+        form = parse_qs((await request.body()).decode())
+        actor = (form.get("actor") or [""])[0].strip()
+        st: Store = request.app.state.store
+        if actor:
+            try:
+                reduce_mod.record_merge(st, ticket_id, actor)
+            except ValueError:
+                pass  # not ready: the re-rendered row says why
+        return TEMPLATES.TemplateResponse(request, "tracker_body.html", {"tr": pages.tracker(st)})
+
     @app.get("/board", response_class=HTMLResponse)
     def board_page(request: Request) -> HTMLResponse:
         o = ops.build(request.app.state.store)

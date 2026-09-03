@@ -1,0 +1,41 @@
+<div class="foot" style="margin-bottom:6px">stages: {{ tr.stage_names | join(' · ') }} · green code · blue Devin · purple the gate · red a person · amber in progress</div>
+{% for r in tr.rows %}
+<details class="row tk {{ r.letter }}" id="{{ r.id }}" {% if r.status in ('running','dispatched','gated','escalated') %}open{% endif %}>
+  <summary>
+    <div><b class="mono">{{ r.id }}</b>{% if r.issue_url %} <a class="mono" href="{{ r.issue_url }}" target="_blank">#{{ r.issue }}</a>{% endif %}</div>
+    <div><div class="strip">{% for s in r.steps %}<span class="stg {{ s.cls }}" title="{{ s.name }} · {{ s.actor }}"></span>{% endfor %}</div><div class="stgnames">{{ tr.stage_names | join(' · ') }}</div></div>
+    <div class="mono wrap" style="font-size:11px">{{ r.classes | join(', ') }}</div>
+    <div><span class="pill {{ r.pill }}">{{ r.status }}</span>{% if r.route == 'human_only' %} <span class="pill p-bad">a person</span>{% endif %}</div>
+    <div class="wrap" style="font-size:12.5px;color:var(--muted)">{{ r.last_event }}</div>
+  </summary>
+  <div class="body">
+    {% if r.route in ('human_only', 'refuse') %}
+    <div class="sc"><div class="hd"><b>Routed to a person</b><span class="who person">code decided</span></div><p style="margin:0">{{ r.reason }}</p></div>
+    {% endif %}
+    {% for s in r.sessions_detail %}
+    <div class="sc">
+      <div class="hd"><b>shard {{ s.shard }}</b><span class="mono">{{ s.files | map('replace', 'superset/', '') | join(', ') }}</span>{% if s.url %}<a class="mono" href="{{ s.url }}" target="_blank">{{ s.devin_id }}</a>{% endif %}{% if s.pr_url %}<a class="mono" href="{{ s.pr_url }}" target="_blank">PR #{{ s.pr_url.rsplit('/',1)[-1] }}</a>{% endif %}<span class="mono" style="color:var(--muted)">{{ s.acus if s.acus is not none else '' }} ACU · {{ s.size or '·' }} · retries {{ s.retries }} · {{ s.elapsed }}</span><span class="pill {{ 'p-ok' if s.status_detail == 'finished' else ('p-run' if not s.status_detail or s.status_detail == 'working' else 'p-bad') }}">{{ s.status }}{% if s.status_detail %}/{{ s.status_detail }}{% endif %}</span></div>
+      <div class="tl">{% for e in s.timeline %}<div class="{{ e.layer.split(' ')[0] }}"><span class="t">{{ e.at[11:19] }}</span><b>{{ e.layer }}</b> {{ e.event }}{% if e.detail %} <span class="d">{{ e.detail[:110] }}</span>{% endif %}</div>{% endfor %}</div>
+      {% if s.evidence %}<table class="ev"><tr><th>tier</th><th>command</th><th>exit</th><th>log</th></tr>{% for e in s.evidence %}<tr><td class="mono">{{ e.tier }}</td><td class="mono wrap">{{ e.command[:120] }}</td><td>{% if e.passed %}<span class="pill p-ok">0</span>{% else %}<span class="pill p-bad">{{ e.exit_code }}</span>{% endif %}</td><td class="mono" style="color:var(--muted)">{{ (e.output_path or '')[-40:] }}</td></tr>{% endfor %}</table>{% endif %}
+      <div class="claim">
+        <div class="said"><div class="k">the session said</div>{% if s.claim %}{{ 'done' if s.said_done else 'not done' }}{% if s.claim.call_sites_fixed %} · {{ s.claim.call_sites_fixed | length }} sites{% endif %}{% if s.claim.tests_run is defined %} · tests {{ s.claim.tests_passed }}/{{ s.claim.tests_run }}{% endif %}{% if s.claim.needs_human %} · needs a person: {{ s.claim.needs_human | length }}{% endif %}{% else %}<span style="color:var(--muted)">nothing yet</span>{% endif %}</div>
+        <div class="got"><div class="k">the gate found</div>{% if s.verdict %}<b>{{ s.verdict.gate_result }}</b> → {{ s.verdict.decision }}{% if s.verdict.review_severity %} · review {{ s.verdict.review_severity }}{% endif %}<br><span style="color:var(--muted)">{{ s.verdict.reason[:140] }}</span>{% else %}<span style="color:var(--muted)">not run yet</span>{% endif %}</div>
+      </div>
+    </div>
+    {% endfor %}
+    {% if r.escalations %}<div class="sc"><div class="hd"><b>Escalations</b><span class="who person">a person decides</span></div><table>{% for e in r.escalations %}<tr><td><span class="pill {{ 'p-na' if e.resolved_at else 'p-bad' }}">{{ e.kind }}</span></td><td class="wrap">{{ e.reason }}</td><td class="mono" style="color:var(--muted)">{{ e.created_at[11:19] }}{% if e.resolved_at %} · resolved{% endif %}</td></tr>{% endfor %}</table></div>{% endif %}
+    {% if r.merged %}<div class="sc"><div class="hd"><b>Merged by a person</b><span class="who person">recorded, actor hashed</span></div></div>
+    {% elif r.ready %}
+    <div class="sc"><div class="hd"><b>Ready to merge</b><span class="who person">a person clicks</span></div>
+      <form class="merge" hx-post="/tickets/{{ r.id }}/merge-form" hx-target="#tracker-live" hx-swap="innerHTML">
+        <input name="actor" placeholder="your name or email (hashed, never shown)" required style="padding:6px 8px;border:1px solid var(--rule);border-radius:4px;width:280px">
+        <button class="btn primary" type="submit">Record merge</button>
+        <span class="foot">{{ r.readiness.verified }}/{{ r.readiness.shards }} shards verified · reviewed · no conflicts. Merge on GitHub first; this records it.</span>
+      </form>
+    </div>
+    {% elif r.route == 'devin' %}
+    <div class="sc"><div class="hd"><b>Not ready</b><span class="who code">reduce</span></div><span class="foot">{{ r.readiness.verified }}/{{ r.readiness.shards }} shards verified · reviewed: {{ 'yes' if r.readiness.reviewed else 'no' }}{% if r.readiness.conflicts %} · conflicts: {{ r.readiness.conflicts | length }}{% endif %}</span></div>
+    {% endif %}
+  </div>
+</details>
+{% else %}<div class="card"><div class="empty">No tickets yet.</div></div>{% endfor %}

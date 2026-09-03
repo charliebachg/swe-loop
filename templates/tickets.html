@@ -1,0 +1,28 @@
+{% extends "shell.html" %}
+{% block title %}Tickets{% endblock %}
+{% block content %}
+<p class="lede">Every piece of work is a ticket with a source, a class, the files it touches, and the router's decision with its reason. {{ tk.total }} tickets. Each links to its issue and to its row in the <a href="/tracker">Tracker</a>.</p>
+{% for g in tk.groups %}
+<div class="card">
+  <h3>{{ g.label }} <span class="mono" style="text-transform:none;letter-spacing:0;color:var(--muted)">{{ g.note }}</span>{% if g.next %}<span class="who next">next</span>{% else %}<span class="who code">{{ g.rows | length }} tickets</span>{% endif %}</h3>
+  {% if g.rows %}
+  <table>
+    <tr><th>ticket</th><th>issue</th><th>files · sites</th><th>class</th><th>route</th><th class="wrap">why</th><th>status</th><th class="num">sessions</th><th></th></tr>
+    {% for t in g.rows %}
+    <tr class="tk {{ t.letter }}">
+      <td class="mono">{{ t.id }}</td>
+      <td class="mono">{% if t.issue_url %}<a href="{{ t.issue_url }}" target="_blank">#{{ t.issue }}</a>{% else %}{{ t.issue or "" }}{% endif %}</td>
+      <td class="mono wrap" style="min-width:160px">{% for f in t.files %}{{ f.rsplit('/',1)[-1] }}{% if not loop.last %}, {% endif %}{% else %}<span style="color:var(--muted)">{{ t.title[:60] }}</span>{% endfor %}{% if t.sites %} <span style="color:var(--muted)">· {{ t.sites }}</span>{% endif %}</td>
+      <td class="mono wrap" style="font-size:11px;min-width:140px">{{ t.classes | join(', ') }}</td>
+      <td>{% if t.route == "devin" %}<span class="pill p-devin">devin</span>{% elif t.route == "human_only" %}<span class="pill p-bad">human-only</span>{% elif t.route %}<span class="pill p-bad">{{ t.route }}</span>{% else %}<span class="pill p-na">awaiting triage</span>{% endif %}</td>
+      <td class="wrap" style="min-width:220px">{{ t.reason[:160] }}</td>
+      <td><span class="pill {{ t.pill }}">{{ t.status }}</span></td>
+      <td class="num">{{ t.sessions }}</td>
+      <td><a href="/tracker#{{ t.id }}">track</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">No tickets from this source yet.{% if g.key == "scan" %} A scan session will point at the repository, find the work, and file tickets here.{% endif %}</div>{% endif %}
+</div>
+{% endfor %}
+{% endblock %}
