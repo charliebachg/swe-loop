@@ -111,7 +111,7 @@ def build(
         ("sessions created", f["sessions_created"], None),
         ("sessions terminal", f["sessions_terminal"], None),
         ("gate passed", f["gate_passed"], None),
-        ("gate failed or no evidence", f["gate_failed"], "drop"),
+        ("gate failed at least once (retried or escalated)", f["gate_failed"], "drop"),
         ("human-merged", f["human_merged"], None),
     ]
     sites = load_sites(inventory_dir)
@@ -259,7 +259,9 @@ def build(
     routing = []
     for c, r in sorted(by_class.items()):
         a = sorted(r["acus"])
-        if "human_only" in r["route"] or "refuse" in r["route"]:
+        if r["attempted"] and "human_only" in r["route"] and r["verified"] == r["attempted"]:
+            verdict = "autonomous in product code; human-only where it sits in tests"
+        elif "human_only" in r["route"] or "refuse" in r["route"]:
             verdict = "human-only" if "human_only" in r["route"] else "refused"
         elif r["attempted"] and r["verified"] == r["attempted"]:
             verdict = "assisted (review required)" if r["review"] else "autonomous"
