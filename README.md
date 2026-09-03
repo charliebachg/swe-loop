@@ -67,8 +67,7 @@ invisible. A session that finishes without structured output is a failure, not a
 
 ## What the dashboard answers
 
-One question, from the brief for this work: *if I were an engineering leader, how would I know
-this is working?*
+One question, the one an engineering leader asks: *how would I know this is working?*
 
 1. **The answer.** Verified changes (gate passed and a person merged) over decided tickets; ACU
    per verified change, median and p95; self-reported versus verified; budget against cap.

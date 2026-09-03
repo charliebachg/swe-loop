@@ -80,7 +80,7 @@ def test_dashboard_renders_and_shows_sql_on_request(tmp_path, monkeypatch):
         assert c.post("/tickets/tkt_D/merge", json={}).status_code == 400
         s = c.get("/reduce").json()
         assert "tkt_C" in s["merged"]
-        assert "—" not in html  # no em dashes anywhere on the page
+        assert "\u2014" not in html  # no em dashes anywhere on the page
 
 
 def test_replay_seed_is_idempotent_and_prefers_a_recorded_run(tmp_path, monkeypatch):
