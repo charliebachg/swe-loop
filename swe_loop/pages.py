@@ -728,7 +728,7 @@ def playbooks(store: Store, cfg: TargetConfig, client: DevinClient | None) -> di
     if client is not None and not client.is_fake:
         try:
             for p in client.t.list_playbooks():
-                org[p.get("name", "")] = p.get("playbook_id") or p.get("id") or ""
+                org[p.get("title", "")] = p.get("playbook_id") or p.get("id") or ""
         except Exception:  # noqa: BLE001
             org = {}
     used_by = {
@@ -748,7 +748,7 @@ def playbooks(store: Store, cfg: TargetConfig, client: DevinClient | None) -> di
                 "title": title,
                 "sections": sections,
                 "schema_fields": list((p.get("schema") or {}).get("properties", {}).keys()),
-                "org_id": org.get(p["name"]),
+                "org_id": org.get(title),
                 "used_by": used_by.get(
                     p["id"], ("user-added; attach it to an automation", "/automations")
                 )[0],

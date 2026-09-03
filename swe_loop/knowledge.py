@@ -25,12 +25,17 @@ class Note:
     body: str
     path: Path
 
-    def to_payload(self) -> dict[str, Any]:
-        return {
+    def to_payload(self, pinned_repo: str | None = None) -> dict[str, Any]:
+        """The v3 create-note body, verified against the published v3 OpenAPI spec: name, body,
+        trigger (required); pinned_repo so the note is retrieved for this repository only."""
+        p: dict[str, Any] = {
             "name": self.name,
-            "trigger_description": self.trigger_description,
             "body": self.body,
+            "trigger": self.trigger_description,
         }
+        if pinned_repo:
+            p["pinned_repo"] = pinned_repo
+        return p
 
 
 def load_notes(directory: Path | str = KNOWLEDGE_DIR) -> list[Note]:
@@ -54,10 +59,16 @@ class Playbook:
     path: Path
 
     def to_payload(self) -> dict[str, Any]:
-        p: dict[str, Any] = {"name": self.name, "body": self.body}
+        """The v3 create-playbook body, verified against the published v3 OpenAPI spec: title and
+        body (required), structured_output_schema, and a macro so a prompt can invoke it by name."""
+        p: dict[str, Any] = {"title": self.name, "body": self.body, "macro": self.macro}
         if self.structured_output_schema:
             p["structured_output_schema"] = self.structured_output_schema
         return p
+
+    @property
+    def macro(self) -> str:
+        return "!" + "".join(ch if ch.isalnum() or ch in "_-" else "-" for ch in self.path.stem)
 
 
 def load_playbook(path: Path | str, schema: Path | str | None = None) -> Playbook:

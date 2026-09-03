@@ -173,7 +173,7 @@ def plan_config(client: DevinClient | None) -> dict[str, Any]:
     existing_pb: set[str] = set()
     existing_kn: set[str] = set()
     if client is not None and not client.is_fake:
-        existing_pb = {p.get("name", "") for p in client.t.list_playbooks()}
+        existing_pb = {p.get("title", "") for p in client.t.list_playbooks()}
         existing_kn = {n.get("name", "") for n in client.t.list_knowledge_notes()}
     playbooks = []
     for name, schema in (
@@ -230,7 +230,7 @@ def cmd_triage(args: argparse.Namespace) -> int:
 
 
 def cmd_apply_config(args: argparse.Namespace) -> int:
-    settings, _cfg, _, client = _ctx()
+    settings, cfg, _, client = _ctx()
     if args.dry_run:
         plan = plan_config(client if settings.live else None)
         plan["mode"] = settings.mode
@@ -253,7 +253,9 @@ def cmd_apply_config(args: argparse.Namespace) -> int:
         pb = load_playbook(ROOT / "playbooks" / f"{name}.md", ROOT / "schemas" / schema)
         made[name] = client.t.create_playbook(pb.to_payload()).get("playbook_id")
     for note in load_notes():
-        made[note.name] = client.t.create_knowledge_note(note.to_payload()).get("note_id")
+        made[note.name] = client.t.create_knowledge_note(note.to_payload(pinned_repo=cfg.repo)).get(
+            "note_id"
+        )
     print(json.dumps(made, indent=1))
     return 0
 

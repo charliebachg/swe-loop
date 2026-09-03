@@ -67,7 +67,7 @@ def test_knowledge_notes_have_triggers_and_cover_the_conventions():
     for word in ("ruff", "oxlint", "uv", "conventional", "license", "pandas 3"):
         assert word in names
     payload = notes[0].to_payload()
-    assert set(payload) == {"name", "trigger_description", "body"}
+    assert set(payload) == {"name", "trigger", "body"}
 
 
 def test_repair_spec_carries_sites_constraints_and_cap(tmp_path):
