@@ -62,13 +62,14 @@ def test_dashboard_renders_and_shows_sql_on_request(tmp_path, monkeypatch):
         assert r.status_code == 200
         html = r.text
         for must in (
-            "1. The answer",
-            "Funnel, every drop named",
-            "How we know it fixed it",
+            "Headline",
+            "Funnel",
+            "Receipts",
             "Tripwires",
-            "Routing table",
-            "Not shown, on purpose",
+            "Routing by class",
+            "Escalations",
             "Replay mode",
+            "<svg",
         ):
             assert must in html
         assert "SELECT COUNT" not in html
@@ -137,7 +138,7 @@ def test_ops_page_lists_sessions_and_the_feed(tmp_path, monkeypatch):
     with TestClient(app) as c:
         html = c.get("/devin/sessions").text
         assert "Sessions" in html and "time left" in html and "fake-" in html
-        assert "1. The answer" in c.get("/report").text
+        assert "Headline" in c.get("/report").text
         sid = o["sessions"][0]["id"]
         det = c.get(f"/sessions/{sid}").json()
         assert det["timeline"] and det["work_order"]["files"]

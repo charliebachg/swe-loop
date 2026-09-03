@@ -7,10 +7,12 @@ are computed the way the mock computed them, from the same constants."""
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlencode
 
 from swe_loop import ops, pages
+from swe_loop import reduce as reduce_mod
 from swe_loop import report as report_mod
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.store import Store
@@ -35,6 +37,7 @@ PL = {
 TK = {"A": "#2c5ba6", "B": "#4f9a6b", "C": "#c48a3a", "D": "#8a5fb5", "E": "#b4452e"}
 _TK_MORE = ["#2c5ba6", "#4f9a6b", "#c48a3a", "#8a5fb5", "#b4452e", "#1f8a80", "#7a4fb5", "#5b6f8a"]
 INK, FAINT, MUTED = "#14181f", "#8f97a3", "#626b78"
+PURPLE, TEAL = "#7a4fb5", "#1f8a80"
 STG = [
     ("intake", "code"),
     ("triage", "devin"),
@@ -408,22 +411,17 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
     merged = [t for t in tickets if t["status"] == "merged"]
     ready = h["summary"]["ready"]
     loop_counts = [
-        (len(tickets), f"work order{'s' if len(tickets) != 1 else ''} from issues on the fork"),
-        (
-            len(verdicts),
-            f"verdict{'s' if len(verdicts) != 1 else ''} recorded · {len(store.list_triage_sessions())} triage session(s) · {tri_acu:.1f} ACU",
-        ),
-        (len(decided), f"{len(to_devin)} to Devin · {len(to_person)} to a person"),
+        (len(tickets), "tickets"),
+        (len(verdicts), f"verdicts · {tri_acu:.1f} ACU"),
+        (len(decided), f"{len(to_devin)} Devin · {len(to_person)} person"),
         (
             len([w for w in wos if w["status"] in ("dispatched", "devin")]),
-            f"{len(to_person)} refused: human-only"
-            if to_person
-            else "every decided ticket dispatched",
+            f"{len(to_person)} refused" if to_person else "all dispatched",
         ),
-        (len(sess), f"repair session{'s' if len(sess) != 1 else ''} · {rep_acu:.1f} ACU"),
-        (len(passed), f"passed · {len(retried)} retried" if retried else "passed · no retries"),
-        (len(reviewed), "Devin Review, after the gate"),
-        (len(merged), f"by a person · {len(ready)} waiting"),
+        (len(sess), f"sessions · {rep_acu:.1f} ACU"),
+        (len(passed), f"passed · {len(retried)} retried" if retried else "passed"),
+        (len(reviewed), "reviews"),
+        (len(merged), f"merged · {len(ready)} waiting"),
     ]
     loop = []
     for i, (name, actor) in enumerate(STG):
@@ -476,7 +474,65 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
     events = [ev(e) for e in reversed(store.timeline(limit=40))]
     groups = _group_events(events, open_groups, raw_mode)
     on, off = ("#e2e9f6", "#2457a8"), ("transparent", "#8f97a3")
+    b = store.budget_state()
+    conc = next((r["concurrency"] for r in store.list_automations() if r["kind"] == "repair"), 4)
+    gate_n = len(passed)
+    gate_total = sum(1 for x in sess if store.latest_verdict(x["id"]))
+    verified = len(merged)
+    blocking = [x for x in needs if x["kind"] != "ready to merge"]
+    five = [
+        {
+            "n": str(counts["running"]),
+            "of": f"of {conc}",
+            "label": "sessions running",
+            "color": PL["run"][0] if counts["running"] else FAINT,
+            "pct": None,
+        },
+        {
+            "n": str(counts["needs_human"] + len(blocking)),
+            "of": "",
+            "label": "waiting on a person",
+            "color": PL["bad"][0] if (counts["needs_human"] or blocking) else FAINT,
+            "pct": None,
+        },
+        {
+            "n": _fmt_acu(b.get("spent")),
+            "of": f"of {b['cap']:.0f} ACU" if b.get("cap") else "no cap",
+            "label": "spent",
+            "color": INK,
+            "pct": _pct(b.get("spent"), b.get("cap")),
+        },
+        {
+            "n": str(verified),
+            "of": f"of {len(decided)} decided",
+            "label": "verified and merged",
+            "color": PL["ok"][0] if verified else FAINT,
+            "pct": None,
+        },
+        {
+            "n": f"{gate_n}/{gate_total}" if gate_total else "0/0",
+            "of": "pass rate",
+            "label": "gate",
+            "color": PL["gate"][0] if gate_n else FAINT,
+            "pct": None,
+        },
+    ]
+    short_needs = []
+    for n in needs:
+        tid = n["L"] if n["L"].startswith("tkt_") else f"tkt_{n['L']}"
+        t = store.get_ticket(tid) or {}
+        what = (t.get("title") or "")[:64]
+        if n["kind"] == "ready to merge":
+            mn = reduce_mod.merge_notes(store, tid)
+            what = " · ".join(mn["reviews"]) + (
+                f" · {len(mn['notes'])} note(s)" if mn["notes"] else ""
+            )
+        short_needs.append({**n, "what": what or n["reason"][:64], "hover": n["reason"]})
     return {
+        "five": five,
+        "shortNeeds": short_needs,
+        "spark": _sparklines(store),
+        "recent8": events[:8],
         "now": _now(counts),
         "ticketWord": f"{len(tickets)} tickets" if len(tickets) != 1 else "one ticket",
         "loop": loop,
@@ -495,6 +551,76 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         "rBg": on[0] if raw_mode else off[0],
         "rFg": on[1] if raw_mode else off[1],
     }
+
+
+def _sparklines(store: Store) -> list[dict[str, Any]]:
+    """Three small series over the run's own span in 24 equal bins: sessions started, ACU,
+    gate passes (fails in the title). The span is the run's own, so replay draws what live drew."""
+    from datetime import timedelta
+
+    from swe_loop import charts
+
+    starts: list[tuple[datetime, float]] = []
+    for r in store._all("SELECT created_at, acus_consumed FROM sessions") + store._all(
+        "SELECT created_at, acus_consumed FROM triage_sessions"
+    ):
+        try:
+            starts.append((datetime.fromisoformat(r["created_at"]), float(r["acus_consumed"] or 0)))
+        except (TypeError, ValueError):
+            pass
+    verdicts: list[tuple[datetime, str]] = []
+    for v in store._all("SELECT created_at, gate_result FROM verdicts"):
+        try:
+            verdicts.append((datetime.fromisoformat(v["created_at"]), v["gate_result"]))
+        except (TypeError, ValueError):
+            pass
+    times = [t for t, _ in starts] + [t for t, _ in verdicts]
+    if not times:
+        empty = charts.sparkline([], PURPLE)
+        return [
+            {"label": k, "svg": empty, "span": "no sessions yet", "last": "0"}
+            for k in ("sessions started", "ACU", "gate passes")
+        ]
+    lo, hi = min(times), max(times)
+    if (hi - lo).total_seconds() < 3600:
+        hi = lo + timedelta(hours=1)
+    bins = 24
+    width = (hi - lo).total_seconds() / bins
+
+    def bucket(t: datetime) -> int:
+        return min(bins - 1, int((t - lo).total_seconds() // width))
+
+    s_bins, a_bins, g_bins = [0.0] * bins, [0.0] * bins, [0.0] * bins
+    fails = 0
+    for t, acu in starts:
+        s_bins[bucket(t)] += 1
+        a_bins[bucket(t)] += acu
+    for t, g in verdicts:
+        if g == "pass":
+            g_bins[bucket(t)] += 1
+        else:
+            fails += 1
+    span = f"{lo.strftime('%H:%M')} to {hi.strftime('%H:%M')}"
+    return [
+        {
+            "label": "sessions started",
+            "svg": charts.sparkline(s_bins, PURPLE, title="sessions started per bin"),
+            "span": span,
+            "last": str(int(sum(s_bins))),
+        },
+        {
+            "label": "ACU",
+            "svg": charts.sparkline(a_bins, INK, title="ACU per bin"),
+            "span": span,
+            "last": f"{sum(a_bins):.1f}",
+        },
+        {
+            "label": "gate passes",
+            "svg": charts.sparkline(g_bins, TEAL, title=f"gate passes per bin; {fails} fail(s)"),
+            "span": span,
+            "last": f"{int(sum(g_bins))} pass · {fails} fail",
+        },
+    ]
 
 
 def _group_events(
@@ -990,12 +1116,9 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
         "perSession": f"{cap:.0f}",
         "managed": "in use" if ss.get("managed") else "not exercised in this run",
         "sessionRows": rows,
-        "etaFoot": (
-            "time left is an estimate from the median elapsed of finished sessions"
-            + (f" ({basis})" if basis else "")
-            + "; the cap is the hard limit. L and XL sizes are flagged unhealthy"
-            + ("." if any(r["size"] in ("L", "XL") for r in rows) else "; none in this run.")
-        ),
+        "etaFoot": "time left: estimate from finished sessions"
+        + (f" ({basis})" if basis else "")
+        + " · cap is the hard limit · L and XL flagged",
         "drawerOpen": bool(drawer_id) and bool(d.get("id")),
         "closeDrawer": "/devin/sessions",
         "d": d,
@@ -1222,9 +1345,8 @@ def automations(
         "autoName": name,
         "autoNameBorder": PL["bad"][0] if err else "#d6d2c9",
         "autoNameShadow": f"0 0 0 3px {PL['bad'][1]}" if err else "none",
-        "autoFoot": f"{a['routed']} ticket(s) routed and waiting for the next pass"
-        + ("" if a["live"] else " · replay: sessions are faked and the gate is skipped")
-        + f" · {a['native_note']}",
+        "autoFoot": f"{a['routed']} routed, waiting for the next pass"
+        + ("" if a["live"] else " · replay: sessions faked, gate skipped"),
         "cap": a["cap"],
         "playbookNames": a["playbook_names"],
         "triggerChoices": a["trigger_choices"],
@@ -1540,7 +1662,60 @@ def report(
         }
         for e in rep["escalations"]
     ]
+    from swe_loop import charts
+
+    fun_rows: list[tuple[str, int, int | None]] = []
+    for name, n, kind in rep["funnel"]:
+        if kind == "drop":
+            if fun_rows:
+                fun_rows[-1] = (fun_rows[-1][0], fun_rows[-1][1], n)
+            continue
+        fun_rows.append((name, n, None))
+    cap = h["budget"].get("per_session_cap")
+    points = [
+        (r["shard"], float(r.get("acus") or 0), tk_color(r["ticket"])) for r in rep["receipts"]
+    ]
+    verd = store._all(
+        "SELECT v.gate_result, v.decision, w.shard_id FROM verdicts v JOIN sessions s ON s.id = v.session_id "
+        "JOIN work_orders w ON w.id = s.work_order_id ORDER BY v.created_at, v.rowid"
+    )
+    sq = [
+        (
+            v["shard_id"],
+            f"{v['gate_result']} -> {v['decision']}",
+            PL["ok"][0]
+            if v["gate_result"] == "pass"
+            else (PL["run"][0] if v["decision"] == "retry" else PL["bad"][0]),
+        )
+        for v in verd
+    ]
+    bd0 = rep["burndown"]
+    verified_unmerged = sum(
+        1 for r in rep["receipts"] if r.get("gate") == "pass" and r.get("merged_by") in (None, "no")
+    )
+    stack = [
+        ("fixed and merged", bd0.get("fixed", 0), PL["ok"][0]),
+        ("verified, unmerged", verified_unmerged, PL["gate"][0]),
+        ("to a person", bd0.get("human", 0), PL["person"][0]),
+        ("remaining", max(0, bd0.get("remaining", 0) - verified_unmerged), "#c9c5bb"),
+    ]
+    chart_svgs = {
+        "funnel": charts.funnel(fun_rows),
+        "acu": charts.dot_strip(points, cap, acu["median"]),
+        "gate": charts.squares(sq),
+        "burndown": charts.stacked_bar(stack),
+        "size": charts.histogram([(k, n, bad) for k, n, bad in rep["size_hist"]]),
+    }
+    chart_notes = {
+        "funnel": f"{rep['funnel'][0][1]} decided · drops in red",
+        "acu": (f"n={len(points)} · cap {cap:g} per session" if cap else f"n={len(points)}"),
+        "gate": f"{len(sq)} verdict(s), oldest first",
+        "burndown": f"{bd0.get('total', 0)} sites measured",
+        "size": "L and XL unhealthy",
+    }
     return {
+        "charts": chart_svgs,
+        "chartNotes": chart_notes,
         "answer": answer,
         "toggleAllSql": url("/report", sql=None if all_open else ",".join(all_keys)),
         "sqlAllLabel": "hide the queries" if all_open else "show the queries",

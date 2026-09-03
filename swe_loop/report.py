@@ -176,7 +176,10 @@ def build(
                 ],
             }
         )
-    sizes = {r[0]: r[1] for r in store.conn.execute(Q["sizes"]).fetchall()}
+    sizes: dict[str, int] = {}
+    for r in store.conn.execute(Q["sizes"]).fetchall():
+        k = str(r[0]).upper()
+        sizes[k] = sizes.get(k, 0) + r[1]
     size_hist = [
         (k, sizes.get(k, 0), k in ("L", "XL", "l", "xl")) for k in ("XS", "S", "M", "L", "XL")
     ]

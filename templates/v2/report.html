@@ -1,6 +1,6 @@
 {% extends "shell.html" %}{% block title %}Report{% endblock %}{% block content %}
-        <div style="display:flex;align-items:baseline;gap:12px;margin:0 0 10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">1. The answer</span><span style="font-size:12.5px;color:#8f97a3">{{ modeSentence }} {{ modeNote }} · every number is a query</span><a href="{{ toggleAllSql }}" style="margin-left:auto;font-size:12.5px">{{ sqlAllLabel }}</a></div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px">
+<div style="display:flex;align-items:baseline;gap:12px;margin:0 0 10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Headline</span><span style="font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ modeSentence }} {{ modeNote }}</span><a href="{{ toggleAllSql }}" style="margin-left:auto;font-size:12.5px">{{ sqlAllLabel }}</a></div>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px">
           {% for t in answer %}
             <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:16px 18px 14px">
               <div style="font:500 10.5px/1.5 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f97a3">{{ t.k }}</div>
@@ -12,33 +12,38 @@
           {% endfor %}
         </div>
 
-        <div style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78;margin:0 0 10px">2. Status, success and failure, progress</div>
-        <div style="display:grid;grid-template-columns:minmax(440px,1.1fr) 1fr 1fr;gap:16px;align-items:start;margin-bottom:28px">
-          <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
-            <div style="padding:10px 16px;border-bottom:1px solid #ecebe6;font-weight:600;font-size:13px">Tickets</div>
-            {% for b in boardRows %}
-              <div style="display:grid;grid-template-columns:22px 60px minmax(150px,1fr) 78px 72px;gap:10px;padding:7px 16px;border-bottom:1px solid #f1efe9;font-size:12.5px;align-items:center"><span style="width:22px;height:22px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;font:600 10.5px/1 'JetBrains Mono',monospace;background:{{ b.dotBg }};color:{{ b.dotFg }};box-shadow:inset 0 0 0 2px {{ b.color }}">{{ b.L }}</span><span style="font:12px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ b.issue }}</span><span style="font:11px/1.4 'JetBrains Mono',monospace;color:#626b78;overflow-wrap:anywhere">{{ b.classes }}</span><span>{{ b.route }}</span><span style="color:{{ b.stColor }}">{{ b.status }}</span></div>
-            {% endfor %}
-          </div>
-          <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
-            <div style="padding:10px 16px;border-bottom:1px solid #ecebe6;font-weight:600;font-size:13px">Funnel, every drop named</div>
-            {% for f in funnel %}
-              <div style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:7px 16px 7px {{ f.pad }};border-bottom:1px solid #f1efe9;font-size:12.5px;color:{{ f.color }}"><span>{{ f.label }}</span><span style="font-variant-numeric:tabular-nums;font-weight:500">{{ f.n }}</span></div>
-            {% endfor %}
-          </div>
-          <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
-            <div style="padding:10px 16px;border-bottom:1px solid #ecebe6;font-weight:600;font-size:13px">Inventory burn-down</div>
-            <div style="padding:12px 16px">
-              <div style="font:12px/1.5 'JetBrains Mono',monospace;margin:0 0 8px">{{ bd.total }} sites: {{ bd.product }} in product code, {{ bd.test_only }} in tests</div>
-              <div style="height:10px;background:#e9e7e1;border-radius:5px;overflow:hidden;display:flex"><span style="display:block;height:100%;width:{{ bd.fixedPct }}%;background:#2e7d4f"></span><span style="display:block;height:100%;width:{{ bd.remainingPct }}%;background:#c9c5bb"></span></div>
-              <div style="font:12px/1.5 'JetBrains Mono',monospace;margin:8px 0 0;text-wrap:pretty">fixed and merged {{ bd.fixed }} · remaining {{ bd.remaining }} · routed to a person {{ bd.human }} (incl. every test expectation)</div>
-              <div style="font-size:12px;color:#626b78;margin-top:8px;text-wrap:pretty">the sites the target's own test suite produced once its warning filter was switched on; 351 static call sites narrowed to these</div>
-            </div>
-          </div>
-        </div>
-
-        <div style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78;margin:0 0 10px">3. How we know it fixed it</div>
-        <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden;margin-bottom:28px">
+<div style="display:grid;grid-template-columns:1.15fr 1fr;gap:16px;margin-bottom:16px;align-items:start">
+  <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:14px 16px 12px;min-width:0">
+  <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Funnel</span><span style="margin-left:auto;font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ chartNotes.funnel }}</span></div>
+  <div style="overflow-x:auto">{{ charts.funnel | safe }}</div>
+</div>
+  <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+    <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:14px 16px 12px;min-width:0">
+  <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Cost per session</span><span style="margin-left:auto;font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ chartNotes.acu }}</span></div>
+  <div style="overflow-x:auto">{{ charts.acu | safe }}</div>
+</div>
+    <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:14px 16px 12px;min-width:0">
+  <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Gate outcomes</span><span style="margin-left:auto;font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ chartNotes.gate }}</span></div>
+  <div style="overflow-x:auto">{{ charts.gate | safe }}</div>
+</div>
+  </div>
+</div>
+<div style="display:grid;grid-template-columns:1.15fr .6fr 1fr;gap:16px;margin-bottom:28px;align-items:start">
+  <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:14px 16px 12px;min-width:0">
+  <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Inventory burn-down</span><span style="margin-left:auto;font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ chartNotes.burndown }}</span></div>
+  <div style="overflow-x:auto">{{ charts.burndown | safe }}</div>
+</div>
+  <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:14px 16px 12px;min-width:0">
+  <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Session size</span><span style="margin-left:auto;font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ chartNotes.size }}</span></div>
+  <div style="overflow-x:auto">{{ charts.size | safe }}</div>
+</div>
+  <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:14px 16px 12px;min-width:0">
+    <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Tripwires</span><span style="margin-left:auto;font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">pre-registered</span></div>
+    {% for w in tripwires %}<div style="display:grid;grid-template-columns:10px 1fr auto;gap:10px;align-items:baseline;padding:5px 0;border-bottom:1px solid #f1efe9;font-size:12.5px"><span style="width:10px;height:10px;border-radius:5px;background:{{ w.fg }};display:inline-block;position:relative;top:1px"></span><span style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="{{ w.name }} · threshold: {{ w.threshold }}">{{ w.name }}</span><span style="font:11.5px/1.5 'JetBrains Mono',monospace;color:#14181f;white-space:nowrap">{{ w.value }}</span></div>{% endfor %}
+  </div>
+</div>
+<div style="display:flex;align-items:baseline;gap:12px;margin:0 0 10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Receipts</span><span style="font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">the session's claim beside the gate's result, per shard</span></div>
+<div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden;margin-bottom:28px">
           <div style="display:grid;grid-template-columns:70px 50px 130px 50px 70px 100px 60px 170px 60px 50px 40px 1fr;gap:10px;padding:9px 16px;border-bottom:1px solid #e2dfd8;font:500 10.5px/1.4 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#8f97a3"><span>ticket</span><span>shard</span><span>session</span><span>PR</span><span>T0 oracle</span><span>T1 acceptance</span><span>gate</span><span>review</span><span style="text-align:right">retries</span><span style="text-align:right">ACU</span><span>size</span><span>merged by</span></div>
           {% for e in evidenceRows %}
             <div style="display:grid;grid-template-columns:70px 50px 130px 50px 70px 100px 60px 170px 60px 50px 40px 1fr;gap:10px;padding:8px 16px;border-bottom:1px solid #f1efe9;font-size:12.5px;align-items:center" data-hover="background:#faf9f6"><span style="font:600 12px/1.4 'JetBrains Mono',monospace;color:{{ e.color }}">{{ e.tk }}</span><span>{{ e.L }}</span><a href="{{ e.sessionUrl }}" target="_blank" style="font:12px/1.4 'JetBrains Mono',monospace">{{ e.session }}</a><a href="{{ e.prUrl }}" target="_blank" style="font:12px/1.4 'JetBrains Mono',monospace">{{ e.pr }}</a><span><span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ e.t0Bg }};color:{{ e.t0Fg }}">{{ e.t0 }}</span></span><span style="font-variant-numeric:tabular-nums">{{ e.t1 }}</span><span><span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ e.gateBg }};color:{{ e.gateFg }}">{{ e.gate }}</span></span><span style="font:12px/1.4 'JetBrains Mono',monospace;color:#626b78">{{ e.review }}</span><span style="text-align:right;font-variant-numeric:tabular-nums">{{ e.retries }}</span><span style="text-align:right;font-variant-numeric:tabular-nums">{{ e.acu }}</span><span>{{ e.size }}</span><span>{{ e.mergedBy }}</span></div>
@@ -46,44 +51,23 @@
           <div style="padding:10px 16px;font:12px/1.5 'JetBrains Mono',monospace;color:#626b78">{{ sizeLine }}</div>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;margin-bottom:28px">
-          <div>
-            <div style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78;margin:0 0 10px">4. Tripwires, pre-registered</div>
-            <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
-              {% for w in tripwires %}
-                <div style="display:grid;grid-template-columns:1fr auto;gap:12px;padding:9px 16px;border-bottom:1px solid #f1efe9;font-size:12.5px;align-items:center"><span style="min-width:0"><span style="font-weight:500">{{ w.name }}</span><span style="display:block;color:#626b78;font-size:12px"><span style="font:11.5px/1.5 'JetBrains Mono',monospace;color:#14181f">{{ w.value }}</span> · threshold: {{ w.threshold }}</span></span><span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ w.bg }};color:{{ w.fg }}">{{ w.status }}</span></div>
-              {% endfor %}
-              <div style="padding:10px 16px;font-size:12px;color:#626b78;text-wrap:pretty">Stop condition, stated in advance: if review minutes per shipped change rise and stay risen at 60 days, we stop.</div>
-            </div>
-          </div>
-          <div>
-            <div style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78;margin:0 0 10px">5. Routing table, by class</div>
-            <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
+<div style="display:grid;grid-template-columns:1.2fr 1fr;gap:16px;align-items:start">
+  <div>
+    <div style="display:flex;align-items:baseline;gap:12px;margin:0 0 10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Routing by class</span><span style="font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">attempted · verified · ACU</span></div>
+    <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
               <div style="display:grid;grid-template-columns:1.3fr 34px 34px 44px 34px 1.3fr;gap:10px;padding:8px 16px;border-bottom:1px solid #e2dfd8;font:500 10px/1.4 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#8f97a3"><span>class</span><span style="text-align:right">att.</span><span style="text-align:right">ver.</span><span style="text-align:right">median</span><span style="text-align:right">p95</span><span>verdict</span></div>
               {% for c in routing %}
                 <div style="display:grid;grid-template-columns:1.3fr 34px 34px 44px 34px 1.3fr;gap:10px;padding:5px 16px;border-bottom:1px solid #f1efe9;font-size:12px;align-items:baseline;color:{{ c.color }}"><span style="font:11.5px/1.4 'JetBrains Mono',monospace;color:#14181f;overflow-wrap:anywhere">{{ c.cls }}</span><span style="text-align:right;font-variant-numeric:tabular-nums">{{ c.att }}</span><span style="text-align:right;font-variant-numeric:tabular-nums">{{ c.ver }}</span><span style="text-align:right;font-variant-numeric:tabular-nums">{{ c.med }}</span><span style="text-align:right;font-variant-numeric:tabular-nums">{{ c.p95 }}</span><span style="text-wrap:pretty">{{ c.verdict }}</span></div>
               {% endfor %}
             </div>
-          </div>
-        </div>
 
-        <div style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78;margin:0 0 10px">6. Escalations, and what is not on this screen</div>
-        <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:16px;align-items:start">
-          <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
-            <div style="display:grid;grid-template-columns:70px 100px 1fr 80px;gap:12px;padding:8px 16px;border-bottom:1px solid #e2dfd8;font:500 10.5px/1.4 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#8f97a3"><span>ticket</span><span>kind</span><span>reason</span><span>resolved</span></div>
-            {% for x in escalations %}<div style="display:grid;grid-template-columns:70px 100px 1fr 80px;gap:12px;padding:9px 16px;font-size:13px;align-items:baseline;border-bottom:1px solid #f1efe9"><span style="font:600 12px/1.4 'JetBrains Mono',monospace;color:{{ x.color }}">{{ x.ticket }}</span><span style="font:12px/1.4 'JetBrains Mono',monospace">{{ x.kind }}</span><span>{{ x.reason }}</span><span style="color:#8f97a3">{{ x.resolved }}</span></div>{% else %}<div style="padding:9px 16px;font-size:13px;color:#8f97a3">none</div>{% endfor %}
-          </div>
-          <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:12px 16px">
-            <div style="font-weight:600;font-size:13px;margin-bottom:8px">Not shown, on purpose</div>
-            <ul style="padding-left:18px;margin:0;font-size:12.5px;color:#626b78;display:flex;flex-direction:column;gap:6px;text-wrap:pretty">
-              <li><b style="color:#b4452e;font-weight:600">Lines of code.</b> Volume is not value: about 10% velocity from about 75% AI-authored code at one large vendor is the public counterexample.</li>
-              <li><b style="color:#b4452e;font-weight:600">Pull requests opened.</b> 28.3% of agent PRs merge within one minute and the tail is expensive (arXiv:2601.00753). Count what merged and survived.</li>
-              <li><b style="color:#b4452e;font-weight:600">Acceptance rate.</b> Rubber-stamping inflates it; the CTOs of two developer-metrics companies are on record against it.</li>
-              <li><b style="color:#b4452e;font-weight:600">Share of code written by AI.</b> Definitionally not the metric, per the point above.</li>
-              <li><b style="color:#b4452e;font-weight:600">Tokens.</b> Cost shifts into the review gate; cheaper tokens did not yield cheaper merged features.</li>
-              <li><b style="color:#b4452e;font-weight:600">Self-reported time saved.</b> The best RCT measured that self-report as wrong by about 40 points (METR, 2025; corrected 2026).</li>
-            </ul>
-          </div>
-        </div>
-        <p style="font-size:12px;color:#8f97a3;margin:20px 0 0;max-width:90ch;text-wrap:pretty">Every number above is a query over the ticket store; every tile's SQL is one click away. The dashboard measures the system, never a named engineer. N is small and says so. Survival at 30 days and review minutes are not claimed because they were not measured.</p>
-      {% endblock %}
+  </div>
+  <div>
+    <div style="display:flex;align-items:baseline;gap:12px;margin:0 0 10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Escalations</span><span style="font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ escalations | length }}</span></div>
+    <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
+      {% for x in escalations %}<div style="display:grid;grid-template-columns:60px 100px 1fr 60px;gap:12px;padding:8px 16px;font-size:12.5px;align-items:baseline;border-bottom:1px solid #f1efe9"><span style="font:600 12px/1.4 'JetBrains Mono',monospace;color:{{ x.color }}">{{ x.ticket }}</span><span style="font:12px/1.4 'JetBrains Mono',monospace">{{ x.kind }}</span><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="{{ x.reason }}">{{ x.reason }}</span><span style="color:#8f97a3">{{ x.resolved }}</span></div>{% else %}<div style="padding:9px 16px;font-size:13px;color:#8f97a3">none</div>{% endfor %}
+    </div>
+  </div>
+</div>
+<p style="font:11px/1.5 'JetBrains Mono',monospace;color:#8f97a3;margin:18px 0 0">every number is a query over the ticket store · N is small and says so · the system is measured, never a named engineer</p>
+{% endblock %}
