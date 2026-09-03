@@ -40,7 +40,7 @@ def test_home_tiles_inbox_and_next_trigger(client):
     )
     assert "the AI is idle" not in html and "scoped by the AI" in html and "verified" in html
     assert html.count('class="bar"') >= 24  # the trends live inside the tiles as bars
-    assert "—" not in html
+    assert "\u2014" not in html
 
 
 def test_dismiss_resolves_the_escalation(client):
