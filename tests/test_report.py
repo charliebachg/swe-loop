@@ -58,7 +58,7 @@ def test_dashboard_renders_and_shows_sql_on_request(tmp_path, monkeypatch):
     st = seeded(tmp_path)
     app = build_app(Settings.from_env(), st, seed_replay=False)
     with TestClient(app) as c:
-        r = c.get("/")
+        r = c.get("/report")
         assert r.status_code == 200
         html = r.text
         for must in (
@@ -72,7 +72,7 @@ def test_dashboard_renders_and_shows_sql_on_request(tmp_path, monkeypatch):
         ):
             assert must in html
         assert "SELECT COUNT" not in html
-        assert "SELECT COUNT" in c.get("/dashboard?sql=1").text
+        assert "SELECT COUNT" in c.get("/report?sql=1").text
         assert "tkt_A" in c.get("/partials/board").text
         # a person merges: the endpoint refuses an unready ticket and records a ready one
         assert c.post("/tickets/tkt_C/merge", json={"actor": "someone"}).status_code == 200
@@ -106,7 +106,7 @@ def test_app_seeds_replay_on_startup_when_empty(tmp_path, monkeypatch):
     app = build_app(Settings.from_env(), st)
     with TestClient(app) as c:
         assert c.get("/metrics").json()["funnel"]["sessions_created"] == 4
-        assert "tkt_A" in c.get("/").text
+        assert "tkt_A" in c.get("/report").text
 
 
 def test_cli_seed_and_record(tmp_path, monkeypatch, capsys):
@@ -118,3 +118,29 @@ def test_cli_seed_and_record(tmp_path, monkeypatch, capsys):
     assert main(["record", str(tmp_path / "run.json")]) == 0
     assert (tmp_path / "run.json").exists()
     assert main(["apply-config"]) == 2  # refuses outside live mode
+
+
+def test_ops_page_lists_sessions_and_the_feed(tmp_path, monkeypatch):
+    monkeypatch.delenv("DEVIN_API_KEY", raising=False)
+    from swe_loop import ops
+
+    st = seeded(tmp_path)
+    o = ops.build(st)
+    assert len(o["sessions"]) == 4 and o["counts"]["merged"] == 2 and o["counts"]["passed"] == 4
+    d = {s["ticket"]: s for s in o["sessions"]}
+    assert d["tkt_D"]["retries"] == 1 and d["tkt_A"]["gate"] == "pass"
+    assert [s["name"] for s in d["tkt_A"]["steps"]][-1] == "merge"
+    assert "merge" in [s["name"] for s in d["tkt_A"]["steps"] if "done" in s["cls"]]
+    assert o["feed"] and o["feed"][0]["at"] >= o["feed"][-1]["at"]
+    layers = {e["layer"] for e in st.timeline(limit=500)}
+    assert {"L2 route", "L4 dispatch", "L4 poll", "L5 gate", "L7 reduce", "escalate"} <= layers
+    app = build_app(Settings.from_env(), st, seed_replay=False)
+    with TestClient(app) as c:
+        html = c.get("/").text
+        assert "Devin sessions" in html and "Live feed" in html and "fake-001" in html
+        assert "1. The answer" in c.get("/report").text
+        sid = o["sessions"][0]["id"]
+        det = c.get(f"/sessions/{sid}").json()
+        assert det["timeline"] and det["work_order"]["files"]
+        assert c.get("/timeline?limit=5").json()
+        assert c.get("/partials/ops").status_code == 200

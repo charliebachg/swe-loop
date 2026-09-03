@@ -210,8 +210,22 @@ def dispatch(
     sid = store.reserve_session(
         work_order_id=wo["id"], playbook_id=playbook_id, tags=list(spec.tags), attempt=attempt
     )
+    store.log(
+        "L4 dispatch",
+        "reserved",
+        ticket_id=wo["ticket_id"],
+        session_id=sid,
+        detail=f"shard {wo['shard_id']} cap {spec.max_acu_limit} ACU",
+    )
     live = client.find_live(identity_tags(cfg, wo), exclude=store.bound_devin_ids())
     state = live if live else client.start(spec)
+    store.log(
+        "L4 dispatch",
+        "adopted live session" if live else "POST /sessions",
+        ticket_id=wo["ticket_id"],
+        session_id=sid,
+        detail=state.session_id,
+    )
     store.bind_devin_session(
         sid, devin_session_id=state.session_id, url=state.url, status=state.status or "new"
     )

@@ -91,6 +91,11 @@ CREATE TABLE IF NOT EXISTS budget (
   id INTEGER PRIMARY KEY CHECK (id = 1), acu_cap REAL NOT NULL, per_session_cap REAL NOT NULL,
   window_start TEXT NOT NULL, window_end TEXT
 );
+CREATE TABLE IF NOT EXISTS timeline (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, ticket_id TEXT, session_id TEXT,
+  layer TEXT NOT NULL, event TEXT NOT NULL, detail TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_timeline_session ON timeline(session_id);
 CREATE INDEX IF NOT EXISTS ix_tickets_status ON tickets(status);
 CREATE INDEX IF NOT EXISTS ix_sessions_wo ON sessions(work_order_id);
 CREATE INDEX IF NOT EXISTS ix_evidence_session ON evidence(session_id);
@@ -139,6 +144,41 @@ class Store:
 
     def _all(self, sql: str, *args: Any) -> list[dict[str, Any]]:
         return [dict(r) for r in self.conn.execute(sql, args).fetchall()]
+
+    # ------------------------------------------------------------------ timeline
+    def log(
+        self,
+        layer: str,
+        event: str,
+        *,
+        ticket_id: str | None = None,
+        session_id: str | None = None,
+        detail: str | None = None,
+    ) -> None:
+        """One line per thing that happened. The operational view reads this table."""
+        self.conn.execute(
+            "INSERT INTO timeline (at, ticket_id, session_id, layer, event, detail) "
+            "VALUES (?,?,?,?,?,?)",
+            (now(), ticket_id, session_id, layer, event, (detail or "")[:400]),
+        )
+
+    def timeline(
+        self,
+        *,
+        session_id: str | None = None,
+        ticket_id: str | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        q, args = "SELECT * FROM timeline", []
+        if session_id:
+            q += " WHERE session_id=?"
+            args.append(session_id)
+        elif ticket_id:
+            q += " WHERE ticket_id=?"
+            args.append(ticket_id)
+        q += " ORDER BY id DESC LIMIT ?"
+        args.append(limit)
+        return list(reversed(self._all(q, *args)))
 
     # ------------------------------------------------------------------ events
     def insert_event(
@@ -202,6 +242,7 @@ class Store:
         self.conn.execute(
             "UPDATE tickets SET status=?, updated_at=? WHERE id=?", (status, now(), ticket_id)
         )
+        self.log("ticket", status, ticket_id=ticket_id)
 
     def set_router_decision(self, ticket_id: str, decision: str, reason: str) -> None:
         assert decision in ROUTES, decision
@@ -210,6 +251,7 @@ class Store:
             "UPDATE tickets SET router_decision=?, router_reason=?, status=?, updated_at=? WHERE id=?",
             (decision, reason, status, now(), ticket_id),
         )
+        self.log("L2 route", decision, ticket_id=ticket_id, detail=reason)
         if decision != "devin":
             self.insert_escalation(
                 ticket_id,
@@ -304,6 +346,15 @@ class Store:
         self.conn.execute(
             "UPDATE sessions SET devin_session_id=?, url=?, status=? WHERE id=?",
             (devin_session_id, url, status, sid),
+        )
+        row = self.get_session(sid)
+        wo = self.get_work_order(row["work_order_id"]) if row else None
+        self.log(
+            "L4 dispatch",
+            "session bound",
+            ticket_id=wo["ticket_id"] if wo else None,
+            session_id=sid,
+            detail=f"{devin_session_id} {url}",
         )
 
     def update_session(self, sid: str, **fields: Any) -> None:
@@ -408,6 +459,12 @@ class Store:
                 now(),
             ),
         )
+        self.log(
+            "L5 gate",
+            f"{tier} {'ok' if passed else 'FAIL'} exit {exit_code}",
+            session_id=session_id,
+            detail=command,
+        )
         return eid
 
     def evidence_for(self, session_id: str, tree_hash: str | None = None) -> list[dict[str, Any]]:
@@ -440,6 +497,7 @@ class Store:
             "INSERT INTO verdicts VALUES (?,?,?,?,?,?,?,?)",
             (vid, session_id, gate_result, review_severity, decision, reason, tree_hash, now()),
         )
+        self.log("L5 gate", f"{gate_result} -> {decision}", session_id=session_id, detail=reason)
         return vid
 
     def latest_verdict(self, session_id: str) -> dict[str, Any] | None:
@@ -458,6 +516,7 @@ class Store:
             "INSERT INTO escalations VALUES (?,?,?,?,?,?,?)",
             (eid, ticket_id, session_id, kind, reason, now(), None),
         )
+        self.log("escalate", kind, ticket_id=ticket_id, session_id=session_id, detail=reason)
         return eid
 
     def list_escalations(self, unresolved_only: bool = True) -> list[dict[str, Any]]:
@@ -475,6 +534,7 @@ class Store:
             "INSERT INTO human_actions VALUES (?,?,?,?,?)",
             (hid, ticket_id, kind, now(), digest(actor)[:16]),
         )
+        self.log("L7 reduce", f"human {kind}", ticket_id=ticket_id)
         return hid
 
     def set_budget(self, acu_cap: float, per_session_cap: float) -> None:

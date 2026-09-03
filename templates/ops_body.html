@@ -1,0 +1,77 @@
+{# the live body: the strip, the session table, the ticket pipeline, the feed #}
+<div class="strip">
+  <div class="stat live"><div class="k">sessions running</div><div class="v">{{ o.counts.running }}</div></div>
+  <div class="stat"><div class="k">waiting on a person</div><div class="v">{{ o.counts.needs_human }}</div></div>
+  <div class="stat"><div class="k">at the gate</div><div class="v">{{ o.counts.gated }}</div></div>
+  <div class="stat"><div class="k">passed the gate</div><div class="v">{{ o.counts.passed }}</div></div>
+  <div class="stat bad"><div class="k">failed / escalated</div><div class="v">{{ o.counts.failed }}</div></div>
+  <div class="stat"><div class="k">merged by a person</div><div class="v">{{ o.counts.merged }}</div></div>
+  <div class="stat"><div class="k">ACU spent</div><div class="v">{{ o.counts.acus }}<span style="font-size:12px;color:var(--muted)"> / {{ o.counts.cap or "no cap" }}</span></div></div>
+  <div class="stat"><div class="k">open escalations</div><div class="v">{{ o.counts.escalations }}</div></div>
+</div>
+
+<h2>Devin sessions</h2>
+<div class="card">
+  <table>
+    <tr><th>session</th><th>ticket · shard</th><th>status</th><th>pipeline</th><th>files</th><th>PR</th><th>gate</th><th class="num">ACU</th><th>size</th><th>retries</th><th>last event</th><th>elapsed</th></tr>
+    {% for s in o.sessions %}
+    <tr>
+      <td class="mono">{% if s.url %}<a href="{{ s.url }}" target="_blank">{{ s.devin_id or s.id }}</a>{% else %}{{ s.id }} <span class="pill p-na">reserved</span>{% endif %}</td>
+      <td>{{ s.ticket }} · {{ s.shard }}{% if s.external_ref %} <span class="mono" style="color:var(--muted)">#{{ s.external_ref.rsplit('#',1)[-1] }}</span>{% endif %}</td>
+      <td><span class="pill {{ s.pill }}">{{ s.status }}{% if s.status_detail %}/{{ s.status_detail }}{% endif %}</span></td>
+      <td>
+        <div class="steps">{% for st in s.steps %}<span class="step {{ st.cls }}" title="{{ st.name }}"></span>{% endfor %}</div>
+        <div class="stepnames">{{ s.step_label }}</div>
+      </td>
+      <td class="mono wrap" style="min-width:180px">{% for f in s.files %}{{ f.rsplit('/',1)[-1] }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+      <td class="mono">{% if s.pr_url %}<a href="{{ s.pr_url }}" target="_blank">#{{ s.pr_url.rsplit('/',1)[-1] }}</a>{% else %}<span style="color:var(--muted)">none yet</span>{% endif %}</td>
+      <td>{% if s.gate == "pass" %}<span class="pill p-ok">pass</span>{% elif s.gate %}<span class="pill p-bad">{{ s.gate }}</span>{% else %}<span class="pill p-na">not run</span>{% endif %}{% if s.t1 %} <span class="mono" style="color:var(--muted)">{{ s.t1 }}</span>{% endif %}</td>
+      <td class="num">{{ s.acus if s.acus is not none else "" }}</td>
+      <td>{{ s.size or "" }}{% if s.size and s.size|lower in ("l","xl") %} <span class="pill p-bad">L/XL</span>{% endif %}</td>
+      <td class="num">{{ s.retries }}</td>
+      <td class="wrap" style="min-width:220px">{{ s.last_event }}</td>
+      <td class="mono">{{ s.elapsed }}</td>
+    </tr>
+    {% else %}<tr><td colspan="12" class="empty">No sessions yet. In live mode, <code>python -m swe_loop run</code> dispatches the routed tickets.</td></tr>{% endfor %}
+  </table>
+</div>
+
+<div class="two">
+  <div>
+    <h2>Tickets through the pipeline</h2>
+    <div class="card">
+      <table>
+        <tr><th>ticket</th><th>issue</th><th>class</th><th>route</th><th>status</th><th>sessions</th><th class="wrap">reason</th></tr>
+        {% for t in o.tickets %}
+        <tr>
+          <td class="mono">{{ t.id }}</td>
+          <td class="mono">{% if t.issue_url %}<a href="{{ t.issue_url }}" target="_blank">#{{ t.issue }}</a>{% else %}{{ t.issue or "" }}{% endif %}</td>
+          <td class="mono wrap" style="min-width:160px;font-size:11px">{{ t.classes }}</td>
+          <td>{% if t.route == "devin" %}<span class="pill p-wait">devin</span>{% elif t.route %}<span class="pill p-bad">{{ t.route }}</span>{% else %}<span class="pill p-na">pending</span>{% endif %}</td>
+          <td><span class="pill {{ t.pill }}">{{ t.status }}</span></td>
+          <td class="num">{{ t.sessions }}</td>
+          <td class="wrap">{{ t.reason }}</td>
+        </tr>
+        {% else %}<tr><td colspan="7" class="empty">no tickets</td></tr>{% endfor %}
+      </table>
+    </div>
+  </div>
+  <div>
+    <h2>Live feed, newest first</h2>
+    <div class="card feed" style="max-height:560px; overflow-y:auto">
+      <table>
+        {% for e in o.feed %}
+        <tr><td>{{ e.at[11:19] }}</td><td><span class="layer {{ e.layer.split(' ')[0] }}">{{ e.layer }}</span></td><td class="wrap"><b>{{ e.event }}</b>{% if e.ticket_id %} <span class="mono" style="color:var(--muted)">{{ e.ticket_id }}</span>{% endif %}{% if e.detail %}<br><span style="color:var(--muted)">{{ e.detail[:160] }}</span>{% endif %}</td></tr>
+        {% else %}<tr><td colspan="3" class="empty">nothing has happened yet</td></tr>{% endfor %}
+      </table>
+    </div>
+  </div>
+</div>
+
+{% if o.escalations %}
+<h2>Open escalations, a person is needed</h2>
+<div class="card"><table>
+  <tr><th>ticket</th><th>session</th><th>kind</th><th class="wrap">reason</th><th>since</th></tr>
+  {% for e in o.escalations %}<tr><td class="mono">{{ e.ticket_id }}</td><td class="mono">{{ e.session_id or "" }}</td><td><span class="pill p-bad">{{ e.kind }}</span></td><td class="wrap">{{ e.reason }}</td><td class="mono">{{ e.created_at[11:19] }}</td></tr>{% endfor %}
+</table></div>
+{% endif %}

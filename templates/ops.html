@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>swe-loop</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/2.0.4/htmx.min.js"></script>
+<style>
+  :root { --ink:#1a222d; --muted:#5a6574; --rule:#d8dde4; --ground:#f6f7f9; --surface:#fff; --accent:#2c5ba6;
+          --pass:#2e7d4f; --fail:#b4452e; --warn:#b8862a; --na:#8a94a3; --devin:#5b7fb5; --gate:#8a5fb5; --human:#b4452e; --code:#4f9a6b }
+  * { box-sizing:border-box } body { margin:0; background:var(--ground); color:var(--ink); font:14px/1.45 "IBM Plex Sans", system-ui, sans-serif }
+  header { display:flex; align-items:baseline; gap:18px; padding:14px 24px; background:var(--surface); border-bottom:1px solid var(--rule); position:sticky; top:0; z-index:2 }
+  header h1 { font-size:18px; margin:0 } header .mode { font:12px "IBM Plex Mono", Menlo, monospace; color:var(--muted) }
+  header nav a { margin-left:14px; color:var(--accent); text-decoration:none } header nav a.on { font-weight:600 }
+  main { max-width:1440px; margin:0 auto; padding:18px 24px 60px }
+  .strip { display:grid; grid-template-columns:repeat(8, 1fr); gap:10px; margin-bottom:16px }
+  .stat { background:var(--surface); border:1px solid var(--rule); border-radius:6px; padding:10px 12px } .stat .k { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted) } .stat .v { font-size:22px; font-weight:600; font-variant-numeric:tabular-nums }
+  .stat.live .v { color:var(--warn) } .stat.bad .v { color:var(--fail) }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:18px 0 8px }
+  .card { background:var(--surface); border:1px solid var(--rule); border-radius:6px; overflow-x:auto }
+  table { border-collapse:collapse; width:100%; font-size:13px } th,td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--rule); vertical-align:top; white-space:nowrap }
+  th { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:500; position:sticky; top:0; background:var(--surface) }
+  td.wrap { white-space:normal; min-width:260px }
+  .mono { font-family:"IBM Plex Mono", Menlo, monospace; font-size:12px } .num { text-align:right; font-variant-numeric:tabular-nums }
+  .pill { display:inline-block; padding:1px 8px; border-radius:10px; font-size:11px; font-weight:600; white-space:nowrap }
+  .p-run { background:#fff3d6; color:var(--warn) } .p-ok { background:#e3f2e8; color:var(--pass) } .p-bad { background:#f9e4df; color:var(--fail) } .p-na { background:#eceff3; color:var(--na) } .p-wait { background:#eef3fb; color:var(--devin) }
+  .steps { display:flex; gap:4px; align-items:center } .step { width:12px; height:12px; border-radius:2px; background:#e6eaf0; position:relative } .step.done { background:var(--code) } .step.now { background:var(--warn); box-shadow:0 0 0 2px #fff3d6 } .step.bad { background:var(--fail) } .step.gate.done { background:var(--gate) } .step.human.done { background:var(--human) }
+  .stepnames { font-size:10px; color:var(--muted); letter-spacing:.02em }
+  a { color:var(--accent); text-decoration:none } a:hover { text-decoration:underline }
+  .feed tr td:first-child { color:var(--muted); font-family:"IBM Plex Mono", monospace; font-size:11px }
+  .layer { font-family:"IBM Plex Mono", monospace; font-size:11px; padding:1px 6px; border-radius:3px; border:1px solid var(--rule) }
+  .layer.L0, .layer.L2, .layer.L3, .layer.L7, .layer.ticket { background:#eef8f1 } .layer.L4 { background:#eef3fb } .layer.L5 { background:#f4ecfa } .layer.escalate { background:#fdecea } .layer.L1 { background:#eef3fb }
+  details summary { cursor:pointer; color:var(--accent); font-size:12px }
+  .two { display:grid; grid-template-columns:1.6fr 1fr; gap:14px } @media (max-width:1100px) { .two { grid-template-columns:1fr } .strip { grid-template-columns:repeat(4,1fr) } }
+  .empty { padding:18px; color:var(--muted) }
+</style>
+</head>
+<body>
+<header>
+  <h1>swe-loop</h1>
+  <span class="mode">{{ mode }} · target {{ target }} · refreshes every 5 s</span>
+  <nav><a class="on" href="/">sessions</a><a href="/report">report</a><a href="/tickets">tickets json</a><a href="/timeline">timeline json</a></nav>
+</header>
+<main>
+  <div id="live" hx-get="/partials/ops" hx-trigger="every 5s" hx-swap="innerHTML">{% include "ops_body.html" %}</div>
+</main>
+</body>
+</html>

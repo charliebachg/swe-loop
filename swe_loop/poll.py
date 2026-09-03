@@ -93,6 +93,9 @@ class Poller:
             except DevinError as ex:
                 note = f" (terminate call failed: {ex.status} {ex.detail[:80]})"
         self.store.mark_terminal(sid, status="exit", status_detail="terminated")
+        self.store.log(
+            "L4 manage", "terminated (archive=true)", session_id=sid, detail=reason + note
+        )
         wo = self.store.get_work_order(row["work_order_id"])
         self._escalate(wo["ticket_id"], sid, kind, reason + note)
 
@@ -134,6 +137,13 @@ class Poller:
         state = self.client.status(row["devin_session_id"])
         wo = self.store.get_work_order(row["work_order_id"])
         ticket = self.store.get_ticket(wo["ticket_id"])
+        self.store.log(
+            "L4 poll",
+            f"{state.status}/{state.status_detail or '-'}",
+            ticket_id=ticket["id"],
+            session_id=sid,
+            detail=f"acus={state.acus_consumed}",
+        )
 
         if not state.terminal:
             self.store.update_session(
@@ -234,6 +244,12 @@ class Poller:
         ).fetchone()[0]
         if prior == 0:
             self.client.message(row["devin_session_id"], work_order_answer(wo, self.cfg))
+            self.store.log(
+                "L4 manage",
+                "answered waiting_for_user from the work order",
+                ticket_id=ticket["id"],
+                session_id=sid,
+            )
             eid = self.store.insert_escalation(
                 ticket["id"],
                 sid,
@@ -292,6 +308,12 @@ class Poller:
             "UPDATE sessions SET retries=retries+1, terminal_at=NULL, status='running', "
             "status_detail='working', rejected_output_digest=? WHERE id=?",
             (rejected, sid),
+        )
+        self.store.log(
+            "L4 manage",
+            "retry with the exact failure text",
+            session_id=sid,
+            detail=failure_text[:200],
         )
         wo = self.store.get_work_order(row["work_order_id"])
         self.store.set_ticket_status(wo["ticket_id"], "running")

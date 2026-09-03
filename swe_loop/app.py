@@ -11,8 +11,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+from swe_loop import ops, replay, report
 from swe_loop import reduce as reduce_mod
-from swe_loop import replay, report
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.intake import NormalizedEvent, normalize, ticket_id_for, verify_github_signature
 from swe_loop.store import Store
@@ -72,6 +72,12 @@ def build_app(
             }
         tid = ingest(st, ev)
         st.conn.execute("UPDATE events SET ticket_id=? WHERE id=?", (tid, eid))
+        st.log(
+            "L0 intake",
+            f"{source}:{ev.kind} {ev.action or ''}",
+            ticket_id=tid,
+            detail=ev.external_ref,
+        )
         return {"event_id": eid, "accepted": True, "ticket_id": tid, "kind": ev.kind}
 
     @app.get("/tickets")
@@ -88,6 +94,31 @@ def build_app(
         return t
 
     @app.get("/", response_class=HTMLResponse)
+    def ops_page(request: Request) -> HTMLResponse:
+        o = ops.build(request.app.state.store)
+        return TEMPLATES.TemplateResponse(
+            request, "ops.html", {"o": o, "mode": settings.mode, "target": cfg.name}
+        )
+
+    @app.get("/partials/ops", response_class=HTMLResponse)
+    def ops_partial(request: Request) -> HTMLResponse:
+        o = ops.build(request.app.state.store)
+        return TEMPLATES.TemplateResponse(request, "ops_body.html", {"o": o})
+
+    @app.get("/sessions/{sid}")
+    def session(sid: str) -> dict[str, Any]:
+        d = ops.session_detail(app.state.store, sid)
+        if not d:
+            raise HTTPException(status_code=404)
+        return d
+
+    @app.get("/timeline")
+    def timeline(
+        session_id: str | None = None, ticket_id: str | None = None, limit: int = 200
+    ) -> list[dict[str, Any]]:
+        return app.state.store.timeline(session_id=session_id, ticket_id=ticket_id, limit=limit)
+
+    @app.get("/report", response_class=HTMLResponse)
     @app.get("/dashboard", response_class=HTMLResponse)
     def dashboard(request: Request, sql: int = 0) -> HTMLResponse:
         vm = report.build(request.app.state.store, INVENTORY)

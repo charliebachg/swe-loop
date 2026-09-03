@@ -214,6 +214,12 @@ class Gate:
         try:
             tree = self.ws.tree_hash(path)
             res.tree_hash = tree
+            self.store.log(
+                "L5 gate",
+                "clean checkout",
+                session_id=sid,
+                detail=f"{pr.head_ref} tree {tree[:12]}",
+            )
             base_ref = pr.base_ref or self.cfg.base_branch
 
             # ---------------- T0: oracle untouched, in scope, artefacts exist
