@@ -7,7 +7,7 @@ are computed the way the mock computed them, from the same constants."""
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -529,10 +529,160 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                 f" · {len(mn['notes'])} note(s)" if mn["notes"] else ""
             )
         short_needs.append({**n, "what": what or n["reason"][:64], "hover": n["reason"]})
+    spark = _sparklines(store)
+    # sessions that finished without a person typing anything into them
+    tri = store.list_triage_sessions()
+    tl = store.timeline(limit=2000)
+    answered_triage = {e["ticket_id"] for e in tl if e["event"] == "answered by a person"}
+    answered_repair = {
+        e["session_id"] for e in tl if e["event"] == "answered waiting_for_user from the work order"
+    }
+    all_sessions = [("tri", x) for x in tri] + [("rep", x) for x in sess]
+    quiet = 0
+    for kind, x in all_sessions:
+        asked = x["ticket_id"] in answered_triage if kind == "tri" else x["id"] in answered_repair
+        if not asked:
+            quiet += 1
+    oldest_wait = None
+    for e in store.list_escalations():
+        oldest_wait = (
+            e["created_at"] if oldest_wait is None or e["created_at"] < oldest_wait else oldest_wait
+        )
+    tiles = [
+        {**five[0], "svg": spark[0]["svg"], "note": spark[0]["span"]},
+        {
+            **five[1],
+            "of": (f"oldest {_age(oldest_wait)}" if oldest_wait else ""),
+            "svg": "",
+            "note": "",
+        },
+        {**five[2], "svg": spark[1]["svg"], "note": spark[1]["span"]},
+        {**five[3], "svg": spark[2]["svg"], "note": spark[2]["last"]},
+        {
+            "n": f"{quiet} of {len(all_sessions)}" if all_sessions else "0 of 0",
+            "of": "sessions",
+            "label": "finished without a question",
+            "color": PL["ok"][0] if quiet else FAINT,
+            "pct": None,
+            "svg": "",
+            "note": f"{len(all_sessions) - quiet} asked a person" if all_sessions else "",
+        },
+    ]
+    inbox = []
+    for e in store.list_escalations():
+        t = store.get_ticket(e["ticket_id"]) or {}
+        tri_for = store.list_triage_sessions(e["ticket_id"])
+        can_answer = (
+            e["kind"] in ("waiting_for_user", "human_only", "review_blocked")
+            and bool(tri_for)
+            and t.get("status") in ("escalated", "new")
+        )
+        inbox.append(
+            {
+                **dot(e["ticket_id"], False),
+                "kind": e["kind"],
+                **pill("bad"),
+                "what": (t.get("title") or e["reason"])[:70],
+                "hover": e["reason"],
+                "age": _age(e["created_at"]),
+                "go": url("/tracker", open=e["ticket_id"]),
+                "answerUrl": f"/tickets/{e['ticket_id']}/answer" if can_answer else "",
+                "mergeUrl": "",
+                "dismissUrl": f"/escalations/{e['id']}/resolve",
+            }
+        )
+    for tid in h["summary"]["ready"]:
+        mn = reduce_mod.merge_notes(store, tid)
+        inbox.append(
+            {
+                **dot(tid, False),
+                "kind": "ready to merge",
+                **pill("ok"),
+                "what": (
+                    " · ".join(mn["reviews"])
+                    + (f" · {len(mn['notes'])} note(s)" if mn["notes"] else "")
+                )
+                or "gate passed, reviewed",
+                "hover": next(
+                    (
+                        x["reason"]
+                        for x in h["needs"]
+                        if x["ticket_id"] == tid and x["kind"] == "ready to merge"
+                    ),
+                    "every shard passed the gate and was reviewed; merge on GitHub first, then record it here",
+                ),
+                "age": _age(
+                    next(
+                        (
+                            v["created_at"]
+                            for v in store._all(
+                                "SELECT v.created_at FROM verdicts v JOIN sessions s ON s.id=v.session_id JOIN work_orders w ON w.id=s.work_order_id WHERE w.ticket_id=? ORDER BY v.created_at DESC LIMIT 1",
+                                tid,
+                            )
+                        ),
+                        None,
+                    )
+                ),
+                "go": url("/tracker", open=tid),
+                "answerUrl": "",
+                "mergeUrl": f"/tickets/{tid}/merge-form",
+                "dismissUrl": "",
+            }
+        )
+    inflight = []
+    for x in tri:
+        if x["devin_session_id"] and not x["terminal_at"]:
+            inflight.append(
+                {
+                    **dot(x["ticket_id"], False),
+                    "ticket": x["ticket_id"],
+                    "stage": "triage",
+                    "elapsed": ops._elapsed(x["created_at"], None),
+                    "acu": _fmt_acu(x["acus_consumed"]),
+                    "cap": f"{TRIAGE_ACU_CAP}",
+                    "pct": _pct(x["acus_consumed"], TRIAGE_ACU_CAP),
+                    "last": (store.timeline(ticket_id=x["ticket_id"], limit=1) or [{}])[0].get(
+                        "event", ""
+                    ),
+                    "needsInput": x["status_detail"] == "waiting_for_user",
+                    "go": url("/tracker", open=x["ticket_id"]),
+                }
+            )
+    for x in store.live_sessions():
+        wo = store.get_work_order(x["work_order_id"]) or {}
+        tid = wo.get("ticket_id", "")
+        st_row = store.get_ticket(tid) or {}
+        pat = _pattern(store, st_row) if st_row else "--------"
+        stage = STG[_pos(pat)][0]
+        inflight.append(
+            {
+                **dot(tid, False),
+                "ticket": tid,
+                "stage": stage,
+                "elapsed": ops._elapsed(x["created_at"], None),
+                "acu": _fmt_acu(x["acus_consumed"]),
+                "cap": f"{b['per_session_cap']:.0f}" if b.get("per_session_cap") else "·",
+                "pct": _pct(x["acus_consumed"], b.get("per_session_cap")),
+                "last": (store.timeline(session_id=x["id"], limit=1) or [{}])[0].get("event", ""),
+                "needsInput": x["status_detail"] in ("waiting_for_user", "waiting_for_approval")
+                and not x.get("pull_request_url"),
+                "go": url("/tracker", open=tid),
+            }
+        )
+    enabled = [r for r in store.list_automations() if r["enabled"] and r["availability"] == "live"]
+    next_trigger = (
+        f"{enabled[0]['trigger'].get('source', '')}:{enabled[0]['trigger'].get('event', '')} on {enabled[0]['target']}"
+        if enabled
+        else "no automation enabled"
+    )
     return {
+        "tiles": tiles,
+        "inbox": inbox,
+        "inflight": inflight,
+        "nextTrigger": next_trigger,
         "five": five,
         "shortNeeds": short_needs,
-        "spark": _sparklines(store),
+        "spark": spark,
         "recent8": events[:8],
         "now": _now(counts),
         "ticketWord": f"{len(tickets)} tickets" if len(tickets) != 1 else "one ticket",
@@ -552,6 +702,22 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         "rBg": on[0] if raw_mode else off[0],
         "rFg": on[1] if raw_mode else off[1],
     }
+
+
+def _age(iso: str | None) -> str:
+    if not iso:
+        return ""
+    try:
+        t = datetime.fromisoformat(iso)
+    except ValueError:
+        return ""
+    t = t if t.tzinfo else t.replace(tzinfo=UTC)
+    secs = int((datetime.now(UTC) - t).total_seconds())
+    if secs < 3600:
+        return f"{max(secs // 60, 0)}m"
+    if secs < 86400:
+        return f"{secs // 3600}h"
+    return f"{secs // 86400}d"
 
 
 def _sparklines(store: Store) -> list[dict[str, Any]]:

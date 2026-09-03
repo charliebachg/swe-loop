@@ -593,6 +593,21 @@ class Store:
         self.log("escalate", kind, ticket_id=ticket_id, session_id=session_id, detail=reason)
         return eid
 
+    def resolve_escalation(self, eid: str, note: str | None = None) -> dict[str, Any] | None:
+        e = self._one("SELECT * FROM escalations WHERE id=?", eid)
+        if not e:
+            return None
+        self.conn.execute("UPDATE escalations SET resolved_at=? WHERE id=?", (now(), eid))
+        self.conn.commit()
+        self.log(
+            "L7 reduce",
+            "escalation dismissed by a person",
+            ticket_id=e["ticket_id"],
+            session_id=e["session_id"],
+            detail=(note or "")[:200],
+        )
+        return e
+
     def list_escalations(self, unresolved_only: bool = True) -> list[dict[str, Any]]:
         q = (
             "SELECT * FROM escalations"

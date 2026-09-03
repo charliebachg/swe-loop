@@ -253,6 +253,54 @@ def build_app(
             v2.playbooks(st, cfg, request.app.state.client, {**_q(request), "sel": pid}),
         )
 
+    def _home_block(request: Request) -> HTMLResponse:
+        st: Store = request.app.state.store
+        return _page(request, "home", "v2/home.html", v2.home(st, cfg, _q(request)))
+
+    @app.post("/tickets/{ticket_id}/answer", response_class=HTMLResponse)
+    async def answer_v2(ticket_id: str, request: Request) -> HTMLResponse:
+        """A person's answer to a waiting triage session. The session resumes in the background;
+        the page shows it in flight."""
+        from swe_loop.triage import run_triage
+
+        form = parse_qs((await request.body()).decode())
+        text = (form.get("text") or [""])[0].strip()
+        st: Store = request.app.state.store
+        if not text or not st.get_ticket(ticket_id):
+            raise HTTPException(status_code=400, detail="an answer is required")
+        client = request.app.state.client
+        pid = st.get_setting("playbook_id.triage-pandas3")
+        inv = cfg.triage.get("inventory_url") or None
+
+        def _go() -> None:
+            try:
+                run_triage(
+                    st, client, ticket_id, cfg, inventory_path=inv, playbook_id=pid, answer=text
+                )
+            except Exception as ex:  # noqa: BLE001 - surfaced on the page
+                st.log(
+                    "L1 triage",
+                    "answer failed",
+                    ticket_id=ticket_id,
+                    detail=f"{type(ex).__name__}: {ex}"[:200],
+                )
+
+        th = threading.Thread(target=_go, name=f"swe-loop-answer-{ticket_id}", daemon=True)
+        request.app.state.answer_threads = getattr(request.app.state, "answer_threads", []) + [th]
+        th.start()
+        if client.is_fake:
+            th.join(10)
+        return _home_block(request)
+
+    @app.post("/escalations/{eid}/resolve", response_class=HTMLResponse)
+    async def resolve_v2(eid: str, request: Request) -> HTMLResponse:
+        form = parse_qs((await request.body()).decode())
+        note = (form.get("note") or [""])[0].strip()
+        st: Store = request.app.state.store
+        if st.resolve_escalation(eid, note) is None:
+            raise HTTPException(status_code=404)
+        return _home_block(request)
+
     @app.post("/tickets/{ticket_id}/merge-form", response_class=HTMLResponse)
     async def merge_form_v2(ticket_id: str, request: Request) -> HTMLResponse:
         form = parse_qs((await request.body()).decode())
