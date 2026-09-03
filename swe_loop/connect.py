@@ -150,7 +150,8 @@ def run_checks(
             "the seam",
             str(settings.config_path),
             "ok",
-            f"parsed: repo, trigger, detector, router ({len(cfg.forbidden_paths)} forbidden paths), session, gate",
+            f"parsed: repository, trigger, detector, router "
+            f"({len(cfg.forbidden_paths)} paths the AI may not touch), sessions, checks",
         )
     )
     root = (
@@ -160,10 +161,10 @@ def run_checks(
     out.append(
         Check(
             "gate",
-            "the gate's workspace",
+            "where the checks run",
             why or f"clone and both test environments ready at {root}",
             "missing" if why else "ok",
-            "the pull request is checked out here and the acceptance commands run through its interpreters",
+            "each pull request is copied here and the project's own commands are run against it",
         )
     )
     b = store.budget_state()

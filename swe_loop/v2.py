@@ -143,6 +143,18 @@ KIND_PLAIN = {
     "oracle_touched": "tests were edited",
     "ready to merge": "ready to ship",
 }
+STATUS_PLAIN = {
+    "new": "not looked at",
+    "triaged": "scoped",
+    "routed": "ready to start",
+    "dispatched": "AI working",
+    "running": "AI working",
+    "gated": "checked",
+    "reviewed": "ready for you",
+    "merged": "merged",
+    "escalated": "with your team",
+    "refused": "refused",
+}
 LAYER_PLAIN = {
     "intake": "received",
     "triage": "AI scoping",
@@ -267,9 +279,9 @@ def ev(e: dict[str, Any]) -> dict[str, Any]:
         detail = ""
     return {
         "time": _hhmmss(e.get("at")),
-        "layer": e.get("layer", ""),
-        "event": e.get("event", ""),
-        "detail": detail,
+        "layer": LAYER_PLAIN.get(e.get("layer", ""), e.get("layer", "")),
+        "event": plain(e.get("event", "")),
+        "detail": plain(detail),
         "ref": e.get("ticket_id") or "",
         "fg": ACT[actor][0],
         "bg": ACT[actor][1],
@@ -412,6 +424,9 @@ def _usd_or_min(store: Store, row: dict[str, Any], kind: str, rates: dict[str, f
 def insights(store: Store) -> dict[str, Any]:
     """The two charts and the table under them."""
     i = pages.insights(store)
+    for r in i["rows"]:
+        r["ref"] = ref(r.get("number"))
+        r["color"] = tk_color(r["ticket"])
     mins = [r["minutes"] for r in i["rows"]]
     return {
         **i,
@@ -1314,21 +1329,41 @@ PLAIN_PHRASES = [
     ("the oracle is read-only", "the tests are not ours to change"),
     ("oracle read-only to sessions", "the AI may not change tests"),
     ("sessions never edit tests or CI", "the AI never edits tests or the build"),
+    ("Devin Review found no issues", "the AI reviewer found nothing"),
+    ("Devin Review completed", "the AI reviewer finished"),
+    ("Devin Review left", "the AI reviewer left"),
+    ("Devin Review", "the AI reviewer"),
     ("triage: ", ""),
     ("site(s)", "places"),
-    ("Devin Review left", "the AI reviewer left"),
-    ("Devin Review found no issues", "the AI reviewer found nothing"),
     ("remark(s)", "comments"),
     ("comment(s)", "comments"),
-    ("gate", "checks"),
+    ("work order(s)", "pieces of work"),
+    ("work order", "piece of work"),
+    ("verdict accepted", "plan accepted"),
+    ("verdict", "plan"),
+    ("T0 ok", "scope check ok"),
+    ("T1 ok", "command ok"),
 ]
+# Short words that must match whole, or "investigate" becomes "inveschecks".
+PLAIN_WORDS = [
+    ("gate", "checks"),
+    ("gated", "checked"),
+    ("wo", "piece"),
+    ("shard", "piece"),
+    ("escalated", "handed to your team"),
+    ("escalations", "handovers"),
+    ("escalation", "handover"),
+]
+_WORD_RE = re.compile(r"\b(" + "|".join(w for w, _ in PLAIN_WORDS) + r")\b", re.IGNORECASE)
+_WORD_MAP = dict(PLAIN_WORDS)
 
 
 def plain(text: str) -> str:
     """Recorded reasons carry the vocabulary of the code that wrote them. Readers do not."""
     for a, b in PLAIN_PHRASES:
         text = text.replace(a, b)
-    return text
+    text = _WORD_RE.sub(lambda m: _WORD_MAP[m.group(1).lower()], text)
+    return text.replace("1 comments", "1 comment").replace("1 places", "1 place")
 
 
 def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
@@ -1684,7 +1719,7 @@ def tracker(
                 "pad": "10px",
                 "cells": cells,
                 "classes": ", ".join(r.get("classes") or []),
-                "status": r["status"],
+                "status": STATUS_PLAIN.get(r["status"], r["status"]),
                 "stBg": PL[st_kind][1],
                 "stFg": PL[st_kind][0],
                 "note": r.get("last_event") or "",

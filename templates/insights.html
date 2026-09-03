@@ -23,7 +23,7 @@
           {% for r in i.rows %}
           <div style="display:grid;grid-template-columns:130px 90px 60px 74px 74px 64px;gap:12px;padding:8px 16px;border-bottom:1px solid #f1efe9;font-size:12.5px;align-items:center" data-hover="background:#faf9f6">
             <a href="{{ r.url }}" target="_blank" style="{{ MONO }}">{{ r.devin_id[:12] }}</a>
-            <span style="{{ MONO }};color:#626b78">{{ r.ticket }}</span>
+            <a href="/tickets-page?open={{ r.ticket }}" style="{{ MONO }};color:{{ r.color }}">{{ r.ref }}</a>
             <span>{% if r.size %}<span style="display:inline-flex;width:22px;height:20px;border-radius:4px;align-items:center;justify-content:center;background:{% if r.big %}#f9e4df{% else %}#eaeef4{% endif %};color:{% if r.big %}#b4452e{% else %}#5b6f8a{% endif %};font:600 11px/1 'JetBrains Mono',monospace">{{ r.size }}</span>{% else %}<span style="color:#c9c5bb">·</span>{% endif %}</span>
             <span style="{{ MONO }}">{{ '%.0f' | format(r.minutes) }}</span>
             <span style="{{ MONO }}">{% if r.usd is not none %}${{ '%.2f' | format(r.usd) }}{% if not r.priced %}<span style="color:#c9c5bb"> est</span>{% endif %}{% else %}<span style="color:#c9c5bb">·</span>{% endif %}</span>
