@@ -156,7 +156,7 @@ class Poller:
                 self.store.set_ticket_status(ticket["id"], "running")
             return Outcome(sid, "running", state.status_detail or state.status)
 
-        if state.needs_attention:
+        if state.needs_attention and not state.delivered:
             self.store.update_session(sid, status=state.status, status_detail=state.status_detail)
             return self._attention(sid, row, state, wo, ticket)
 
@@ -188,7 +188,7 @@ class Poller:
             )
             return Outcome(sid, "too_large", f"{state.acus_consumed} ACU")
 
-        if not state.succeeded:
+        if not state.succeeded and not state.delivered:
             self._escalate(
                 ticket["id"],
                 sid,

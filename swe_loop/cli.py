@@ -221,8 +221,17 @@ def cmd_triage(args: argparse.Namespace) -> int:
         print("mode=replay: the triage session is faked", file=sys.stderr)
     inv = cfg.triage.get("inventory_url") or None
     pid = args.playbook_id or store.get_setting("playbook_id.triage-pandas3")
+    if args.answer and not args.ticket:
+        print("refusing: --answer needs --ticket", file=sys.stderr)
+        return 2
     results = triage_all(
-        store, client, cfg, ticket_id=args.ticket, inventory_path=inv, playbook_id=pid
+        store,
+        client,
+        cfg,
+        ticket_id=args.ticket,
+        inventory_path=inv,
+        playbook_id=pid,
+        answer=args.answer,
     )
     if not results:
         print("no tickets with status new")
@@ -294,6 +303,11 @@ def main(argv: list[str] | None = None) -> int:
         "--ticket", default=None, help="one ticket id; default: every ticket with status new"
     )
     tr.add_argument("--playbook-id", default=None)
+    tr.add_argument(
+        "--answer",
+        default=None,
+        help="a person's answer to a waiting triage session; polling resumes",
+    )
     tr.set_defaults(fn=cmd_triage)
     ac = sub.add_parser("apply-config")
     ac.add_argument(

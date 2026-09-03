@@ -106,3 +106,56 @@ def test_sessions_page_lists_the_triage_session(tmp_path, monkeypatch):
         assert "2.1" in html
         home = c.get("/").text
         assert "2.1" in home  # ACU spent on Home includes the triage session
+
+
+class _DeliveredWhileWaiting(FakeTransport):
+    """What the org did on 2026-09-03: the verdict is in structured_output, the turn ended, the
+    session shows running/waiting_for_user rather than exit/finished."""
+
+    def _synth(self, payload):
+        fx = super()._synth(payload)
+        fx["timeline"][-1].update(status="running", status_detail="waiting_for_user")
+        return fx
+
+
+class _AsksFirst(FakeTransport):
+    """Asks a question (no output), then delivers after a message."""
+
+    def _synth(self, payload):
+        fx = super()._synth(payload)
+        final = dict(fx["timeline"][-1])
+        fx["timeline"] = fx["timeline"][:2] + [
+            {"status": "running", "status_detail": "waiting_for_user", "acus_consumed": 0.5}
+        ]
+        self._final = final
+        return fx
+
+    def send_message(self, session_id, text):
+        out = super().send_message(session_id, text)
+        s = self._sessions[session_id]
+        s["fixture"]["timeline"].append(
+            {"status": "running", "status_detail": "working", "acus_consumed": 0.9}
+        )
+        s["fixture"]["timeline"].append(self._final)
+        s["i"] = len(s["fixture"]["timeline"]) - 2
+        return out
+
+
+def test_verdict_delivered_while_waiting_counts(tmp_path):
+    st = _store(tmp_path)
+    r = run_triage(st, DevinClient(_DeliveredWhileWaiting()), "tkt_D", CFG)
+    assert r["kind"] == "triaged" and st.get_ticket("tkt_D")["status"] == "triaged"
+
+
+def test_question_then_answer_adopts_the_same_session(tmp_path):
+    st = _store(tmp_path)
+    t = _AsksFirst()
+    c = DevinClient(t)
+    r = run_triage(st, c, "tkt_D", CFG)
+    assert r["kind"] == "waiting" and st.get_ticket("tkt_D")["status"] == "escalated"
+    assert st.list_escalations()[0]["kind"] == "waiting_for_user"
+    r2 = run_triage(st, c, "tkt_D", CFG, answer="Work from master. Preserve local wall clock.")
+    assert r2["kind"] == "triaged" and r2["session"] == r["session"]
+    assert len(st.list_triage_sessions()) == 1
+    assert any(call[0] == "send_message" for call in t.calls)
+    assert sum(1 for call in t.calls if call[0] == "create_session") == 1

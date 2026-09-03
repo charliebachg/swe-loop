@@ -165,6 +165,7 @@ def run_triage(
     wall_clock: float = 3600.0,
     min_wait: float = 5.0,
     max_wait: float = 30.0,
+    answer: str | None = None,
 ) -> dict[str, Any]:
     """One triage session for one ticket, start to verdict. The session proposes; this code
     validates the verdict against the schema and only then writes work orders. A terminal session
@@ -179,7 +180,7 @@ def run_triage(
     t = store.get_ticket(ticket_id)
     if not t:
         raise KeyError(ticket_id)
-    if t["status"] != "new":
+    if t["status"] not in ("new", "escalated"):
         return {
             "ticket_id": ticket_id,
             "kind": "skipped",
@@ -188,15 +189,23 @@ def run_triage(
     spec = build_triage_spec(t, cfg, inventory_path=inventory_path, playbook_id=playbook_id)
     live = client.find_live(list(spec.tags))
     state = live if live else client.start(spec)
-    tid = store.insert_triage_session(
-        ticket_id=ticket_id,
-        devin_session_id=state.session_id,
-        url=state.url,
-        status=state.status or "new",
-        status_detail=state.status_detail,
-        playbook_id=playbook_id,
-        tags=list(spec.tags),
-    )
+    prior = store.triage_session_by_devin_id(state.session_id)
+    if prior:
+        tid = prior["id"]
+        store.update_triage_session(tid, terminal_at=None, outcome=None)
+    else:
+        tid = store.insert_triage_session(
+            ticket_id=ticket_id,
+            devin_session_id=state.session_id,
+            url=state.url,
+            status=state.status or "new",
+            status_detail=state.status_detail,
+            playbook_id=playbook_id,
+            tags=list(spec.tags),
+        )
+    if answer:
+        client.message(state.session_id, answer)
+        store.log("L1 triage", "answered by a person", ticket_id=ticket_id, detail=answer[:200])
     store.log(
         "L1 triage",
         "adopted live session" if live else "POST /sessions",
@@ -219,7 +228,7 @@ def run_triage(
             ticket_id=ticket_id,
             detail=f"acus={state.acus_consumed}",
         )
-        if state.terminal:
+        if state.delivered or state.terminal:
             break
         if _time.monotonic() - start > wall_clock:
             try:
@@ -253,7 +262,17 @@ def run_triage(
         store.set_ticket_status(ticket_id, "escalated")
         return {"ticket_id": ticket_id, "kind": "too_large", "session": tid}
     out = state.structured_output
-    if not state.succeeded or not out:
+    if state.status_detail == "waiting_for_user" and not out:
+        store.update_triage_session(tid, outcome="waiting")
+        store.insert_escalation(
+            ticket_id,
+            None,
+            "waiting_for_user",
+            "the triage session asked a question; answer it with triage --answer, or terminate it",
+        )
+        store.set_ticket_status(ticket_id, "escalated")
+        return {"ticket_id": ticket_id, "kind": "waiting", "session": tid}
+    if not state.delivered:
         store.update_triage_session(tid, terminal_at=now(), outcome="no_output")
         store.insert_escalation(
             ticket_id,

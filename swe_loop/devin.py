@@ -103,6 +103,15 @@ class SessionState:
         return self.status == "exit" and self.status_detail == "finished"
 
     @property
+    def delivered(self) -> bool:
+        """The contract is met: structured output is present and the session's turn is over.
+        Verified live 2026-09-03: a session that calls provide_structured_output(is_final=true) and
+        has nothing more to do ends its turn as running/waiting_for_user, not exit/finished."""
+        return bool(self.structured_output) and (
+            self.succeeded or self.status_detail == "waiting_for_user"
+        )
+
+    @property
     def needs_attention(self) -> bool:
         return self.status_detail in ATTENTION_DETAILS
 

@@ -483,6 +483,9 @@ class Store:
         self.conn.execute(f"UPDATE triage_sessions SET {cols} WHERE id=?", (*fields.values(), tid))
         self.conn.commit()
 
+    def triage_session_by_devin_id(self, devin_session_id: str) -> dict[str, Any] | None:
+        return self._one("SELECT * FROM triage_sessions WHERE devin_session_id=?", devin_session_id)
+
     def get_triage_session(self, tid: str) -> dict[str, Any] | None:
         r = self._one("SELECT * FROM triage_sessions WHERE id=?", tid)
         if r and r.get("verdict_json"):
