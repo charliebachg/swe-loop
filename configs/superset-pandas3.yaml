@@ -1,0 +1,41 @@
+# The seam. Everything specific to this repository and this migration lives here.
+# The pipeline reads this file and nothing else about the target.
+name: superset-pandas3
+repo: charliebachg/superset
+upstream: apache/superset
+base_branch: dependabot/pip/pandas-3.0.5
+default_branch: master
+language: python
+
+trigger:
+  source: github
+  event: pull_request
+  match:
+    author: dependabot[bot]
+    head_ref_prefix: dependabot/pip/
+
+detector:
+  kind: pytest-warnings
+  python: .venv-p2/bin/python
+  env: {PYTHONHASHSEED: "0", SUPERSET_SECRET_KEY: not-a-secret}
+  args: [-c, pytest.ini, -p, no:cacheprovider, -q, --tb=long, -o, addopts=, -W, "error::FutureWarning"]
+  scope: [tests/common, tests/unit_tests]
+
+acceptance:
+  # {tests} is filled per ticket with the impacted test paths
+  command: ".venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= -W error::FutureWarning {tests}"
+
+router:
+  max_files_per_shard: 3
+  max_call_sites_per_shard: 6
+  forbidden_paths: [tests/, .github/, superset/migrations/, requirements/]
+  coverage_100_paths: [superset/sql/, superset/semantic_layers/]
+  human_only_classes: [chained-assignment]      # upstream: needs context-dependent review
+  test_only_rows_to: human                      # sessions never edit tests
+
+session:
+  max_acu_limit: 6
+  playbook: playbooks/repair-pandas3.md
+  tags_prefix: swe-loop
+  pr_title_prefix: "fix(pandas)"
+  version_range: ">=2.3.3, <3.1"                # the lower bound does not move

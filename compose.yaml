@@ -1,0 +1,12 @@
+services:
+  swe-loop:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      SWE_LOOP_MODE: ${SWE_LOOP_MODE:-replay}
+    volumes:
+      - ./data:/app/data
