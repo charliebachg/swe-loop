@@ -76,9 +76,10 @@ def home(store: Store) -> dict[str, Any]:
         if mn["reviews"]:
             reason += "; Devin Review " + ", ".join(mn["reviews"])
         if mn["notes"]:
-            reason += f"; read first: the session left {len(mn['notes'])} note(s): " + " | ".join(
-                f"{n['site']}: {n['reason'][:90]}" for n in mn["notes"][:2]
-            )
+            n_notes = len(mn["notes"])
+            reason += (
+                f"; read first: the session left {n_notes} note{'' if n_notes == 1 else 's'}: "
+            ) + " | ".join(f"{n['site']}: {n['reason'][:90]}" for n in mn["notes"][:2])
         needs.append(
             {
                 "kind": "ready to merge",

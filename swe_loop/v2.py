@@ -893,7 +893,9 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         if n["kind"] == "ready to merge":
             mn = reduce_mod.merge_notes(store, tid)
             what = " · ".join(mn["reviews"]) + (
-                f" · {len(mn['notes'])} note(s)" if mn["notes"] else ""
+                f" · {len(mn['notes'])} note{'' if len(mn['notes']) == 1 else 's'}"
+                if mn["notes"]
+                else ""
             )
         short_needs.append({**n, "what": what or n["reason"][:64], "hover": n["reason"]})
     rng = q.get("range", "run")
@@ -975,13 +977,15 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                 **dot(store, tid, False),
                 "kind": KIND_PLAIN["ready to merge"],
                 **pill("ok"),
-                "what": (
-                    " · ".join(mn["reviews"])
-                    .replace("comment(s)", "reviewer remarks")
-                    .replace("no issues", "reviewer found nothing")
-                    + (f" · {len(mn['notes'])} note(s)" if mn["notes"] else "")
+                "what": plain(
+                    " · ".join(mn["reviews"]).replace("no issues", "the reviewer found nothing")
+                    + (
+                        f" · {len(mn['notes'])} note{'' if len(mn['notes']) == 1 else 's'} for you"
+                        if mn["notes"]
+                        else ""
+                    )
                 )
-                or "gate passed, reviewed",
+                or "every check passed, and it was reviewed",
                 "hover": next(
                     (
                         x["reason"]
@@ -1749,7 +1753,9 @@ def tracker(
                 "said": (
                     f"{'done' if claim.get('self_reported_done') else 'not done'} · tests {claim.get('tests_passed', 0)}/{claim.get('tests_run', 0)}"
                     + (
-                        f" · {len(claim.get('needs_human') or [])} note(s) for a person"
+                        f" · {len(claim.get('needs_human') or [])} note(s) for a person".replace(
+                            "1 note(s)", "1 note"
+                        ).replace("note(s)", "notes")
                         if claim.get("needs_human")
                         else ""
                     )

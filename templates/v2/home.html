@@ -22,7 +22,7 @@
     <div style="display:flex;align-items:baseline;gap:10px;margin:0 0 8px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Needs you</span><span style="font-size:12px;color:#8f97a3">{{ inbox | length }}</span><span style="margin-left:auto;font:11px/18px 'JetBrains Mono',monospace;padding:0 7px;border-radius:4px;background:#fff3d6;color:#b8862a">your team</span></div>
     <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
       {% for n in inbox %}
-      <div style="display:grid;grid-template-columns:22px 108px 1fr 44px auto;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid #ecebe6" title="{{ n.hover }}">
+      <div style="display:grid;grid-template-columns:62px 118px 1fr 44px auto;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid #ecebe6" title="{{ n.hover }}">
         <a href="{{ n.go }}" style="height:20px;padding:0 6px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font:600 11px/1 'JetBrains Mono',monospace;white-space:nowrap;background:#fff;color:{{ n.color }};box-shadow:inset 0 0 0 1.5px {{ n.color }}" data-hover="text-decoration:none">{{ n.ref }}</a>
         <span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ n.bg }};color:{{ n.fg }};white-space:nowrap;justify-self:start;overflow:hidden;text-overflow:ellipsis;max-width:108px">{{ n.kind }}</span>
         <a href="{{ n.go }}" style="font-size:13px;color:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-hover="text-decoration:underline">{{ n.what }}</a>
@@ -42,9 +42,8 @@
     <div style="display:flex;align-items:baseline;gap:10px;margin:0 0 8px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Working now</span><span style="font-size:12px;color:#8f97a3">{{ inflight | length }}</span><span style="margin-left:auto;font:11px/18px 'JetBrains Mono',monospace;padding:0 7px;border-radius:4px;background:#f1eafa;color:#7a4fb5">AI engineer</span></div>
     <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
       {% for s in inflight %}
-      <a href="{{ s.go }}" style="display:grid;grid-template-columns:22px 64px 60px 56px 92px 1fr;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid #ecebe6;color:inherit;font-size:12.5px" data-hover="background:#faf9f6;text-decoration:none">
+      <a href="{{ s.go }}" style="display:grid;grid-template-columns:62px 74px 62px 96px 1fr;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid #ecebe6;color:inherit;font-size:12.5px" data-hover="background:#faf9f6;text-decoration:none">
         <span style="height:20px;padding:0 6px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font:600 11px/1 'JetBrains Mono',monospace;white-space:nowrap;background:#fff;color:{{ s.color }};box-shadow:inset 0 0 0 1.5px {{ s.color }}">{{ s.ref }}</span>
-        <span style="font:500 12px/1.4 'JetBrains Mono',monospace;color:{{ s.color }}">{{ s.ticket }}</span>
         <span style="font:11px/1.4 'JetBrains Mono',monospace;color:#7a4fb5">{{ s.stage }}</span>
         <span style="font:11px/1.4 'JetBrains Mono',monospace;color:#626b78">{{ s.elapsed }}</span>
         <span style="display:flex;align-items:center;gap:6px"><span style="width:36px;height:5px;background:#e9e7e1;border-radius:3px;overflow:hidden;flex:none"><span style="display:block;height:100%;width:{{ s.pct }}%;background:#7a4fb5"></span></span><span style="font:11px/1.4 'JetBrains Mono',monospace">{{ s.acu }}{% if s.cap %}<span style="color:#8f97a3">/{{ s.cap }}</span>{% endif %}</span></span>
@@ -60,7 +59,7 @@
 {# ---- the loop: eight numbers and where every ticket is #}
 <div style="display:flex;align-items:baseline;gap:12px;margin:0 0 8px">
   <span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Where each issue is</span><span style="font-size:12px;color:#8f97a3">{{ ticketWord }}</span>
-  <a href="{{ goTracker }}" style="margin-left:auto;font-size:12.5px">Tracker →</a>
+  <a href="{{ goTracker }}" style="margin-left:auto;font-size:12.5px">every ticket →</a>
 </div>
 <div style="background:#fff;border:1px solid #e2dfd8;border-radius:12px;padding:0 6px 12px;display:grid;grid-template-columns:repeat(5,1fr);margin-bottom:20px">
   {% for st in loop %}
