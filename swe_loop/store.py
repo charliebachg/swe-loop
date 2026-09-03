@@ -795,8 +795,13 @@ class Store:
 
 
 # ---------------------------------------------------------------------- seeding from the inventory
-def load_tickets(store: Store, tickets_json: Path | str, source: str = "inventory") -> list[str]:
-    """Seed tickets and work orders from data/inventory/<date>/tickets.json (the B5 drafts + numbers)."""
+def load_tickets(
+    store: Store, tickets_json: Path | str, source: str = "inventory", *, triaged: bool = True
+) -> list[str]:
+    """Seed tickets from data/inventory/<date>/tickets.json (the drafts + issue numbers).
+
+    triaged=True writes the inventory's verdict and work orders (replay). triaged=False writes the
+    tickets as `new` with no verdict and no work order: the triage session decides (live)."""
     d = json.loads(Path(tickets_json).read_text())
     repo = d.get("repo", "")
     numbers = d.get("numbers", {})
@@ -815,6 +820,18 @@ def load_tickets(store: Store, tickets_json: Path | str, source: str = "inventor
             "review": sh.get("review"),
             "sites": sh["sites"],
         }
+        if not triaged:
+            store.upsert_ticket(
+                id=tid,
+                source=source,
+                title=sh["title"],
+                status="new",
+                external_ref=ext,
+                parent_ref=parent_ref,
+                cls=",".join(classes),
+            )
+            ids.append(tid)
+            continue
         store.upsert_ticket(
             id=tid,
             source=source,

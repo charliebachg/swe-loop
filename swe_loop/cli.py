@@ -52,8 +52,35 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 def cmd_seed(args: argparse.Namespace) -> int:
     settings, cfg, store, _ = _ctx()
+    if settings.live or args.as_new:
+        # live: the tickets enter as new and a triage session decides; nothing is synthesised
+        if store._one("SELECT COUNT(*) AS n FROM tickets")["n"]:
+            print(json.dumps({"seeded": False, "reason": "store not empty"}))
+            return 0
+        from swe_loop.store import load_tickets
+
+        ids = load_tickets(store, INVENTORY / "tickets.json", triaged=False)
+        store.log(
+            "L0 intake",
+            f"{len(ids)} ticket(s) loaded as new",
+            detail=str(INVENTORY / "tickets.json"),
+        )
+        print(json.dumps({"seeded": True, "recorded": False, "as_new": True, "tickets": ids}))
+        return 0
     out = seed(store, cfg, tickets_json=INVENTORY / "tickets.json", replay_dir=settings.replay_dir)
     print(json.dumps(out))
+    return 0
+
+
+def cmd_budget(args: argparse.Namespace) -> int:
+    _, cfg, store, _ = _ctx()
+    per = args.per_session if args.per_session is not None else cfg.max_acu_limit
+    if args.cap <= 0 or per <= 0:
+        print("refusing: caps must be positive", file=sys.stderr)
+        return 2
+    store.set_budget(acu_cap=args.cap, per_session_cap=per)
+    store.log("budget", f"cap {args.cap:g} ACU, {per:g} per session")
+    print(json.dumps(store.budget_state()))
     return 0
 
 
@@ -191,7 +218,7 @@ def cmd_triage(args: argparse.Namespace) -> int:
     settings, cfg, store, client = _ctx()
     if not settings.live:
         print("mode=replay: the triage session is faked", file=sys.stderr)
-    inv = str(INVENTORY / "inventory.json") if (INVENTORY / "inventory.json").exists() else None
+    inv = cfg.triage.get("inventory_url") or None
     results = triage_all(
         store, client, cfg, ticket_id=args.ticket, inventory_path=inv, playbook_id=args.playbook_id
     )
@@ -238,7 +265,17 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--host", default="0.0.0.0")
     s.add_argument("--port", type=int, default=8000)
     s.set_defaults(fn=cmd_serve)
-    sub.add_parser("seed").set_defaults(fn=cmd_seed)
+    sd = sub.add_parser("seed")
+    sd.add_argument(
+        "--as-new", action="store_true", help="tickets as new, no verdicts (always so in live mode)"
+    )
+    sd.set_defaults(fn=cmd_seed)
+    bg = sub.add_parser("budget")
+    bg.add_argument("--cap", type=float, required=True, help="ACU cap for the whole run")
+    bg.add_argument(
+        "--per-session", type=float, default=None, help="ACU cap per session; default from the seam"
+    )
+    bg.set_defaults(fn=cmd_budget)
     r = sub.add_parser("record")
     r.add_argument("path")
     r.set_defaults(fn=cmd_record)

@@ -62,6 +62,7 @@ class TargetConfig:
     router: dict[str, Any] = field(default_factory=dict)
     session: dict[str, Any] = field(default_factory=dict)
     gate: dict[str, Any] = field(default_factory=dict)
+    triage: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path | str) -> TargetConfig:

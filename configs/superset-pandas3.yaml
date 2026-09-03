@@ -46,3 +46,7 @@ gate:
   repo_root: ../superset-fork              # the local clone whose .venv-p2 / .venv-p3 run the acceptance commands
   evidence_dir: data/live/evidence
   timeout_s: 1800
+
+triage:
+  # what the triage session reads besides the ticket: the measured inventory, published with this repository
+  inventory_url: https://raw.githubusercontent.com/charliebachg/swe-loop/main/data/inventory/2026-09-03/inventory.json
