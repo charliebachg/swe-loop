@@ -101,4 +101,4 @@ def test_home_lists_the_mergers_notes(tmp_path, monkeypatch):
         "Devin Review PR #7: 3 comment(s)" in html
         and "boxplot.py:138: root cause outside the shard" in html
     )
-    assert "after reading the notes" in html
+    assert "read first: the session left 1 note(s)" in html

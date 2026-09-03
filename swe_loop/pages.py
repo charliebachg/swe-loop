@@ -76,9 +76,8 @@ def home(store: Store) -> dict[str, Any]:
         if mn["reviews"]:
             reason += "; Devin Review " + ", ".join(mn["reviews"])
         if mn["notes"]:
-            reason += (
-                f"; the session left {len(mn['notes'])} note(s) for the merger: "
-                + " | ".join(f"{n['site']}: {n['reason'][:90]}" for n in mn["notes"][:2])
+            reason += f"; read first: the session left {len(mn['notes'])} note(s): " + " | ".join(
+                f"{n['site']}: {n['reason'][:90]}" for n in mn["notes"][:2]
             )
         needs.append(
             {
@@ -87,9 +86,7 @@ def home(store: Store) -> dict[str, Any]:
                 "reason": reason,
                 "since": "",
                 "link": f"/tracker#{tid}",
-                "action": "a person merges, after reading the notes"
-                if mn["notes"] or any("comment" in r for r in mn["reviews"])
-                else "a person merges",
+                "action": "a person merges",
             }
         )
     recent = [{**e, "link": _owner_link(e)} for e in reversed(store.timeline(limit=25))]

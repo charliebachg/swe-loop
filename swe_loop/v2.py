@@ -190,6 +190,24 @@ def _pct(x: Any, cap: Any) -> str:
         return "0"
 
 
+def _short_status(status: str | None, detail: str | None, delivered: bool) -> str:
+    """One word for the pill: what the session is doing, not the raw pair."""
+    d = detail or ""
+    if status == "exit" and d == "finished":
+        return "finished"
+    if d == "waiting_for_user":
+        return "delivered" if delivered else "asking"
+    if d == "waiting_for_approval":
+        return "needs approval"
+    if d == "usage_limit_exceeded":
+        return "too large"
+    if d in ("terminated", "error", "inactivity", "out_of_credits"):
+        return d
+    if status in ("running", "claimed"):
+        return "working"
+    return status or "reserved"
+
+
 def _status_kind(status: str | None, detail: str | None, terminal: bool) -> str:
     d = detail or ""
     if status == "exit" and d == "finished":
@@ -881,7 +899,10 @@ def tracker(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any
 def _review_short(sev: str) -> str:
     if sev.startswith("completed:"):
         rest = sev.split(":", 1)[1]
-        return "no issues" if "no issues" in rest else rest[:14]
+        if "no issues" in rest:
+            return "no issues"
+        n = rest.split(" ")[0]
+        return f"{n} found" if n.isdigit() else "done"
     return "requested"
 
 
@@ -903,12 +924,14 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
                 "id": (s.get("devin_id") or s["id"])[:12],
                 "url": s.get("url") or "#",
                 "tk": s["ticket"],
-                "L": "triage" if is_triage else s["shard"],
+                "shard": "triage" if is_triage else s["shard"],
                 "track": url("/tracker", open=s["ticket"]),
                 "source": s.get("source") or "",
-                "status": f"{s['status']}/{s['status_detail']}"
-                if s.get("status_detail")
-                else s["status"],
+                "status": _short_status(
+                    s["status"],
+                    s.get("status_detail"),
+                    bool(s.get("pr_url")) or bool(s.get("outcome")),
+                ),
                 "stBg": PL[st_kind][1],
                 "stFg": PL[st_kind][0],
                 "acu": _fmt_acu(s.get("acus")),
