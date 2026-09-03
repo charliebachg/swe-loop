@@ -3,7 +3,7 @@
 name: superset-pandas3
 repo: charliebachg/superset
 upstream: apache/superset
-base_branch: dependabot/pip/pandas-3.0.5
+base_branch: master                       # where the breakage was measured; the bot's branch is 762 commits stale (see the first triage verdict)
 default_branch: master
 language: python
 

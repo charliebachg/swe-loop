@@ -256,21 +256,31 @@ def cmd_apply_config(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    made = {}
+    existing_pb = {p.get("title", ""): p.get("playbook_id") for p in client.t.list_playbooks()}
+    existing_kn = {n.get("name", ""): n.get("note_id") for n in client.t.list_knowledge_notes()}
+    made: dict[str, Any] = {}
+    skipped: dict[str, Any] = {}
     for name, schema in (
         ("triage-pandas3", "triage_verdict.schema.json"),
         ("repair-pandas3", "repair_result.schema.json"),
     ):
         pb = load_playbook(ROOT / "playbooks" / f"{name}.md", ROOT / "schemas" / schema)
-        made[name] = client.t.create_playbook(pb.to_payload()).get("playbook_id")
+        if pb.name in existing_pb:
+            skipped[name] = existing_pb[pb.name]
+            pid = existing_pb[pb.name]
+        else:
+            pid = client.t.create_playbook(pb.to_payload()).get("playbook_id")
+            made[name] = pid
+        if pid:
+            store.set_setting(f"playbook_id.{name}", pid)
     for note in load_notes():
+        if note.name in existing_kn:
+            skipped[note.name] = existing_kn[note.name]
+            continue
         made[note.name] = client.t.create_knowledge_note(note.to_payload(pinned_repo=cfg.repo)).get(
             "note_id"
         )
-    for name in ("triage-pandas3", "repair-pandas3"):
-        if made.get(name):
-            store.set_setting(f"playbook_id.{name}", made[name])
-    print(json.dumps(made, indent=1))
+    print(json.dumps({"created": made, "already_on_the_org": skipped}, indent=1))
     return 0
 
 

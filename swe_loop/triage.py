@@ -292,6 +292,12 @@ def run_triage(
         store.set_ticket_status(ticket_id, "escalated")
         return {"ticket_id": ticket_id, "kind": "invalid", "session": tid, "detail": str(ex)[:300]}
     store.update_triage_session(tid, terminal_at=now(), outcome="triaged", verdict=out)
+    store.conn.execute(
+        "UPDATE escalations SET resolved_at=? WHERE ticket_id=? AND resolved_at IS NULL "
+        "AND kind IN ('waiting_for_user', 'review_blocked') AND session_id IS NULL",
+        (now(), ticket_id),
+    )
+    store.conn.commit()
     store.log(
         "L1 triage",
         "verdict accepted",
