@@ -137,7 +137,7 @@ def test_ops_page_lists_sessions_and_the_feed(tmp_path, monkeypatch):
     app = build_app(Settings.from_env(), st, seed_replay=False)
     with TestClient(app) as c:
         html = c.get("/board").text
-        assert "Devin sessions" in html and "Live feed" in html and "fake-001" in html
+        assert "Devin sessions" in html and "Live feed" in html and "fake-" in html
         assert "1. The answer" in c.get("/report").text
         sid = o["sessions"][0]["id"]
         det = c.get(f"/sessions/{sid}").json()

@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import random
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -263,6 +264,7 @@ class FakeTransport:
         self._fixtures: list[dict[str, Any]] = []
         self._sessions: dict[str, dict[str, Any]] = {}
         self._counter = 0
+        self._prefix = f"fake-{uuid.uuid4().hex[:4]}"  # distinct per instance: ids never collide across seeds and runs
         self.fail_terminate: set[str] = set()  # tests: session ids whose terminate raises
         if self.replay_dir and (self.replay_dir / "sessions").is_dir():
             for f in sorted((self.replay_dir / "sessions").glob("*.json")):
@@ -280,7 +282,7 @@ class FakeTransport:
 
     def _synth(self, payload: dict[str, Any]) -> dict[str, Any]:
         self._counter += 1
-        sid = f"fake-{self._counter:03d}"
+        sid = f"{self._prefix}-{self._counter:03d}"
         repo = (payload.get("repos") or ["owner/repo"])[0]
         tags = payload.get("tags", [])
         shard = next((t.split(":", 1)[1] for t in tags if t.startswith("shard:")), "X")

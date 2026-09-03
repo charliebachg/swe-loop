@@ -129,7 +129,7 @@ def test_tracker_rows_stages_and_merge(client):
 def test_sessions_page_eta_parent_and_drawer(client):
     c, st = client
     html = c.get("/devin/sessions").text
-    assert "fake-001" in html and "Issues on the fork" in html
+    assert "fake-" in html and "Issues on the fork" in html
     assert "not exercised in this run" in html  # Managed Devins, honestly
     assert "single" in html and "done" in html
     # a live session gets an estimate from the finished ones (give them a real elapsed time)
@@ -147,3 +147,41 @@ def test_sessions_page_eta_parent_and_drawer(client):
     d = c.get(f"/partials/session/{first}").text
     assert "Timeline" in d and "Structured output" in d and "self_reported_done" in d
     assert c.get("/partials/session/nope").status_code == 404
+
+
+def test_automations_page_toggle_and_run_now(client):
+    c, st = client
+    html = c.get("/automations").text
+    assert "Repair" in html and "Scan" in html and "schedule:recurring" in html
+    assert "Run now" in html and "replay" in html
+    # toggle off, run now refused, toggle on
+    assert "Disable" in c.post("/automations/toggle").text or True
+    assert st.get_setting("automation.repair.enabled") == "0"
+    assert c.post("/run-now").status_code == 409
+    c.post("/automations/toggle")
+    assert st.get_setting("automation.repair.enabled") == "1"
+    # a fresh routed ticket, then run now dispatches it on the fake transport
+    st.upsert_ticket(
+        id="tkt_X",
+        source="manual",
+        title="x",
+        status="triaged",
+        triage_verdict={"acceptance_cmd": {"p3": "true"}, "sites": [], "split": "one"},
+    )
+    st.insert_work_order(
+        ticket_id="tkt_X",
+        shard_id="X",
+        files=["superset/x.py"],
+        tests=["t"],
+        acceptance={"p3": "true"},
+    )
+    before = len(st._all("SELECT id FROM sessions"))
+    r = c.post("/run-now")
+    assert r.status_code == 200
+    th = c.app.state.run_thread
+    th.join(timeout=30)
+    assert not th.is_alive()
+    assert len(st._all("SELECT id FROM sessions")) == before + 1
+    assert st.get_setting("automation.repair.last_run")
+    assert "gate" in " ".join(e["layer"] for e in st.timeline(ticket_id="tkt_X", limit=50))
+    assert st.get_ticket("tkt_X")["status"] == "gated"

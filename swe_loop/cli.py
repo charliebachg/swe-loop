@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 from swe_loop.config import Settings, TargetConfig
@@ -25,7 +26,7 @@ from swe_loop.poll import Poller
 from swe_loop.reduce import detect_conflicts, summary
 from swe_loop.replay import record, seed
 from swe_loop.router import route_all
-from swe_loop.store import Store
+from swe_loop.store import Store, now
 
 ROOT = Path(__file__).resolve().parents[1]
 INVENTORY = ROOT / "data" / "inventory" / "2026-09-03"
@@ -59,20 +60,26 @@ def cmd_record(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_run(args: argparse.Namespace) -> int:
-    settings, cfg, store, client = _ctx()
-    if not settings.live:
-        print(
-            "mode=replay: sessions are faked; the gate runs only if the target clone exists",
-            file=sys.stderr,
-        )
-    poller = Poller(store, client, cfg)
+def run_once(
+    settings: Settings,
+    cfg: TargetConfig,
+    store: Store,
+    client: DevinClient,
+    *,
+    playbook_id: str | None = None,
+    log=print,
+) -> dict:
+    """One pass: route → dispatch → poll → gate → reduce over the routed tickets. Shared by the
+    CLI and the Run now button. In replay the poller does not sleep for real."""
+    fast = client.is_fake
+    poller = Poller(
+        store, client, cfg, sleep=(lambda s: time.sleep(min(s, 0.05))) if fast else time.sleep
+    )
     decisions = route_all(store, cfg)
-    print(f"routed {len(decisions)} ticket(s)")
-    playbook_id = args.playbook_id
+    log(f"routed {len(decisions)} ticket(s)")
     gate = None
-    repo_root = ROOT / cfg.gate.get("repo_root", "../superset-fork")
-    if repo_root.exists():
+    repo_root = (ROOT / cfg.gate.get("repo_root", "../superset-fork")).resolve()
+    if repo_root.exists() and not fast:
         gate = Gate(
             store,
             cfg,
@@ -80,6 +87,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             evidence_dir=ROOT / cfg.gate.get("evidence_dir", "data/live/evidence"),
             timeout=int(cfg.gate.get("timeout_s", 1800)),
         )
+    out = {"dispatched": 0, "finished": 0, "gated": 0, "escalated": 0}
     for t in (
         store.list_tickets("routed")
         + store.list_tickets("dispatched")
@@ -90,15 +98,42 @@ def cmd_run(args: argparse.Namespace) -> int:
                 continue
             review = "required" if "review required" in (t["router_reason"] or "") else "normal"
             sid = dispatch(store, client, wo, cfg, review=review, playbook_id=playbook_id)
-            out = poller.wait(sid)
-            print(f"{t['id']} shard {wo['shard_id']}: {out.kind} {out.detail}")
-            if out.kind == "finished" and gate:
-                res = gate.run_gate(sid)
-                did = apply_result(res, store, client, poller)
-                print(f"  gate {res.gate_result}: {'; '.join(res.reasons)[:120]} -> {did}")
+            out["dispatched"] += 1
+            res = poller.wait(sid)
+            log(f"{t['id']} shard {wo['shard_id']}: {res.kind} {res.detail}")
+            if res.kind == "finished":
+                out["finished"] += 1
+                if gate:
+                    g = gate.run_gate(sid)
+                    did = apply_result(g, store, client, poller)
+                    out["gated"] += 1
+                    log(f"  gate {g.gate_result}: {'; '.join(g.reasons)[:120]} -> {did}")
+                else:
+                    store.log(
+                        "L5 gate",
+                        "skipped",
+                        ticket_id=t["id"],
+                        session_id=sid,
+                        detail="replay: a fake session has no real PR to check out",
+                    )
+            elif res.kind not in ("running",):
+                out["escalated"] += 1
             poller.enforce_budget()
     detect_conflicts(store)
-    print(json.dumps(summary(store)))
+    store.set_setting("automation.repair.last_run", now())
+    store.set_setting("automation.repair.last_result", json.dumps(out))
+    log(json.dumps(summary(store)))
+    return out
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    settings, cfg, store, client = _ctx()
+    if not settings.live:
+        print(
+            "mode=replay: sessions are faked; the gate is skipped",
+            file=sys.stderr,
+        )
+    run_once(settings, cfg, store, client, playbook_id=args.playbook_id)
     return 0
 
 

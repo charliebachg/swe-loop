@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 
 from swe_loop import connect, ops, pages, replay, report
 from swe_loop import reduce as reduce_mod
+from swe_loop.cli import run_once
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.devin import DevinClient
 from swe_loop.intake import NormalizedEvent, normalize, ticket_id_for, verify_github_signature
@@ -36,6 +38,8 @@ def build_app(
         app.state.cfg = cfg
         app.state.store = store or Store(settings.db_path)
         app.state.client = DevinClient.from_settings(settings)
+        app.state.run_lock = threading.Lock()
+        app.state.run_thread = None
         if not settings.live and seed_replay:
             replay.seed(
                 app.state.store,
@@ -184,6 +188,54 @@ def build_app(
         if not d:
             raise HTTPException(status_code=404)
         return TEMPLATES.TemplateResponse(request, "session_drawer.html", {"d": d})
+
+    def _auto_ctx(request: Request) -> dict[str, Any]:
+        st: Store = request.app.state.store
+        running = request.app.state.run_lock.locked()
+        return {"a": pages.automations(st, cfg, settings, request.app.state.client, running)}
+
+    @app.get("/automations", response_class=HTMLResponse)
+    def automations_page(request: Request) -> HTMLResponse:
+        return _render(request, "automations.html", "automations", **_auto_ctx(request))
+
+    @app.get("/partials/automations", response_class=HTMLResponse)
+    def automations_partial(request: Request) -> HTMLResponse:
+        return TEMPLATES.TemplateResponse(request, "automations_body.html", _auto_ctx(request))
+
+    @app.post("/automations/toggle", response_class=HTMLResponse)
+    def automations_toggle(request: Request) -> HTMLResponse:
+        st: Store = request.app.state.store
+        cur = st.get_setting("automation.repair.enabled", "1") == "1"
+        st.set_setting("automation.repair.enabled", "0" if cur else "1")
+        st.log("automation", "repair " + ("disabled" if cur else "enabled"))
+        return TEMPLATES.TemplateResponse(request, "automations_body.html", _auto_ctx(request))
+
+    @app.post("/run-now", response_class=HTMLResponse)
+    def run_now(request: Request) -> HTMLResponse:
+        st: Store = request.app.state.store
+        lock: threading.Lock = request.app.state.run_lock
+        if st.get_setting("automation.repair.enabled", "1") != "1":
+            raise HTTPException(status_code=409, detail="the repair automation is disabled")
+        if not lock.acquire(blocking=False):
+            raise HTTPException(status_code=409, detail="a pass is already running")
+        client = request.app.state.client
+        st.log("automation", "run now", detail="one pass: route, dispatch, poll, gate, reduce")
+
+        def _go() -> None:
+            try:
+                run_once(settings, cfg, st, client, log=lambda m: None)
+            except Exception as ex:  # noqa: BLE001 - surfaced on the page, never silent
+                st.log("automation", "run failed", detail=f"{type(ex).__name__}: {ex}"[:300])
+                st.set_setting(
+                    "automation.repair.last_result", f'{{"error": "{type(ex).__name__}"}}'
+                )
+            finally:
+                lock.release()
+
+        th = threading.Thread(target=_go, name="swe-loop-run", daemon=True)
+        request.app.state.run_thread = th
+        th.start()
+        return TEMPLATES.TemplateResponse(request, "automations_body.html", _auto_ctx(request))
 
     @app.get("/board", response_class=HTMLResponse)
     def board_page(request: Request) -> HTMLResponse:

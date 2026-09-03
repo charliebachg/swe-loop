@@ -1,0 +1,6 @@
+{% extends "shell.html" %}
+{% block title %}Automations{% endblock %}
+{% block content %}
+<p class="lede">How work enters and what runs on it. Two automations: <b>Repair</b> reads the tickets and runs the loop; <b>Scan</b> will find the work itself on a schedule. Both are Devin Automations by trigger; the loop between trigger and merge is ours.</p>
+<div id="auto-live" hx-get="/partials/automations" hx-trigger="every 5s" hx-swap="innerHTML">{% include "automations_body.html" %}</div>
+{% endblock %}

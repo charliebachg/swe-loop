@@ -431,3 +431,65 @@ def sessions(store: Store, cfg: TargetConfig) -> dict[str, Any]:
         "managed": managed,
         "eta_basis": {k: _fmt(median(v)) for k, v in by_size.items()},
     }
+
+
+# ---------------------------------------------------------------------------- automations
+VERIFIED_SOURCES = [
+    ("github", "issues · pull_request · check_run · push · issue_comment · pull_request_review"),
+    ("schedule", "recurring"),
+    ("slack", "message · reaction_added"),
+    ("webhook", "incoming"),
+    ("snapshot_build", "completed"),
+    ("linear · jira · pylon · incident_io · gitlab", "issue and pipeline events"),
+]
+
+
+def automations(
+    store: Store, cfg: TargetConfig, settings: Settings, client: DevinClient | None, running: bool
+) -> dict[str, Any]:
+    from swe_loop.intake import ADAPTERS
+
+    native = None
+    playbooks_on_org: list[dict[str, Any]] = []
+    if client is not None and not client.is_fake:
+        try:
+            for a in client.t.list_automations():
+                if cfg.name in json.dumps(a) or "swe-loop" in json.dumps(a):
+                    native = a
+                    break
+            playbooks_on_org = client.t.list_playbooks()
+        except Exception:  # noqa: BLE001 - listing is informational
+            native = None
+    last_result = store.get_setting("automation.repair.last_result")
+    return {
+        "repair": {
+            "enabled": store.get_setting("automation.repair.enabled", "1") == "1",
+            "trigger": cfg.trigger,
+            "native": native,
+            "native_note": (
+                "native Devin Automation on the org"
+                if native
+                else (
+                    "no native automation found on the org yet; the GitHub webhook posts to /intake/github"
+                    if settings.live
+                    else "replay: the GitHub webhook posts to /intake/github; the native Automation is created on the org in live mode"
+                )
+            ),
+            "last_run": store.get_setting("automation.repair.last_run"),
+            "last_result": json.loads(last_result) if last_result else None,
+            "running": running,
+            "playbook": cfg.session.get("playbook"),
+            "playbooks_on_org": [p.get("name") for p in playbooks_on_org][:5],
+            "cap": cfg.max_acu_limit,
+            "routed": len(store.list_tickets("routed")),
+        },
+        "scan": {
+            "schedule": "every weekday at 06:00",
+            "target": cfg.repo,
+            "playbook": "triage, investigative mode",
+            "produces": "tickets in the Scan group, each with sites and acceptance commands",
+        },
+        "adapters": [(src, [a.kind for a in ads]) for src, ads in ADAPTERS.items()],
+        "sources": VERIFIED_SOURCES,
+        "live": settings.live,
+    }

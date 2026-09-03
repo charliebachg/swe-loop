@@ -1,0 +1,35 @@
+<div class="two">
+  <div class="card">
+    <h3>Repair <span class="who code">v0 · runs today</span></h3>
+    <table>
+      <tr><th>state</th><td>{% if a.repair.running %}<span class="pill p-run">a pass is running</span>{% elif a.repair.enabled %}<span class="pill p-ok">enabled</span>{% else %}<span class="pill p-na">disabled</span>{% endif %}
+        <form style="display:inline" hx-post="/automations/toggle" hx-target="#auto-live" hx-swap="innerHTML"><button class="btn" type="submit" style="margin-left:8px">{{ 'Disable' if a.repair.enabled else 'Enable' }}</button></form></td></tr>
+      <tr><th>trigger</th><td class="mono">{{ a.repair.trigger.source }}:{{ a.repair.trigger.event }} · actions {{ a.repair.trigger.actions | join(', ') }}<br>match {{ a.repair.trigger.match }}<br>issue label <b>{{ a.repair.trigger.issue_label }}</b></td></tr>
+      <tr><th>Devin Automation</th><td>{{ a.repair.native_note }}{% if a.repair.native %}<pre class="code">{{ a.repair.native | tojson(indent=1) }}</pre>{% endif %}</td></tr>
+      <tr><th>what a pass does</th><td>route every triaged ticket by the seam's policy → dispatch one Devin session per shard under the playbook, the Knowledge notes and a cap of {{ a.repair.cap }} ACU → poll and manage → the gate re-runs the acceptance commands on a clean checkout → Devin Review on a pass → a person merges</td></tr>
+      <tr><th>playbook</th><td class="mono">{{ a.repair.playbook }}{% if a.repair.playbooks_on_org %} · on the org: {{ a.repair.playbooks_on_org | join(', ') }}{% endif %} · <a href="/devin/playbooks">playbooks</a></td></tr>
+      <tr><th>last run</th><td class="mono">{{ a.repair.last_run or "never" }}{% if a.repair.last_result %} · dispatched {{ a.repair.last_result.dispatched }} · finished {{ a.repair.last_result.finished }} · gated {{ a.repair.last_result.gated }} · escalated {{ a.repair.last_result.escalated }}{% endif %}</td></tr>
+      <tr><th>run now</th><td>
+        <form style="display:inline" hx-post="/run-now" hx-target="#auto-live" hx-swap="innerHTML"><button class="btn primary" type="submit" {% if a.repair.running or not a.repair.enabled %}disabled{% endif %}>Run now</button></form>
+        <span class="foot" style="margin-left:8px">{{ a.repair.routed }} ticket(s) routed and waiting{% if not a.live %} · replay: sessions are faked and the gate is skipped{% endif %}</span></td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h3>Scan <span class="who next">v1 · next</span></h3>
+    <table style="opacity:.75">
+      <tr><th>trigger</th><td class="mono">schedule:recurring · {{ a.scan.schedule }} <span class="pill p-na">native Devin Automation</span></td></tr>
+      <tr><th>target</th><td class="mono">{{ a.scan.target }}</td></tr>
+      <tr><th>session</th><td>{{ a.scan.playbook }}: point a session at the repository, it reads the code and the test output, and files tickets with sites and acceptance commands</td></tr>
+      <tr><th>produces</th><td>{{ a.scan.produces }} · <a href="/tickets-page">tickets</a></td></tr>
+      <tr><th>start</th><td><button class="btn" disabled>Start</button> <span class="foot">next</span></td></tr>
+    </table>
+  </div>
+</div>
+<div class="two">
+  <div class="card"><h3>Intake adapters <span class="who code">/intake/{source}</span></h3>
+    <table>{% for src, kinds in a.adapters %}<tr><th class="mono">{{ src }}</th><td class="mono">{{ kinds | join(' · ') }}</td></tr>{% endfor %}</table>
+    <p class="foot">Any event becomes one work order. A new source is a new adapter, nothing else changes.</p></div>
+  <div class="card"><h3>Trigger sources on this org <span class="who code">verified with GET /automations/schemas</span></h3>
+    <table>{% for src, kinds in a.sources %}<tr><th class="mono">{{ src }}</th><td class="mono">{{ kinds }}</td></tr>{% endfor %}</table>
+    <p class="foot">Slack, Gmail-style webhooks, Linear and Jira are the same shape: an adapter on intake. Next.</p></div>
+</div>
