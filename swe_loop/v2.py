@@ -595,6 +595,11 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
             )
         short_needs.append({**n, "what": what or n["reason"][:64], "hover": n["reason"]})
     spark = _sparklines(store)
+    issue_no = {
+        t["id"]: ("#" + t["external_ref"].rsplit("#", 1)[-1])
+        for t in tickets
+        if t.get("external_ref") and "#" in t["external_ref"]
+    }
     # sessions that finished without a person typing anything into them
     tri = store.list_triage_sessions()
     tl = store.timeline(limit=2000)
@@ -756,7 +761,14 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         "five": five,
         "shortNeeds": short_needs,
         "spark": spark,
-        "recent8": [{**e, "plain": LAYER_PLAIN.get(e["layer"], e["layer"])} for e in events[:8]],
+        "recent8": [
+            {
+                **e,
+                "plain": LAYER_PLAIN.get(e["layer"], e["layer"]),
+                "ref": issue_no.get(e["ref"], e["ref"]),
+            }
+            for e in events[:8]
+        ],
         "now": _now(counts),
         "ticketWord": f"{len(tickets)} issues, left to right from received to shipped"
         if len(tickets) != 1
@@ -767,9 +779,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         "groups": groups,
         "raw": raw_mode,
         "grouped": not raw_mode,
-        "countLabel": f"{len(events)} events"
-        if raw_mode
-        else f"{len(events)} events in {len(groups)} rows",
+        "countLabel": f"last {min(8, len(events))} of {len(events)} events",
         "setGrouped": url("/", tl="grouped"),
         "setRaw": url("/", tl="raw"),
         "gBg": off[0] if raw_mode else on[0],
