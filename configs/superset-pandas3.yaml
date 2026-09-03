@@ -10,9 +10,11 @@ language: python
 trigger:
   source: github
   event: pull_request
+  actions: [opened, synchronize, reopened]
   match:
     author: dependabot[bot]
     head_ref_prefix: dependabot/pip/
+  issue_label: swe-loop            # tickets on the fork carrying this label enter the store
 
 detector:
   kind: pytest-warnings
