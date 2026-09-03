@@ -138,6 +138,6 @@ def test_review_required_on_a_shard_is_lifted_for_the_router(tmp_path):
     v.pop("review", None)
     apply_verdict(st, "tkt_pu42671", v)
     cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
-    d = route_all(st, cfg)
+    d = route_all(st, cfg)["tkt_pu42671"]
     assert d and d[0].review == "required"
     assert "review required" in st.get_ticket("tkt_pu42671")["router_reason"]

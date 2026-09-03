@@ -61,7 +61,7 @@ def test_result_schema_validates_a_good_report_and_rejects_padding():
 
 def test_knowledge_notes_have_triggers_and_cover_the_conventions():
     notes = load_notes()
-    assert len(notes) == 6
+    assert len(notes) == 7  # six conventions plus the test-environment recipe
     assert all(n.trigger_description and n.body for n in notes)
     names = " ".join(n.name.lower() for n in notes)
     for word in ("ruff", "oxlint", "uv", "conventional", "license", "pandas 3"):

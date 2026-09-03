@@ -89,6 +89,8 @@ def decide(shard: dict[str, Any], cfg: TargetConfig, verdict: dict[str, Any] | N
     reason = f"{len(files)} file(s), {shard.get('site_count', len(files))} site(s), acceptance command present"
     if silent:
         reason += f"; {len(silent)} site(s) warned but did not break: silent behaviour change, review required"
+    if review == "required" and "review required" not in reason:
+        reason += "; review required per the triage verdict"
     return Decision("devin", reason, review=review, shard=shard)
 
 
