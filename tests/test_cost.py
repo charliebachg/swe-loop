@@ -97,6 +97,6 @@ def test_credits_calibrate_minutes_into_dollars(tmp_path, monkeypatch):
             == 400
         )
         home = c.get("/").text
-        assert "AI working time" in home and "est. $" in home
+        assert "AI cost" in home and "$" in home and "est." in home  # estimated from the observed rate
         report = c.get("/report").text
         assert "AI working time per verified change" in report

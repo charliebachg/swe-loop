@@ -66,13 +66,13 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at TEXT NOT NULL, terminal_at TEXT, status TEXT, status_detail TEXT,
   acus_consumed REAL, session_size TEXT, structured_output_json TEXT,
   self_reported_done INTEGER, pull_request_url TEXT, parent_session_id TEXT, attempt INTEGER NOT NULL DEFAULT 1,
-  retries INTEGER NOT NULL DEFAULT 0, rejected_output_digest TEXT
+  retries INTEGER NOT NULL DEFAULT 0, rejected_output_digest TEXT, cost_usd REAL
 );
 CREATE TABLE IF NOT EXISTS triage_sessions (
   id TEXT PRIMARY KEY, ticket_id TEXT NOT NULL REFERENCES tickets(id),
   devin_session_id TEXT UNIQUE, url TEXT, playbook_id TEXT, tags_json TEXT,
   created_at TEXT NOT NULL, terminal_at TEXT, status TEXT, status_detail TEXT,
-  acus_consumed REAL, verdict_json TEXT, outcome TEXT
+  acus_consumed REAL, verdict_json TEXT, outcome TEXT, cost_usd REAL
 );
 CREATE TABLE IF NOT EXISTS evidence (
   id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id),
@@ -144,6 +144,11 @@ class Store:
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(SCHEMA)
+        for table in ("sessions", "triage_sessions"):
+            cols = {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            if "cost_usd" not in cols:
+                self.conn.execute(f"ALTER TABLE {table} ADD COLUMN cost_usd REAL")
+        self.conn.commit()
 
     # ------------------------------------------------------------------ helpers
     @contextmanager
@@ -482,6 +487,26 @@ class Store:
         cols = ", ".join(f"{k}=?" for k in fields)
         self.conn.execute(f"UPDATE triage_sessions SET {cols} WHERE id=?", (*fields.values(), tid))
         self.conn.commit()
+
+    def set_session_cost(self, devin_session_id: str, usd: float) -> str | None:
+        """The console's dollar figure for one session, entered by a person. Matches a repair or a
+        triage session by its Devin id or an unambiguous prefix. Returns the table updated."""
+        for table in ("sessions", "triage_sessions"):
+            rows = self._all(
+                f"SELECT id, devin_session_id FROM {table} WHERE devin_session_id LIKE ?",
+                devin_session_id + "%",
+            )
+            if len(rows) == 1:
+                self.conn.execute(f"UPDATE {table} SET cost_usd=? WHERE id=?", (usd, rows[0]["id"]))
+                self.conn.commit()
+                self.log(
+                    "budget",
+                    f"console cost entered: ${usd:.2f}",
+                    session_id=rows[0]["id"] if table == "sessions" else None,
+                    detail=rows[0]["devin_session_id"],
+                )
+                return table
+        return None
 
     def triage_session_by_devin_id(self, devin_session_id: str) -> dict[str, Any] | None:
         return self._one("SELECT * FROM triage_sessions WHERE devin_session_id=?", devin_session_id)

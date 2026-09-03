@@ -333,6 +333,7 @@ def build_app(
             "settings.html",
             "settings",
             cost=cost.spend(request.app.state.store),
+            cost_rows=v2.cost_rows(request.app.state.store),
             s=pages.settings_page(settings, cfg, st, request.app.state.client),
         )
 
@@ -348,6 +349,21 @@ def build_app(
         if usd < 0:
             raise HTTPException(status_code=400, detail="credits must be zero or more")
         cost.record_credits(request.app.state.store, usd)
+        return RedirectResponse("/settings", status_code=303)
+
+    @app.post("/settings/session-cost")
+    async def settings_session_cost(request: Request) -> RedirectResponse:
+        """The console's dollars per session, one field per session, blanks ignored."""
+        form = parse_qs((await request.body()).decode())
+        st: Store = request.app.state.store
+        for key, vals in form.items():
+            if not key.startswith("usd_") or not (vals and vals[0].strip()):
+                continue
+            try:
+                usd = float(vals[0])
+            except ValueError as ex:
+                raise HTTPException(status_code=400, detail=f"{key}: not a number") from ex
+            st.set_session_cost(key[4:], usd)
         return RedirectResponse("/settings", status_code=303)
 
     @app.post("/settings/budget")

@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from swe_loop import cost
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.devin import DevinClient
 from swe_loop.dispatch import dispatch
@@ -244,6 +245,23 @@ def cmd_triage(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_cost(args: argparse.Namespace) -> int:
+    """A person copies the console's per-session dollars: --set <devin id or prefix>=<usd> ..."""
+    _, _, store, _ = _ctx()
+    out = {}
+    for item in args.set:
+        key, _, val = item.partition("=")
+        try:
+            usd = float(val)
+        except ValueError:
+            print(f"refusing: {item!r} is not id=usd", file=sys.stderr)
+            return 2
+        table = store.set_session_cost(key.strip(), usd)
+        out[key.strip()] = table or "no unique session with that id"
+    print(json.dumps({"entered": out, "spend": cost.spend(store)}, default=str))
+    return 0
+
+
 def cmd_apply_config(args: argparse.Namespace) -> int:
     settings, cfg, store, client = _ctx()
     if args.dry_run:
@@ -323,6 +341,14 @@ def main(argv: list[str] | None = None) -> int:
         help="a person's answer to a waiting triage session; polling resumes",
     )
     tr.set_defaults(fn=cmd_triage)
+    co = sub.add_parser("cost")
+    co.add_argument(
+        "--set",
+        action="append",
+        default=[],
+        help="<devin session id or prefix>=<usd from the console>; repeatable",
+    )
+    co.set_defaults(fn=cmd_cost)
     ac = sub.add_parser("apply-config")
     ac.add_argument(
         "--dry-run", action="store_true", help="print what would be created; create nothing"

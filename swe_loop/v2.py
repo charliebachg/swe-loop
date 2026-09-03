@@ -281,6 +281,65 @@ def _status_kind(status: str | None, detail: str | None, terminal: bool) -> str:
     return "na"
 
 
+def cost_rows(store: Store) -> list[dict[str, Any]]:
+    """Every session with its Devin id, minutes, and the console figure if entered: the Settings form."""
+    rate = cost.observed_rate(store)
+    out = []
+    for r in store._all("SELECT * FROM sessions ORDER BY created_at"):
+        wo = store.get_work_order(r["work_order_id"]) or {}
+        out.append(
+            {
+                "devin_id": r["devin_session_id"] or "",
+                "label": f"repair {wo.get('ticket_id', '')} shard {wo.get('shard_id', '')}",
+                "minutes": f"{cost.repair_active_seconds(store, r) / 60.0:.1f}",
+                "usd": r.get("cost_usd"),
+                "est": (
+                    f"{cost.repair_active_seconds(store, r) / 60.0 * rate:.2f}"
+                    if rate and r.get("cost_usd") is None
+                    else ""
+                ),
+            }
+        )
+    for r in store.list_triage_sessions():
+        out.append(
+            {
+                "devin_id": r["devin_session_id"] or "",
+                "label": f"triage {r['ticket_id']}",
+                "minutes": f"{cost.triage_active_seconds(store, r) / 60.0:.1f}",
+                "usd": r.get("cost_usd"),
+                "est": (
+                    f"{cost.triage_active_seconds(store, r) / 60.0 * rate:.2f}"
+                    if rate and r.get("cost_usd") is None
+                    else ""
+                ),
+            }
+        )
+    return [x for x in out if x["devin_id"]]
+
+
+def _cost_help(sp: dict[str, Any]) -> str:
+    base = "this plan is billed in dollar credits, not ACU; the API reports 0 ACU for every session. Dollars are the console's own figures per session"
+    if sp["source"] == "console":
+        detail = " (every session entered)"
+    elif sp["source"] == "mixed":
+        detail = f" ({sp['n_console']} of {sp['n_sessions']} entered; the rest estimated at ${sp['rate']:.2f} per active minute)"
+    elif sp["rate"]:
+        detail = f"; estimated at ${sp['rate']:.2f} per active minute"
+    else:
+        detail = "; enter them in Settings"
+    return (
+        base
+        + detail
+        + f". Active minutes are measured from our own polls: {sp['active_min']:.1f} min"
+    )
+
+
+def usd_label(sp: dict[str, Any]) -> str:
+    if sp["usd"] is None:
+        return ""
+    return f"${sp['usd']:.2f}" + ("" if sp["source"] == "console" else " est.")
+
+
 # ---------------------------------------------------------------------------- frame
 def frame(settings: Settings, cfg: TargetConfig, store: Store, active: str) -> dict[str, Any]:
     b = store.budget_state()
@@ -335,14 +394,7 @@ def frame(settings: Settings, cfg: TargetConfig, store: Store, active: str) -> d
         "modeHelp": "connected to the Devin organisation; sessions are real"
         if live
         else "showing a recorded run of the real system; no AI session is started from this page",
-        "acuHelp": ACU_HELP
-        if sp["metered"]
-        else "this plan is billed in credits, not ACU: the API reports 0 ACU for every session. Shown instead: minutes the AI was actively working, measured from our own polls"
-        + (
-            f"; ${sp['rate']:.3f} per active minute, calibrated from the console figure entered on {(sp['calibrated_at'] or '')[:10]}"
-            if sp["rate"]
-            else "; enter the credits figure from the console in Settings to see dollars"
-        ),
+        "acuHelp": ACU_HELP if sp["metered"] else _cost_help(sp),
         "modeBg": PL["ok"][1] if live else PL["run"][1],
         "modeFg": PL["ok"][0] if live else PL["run"][0],
         "modeSmall": "live" if live else "replay",
@@ -353,12 +405,18 @@ def frame(settings: Settings, cfg: TargetConfig, store: Store, active: str) -> d
         else "rendered from the recorded run, no Devin key",
         "repo": cfg.repo,
         "branch": cfg.base_branch,
-        "acuSpent": (_fmt_acu(b.get("spent")) if sp["metered"] else f"{sp['active_min']:.0f} min"),
+        "acuSpent": (
+            _fmt_acu(b.get("spent"))
+            if sp["metered"]
+            else (usd_label(sp) or f"{sp['active_min']:.0f} min")
+        ),
         "acuCap": (
             (f"{b['cap']:.0f}" if b.get("cap") else "no cap")
             if sp["metered"]
             else (
-                f"est. ${sp['usd']:.2f}" if sp["usd"] is not None else "credits: enter in Settings"
+                f"{sp['active_min']:.0f} min of AI work"
+                if sp["usd"] is not None
+                else "dollars: enter in Settings"
             )
         ),
         "acuPct": _pct(b.get("spent"), b.get("cap")) if sp["metered"] else "0",
@@ -597,13 +655,15 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
             }
             if sp0["metered"]
             else {
-                "n": f"{sp0['active_min']:.0f} min",
+                "n": (usd_label(sp0) or f"{sp0['active_min']:.0f} min"),
                 "of": (
-                    f"est. ${sp0['usd']:.2f}" if sp0["usd"] is not None else "not yet in dollars"
+                    f"{sp0['active_min']:.0f} min of AI work"
+                    if sp0["usd"] is not None
+                    else "not yet in dollars"
                 ),
-                "label": "AI working time",
+                "label": "AI cost" if sp0["usd"] is not None else "AI working time",
                 "color": INK,
-                "help": "minutes the AI was actively working, measured from our own polls; this plan is billed in credits, so the API reports no ACU. Enter the console's credits figure in Settings to see dollars",
+                "help": _cost_help(sp0),
                 "pct": None,
             }
         ),
@@ -1351,11 +1411,15 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
     drawer_id = q.get("drawer")
     metered = cost.spend(store)["metered"]
     mins: dict[str, float] = {}
+    usd_rows: dict[str, tuple[float | None, str]] = {}
     if not metered:
+        rate = cost.observed_rate(store)
         for r in store._all("SELECT * FROM sessions"):
             mins[r["id"]] = cost.repair_active_seconds(store, r) / 60.0
+            usd_rows[r["id"]] = cost.session_usd(store, r, "rep", rate)
         for r in store.list_triage_sessions():
             mins[r["id"]] = cost.triage_active_seconds(store, r) / 60.0
+            usd_rows[r["id"]] = cost.session_usd(store, r, "tri", rate)
     rows = []
     for s in ss["sessions"]:
         is_triage = s.get("kind") == "triage"
@@ -1378,10 +1442,21 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
                 ),
                 "stBg": PL[st_kind][1],
                 "stFg": PL[st_kind][0],
-                "acu": _fmt_acu(s.get("acus")) if metered else f"{mins.get(s['id'], 0.0):.1f} min",
-                "cap": f"{TRIAGE_ACU_CAP if is_triage else cap:.0f}"
-                if metered
-                else f"cap {TRIAGE_ACU_CAP if is_triage else cap:.0f} ACU",
+                "acu": (
+                    _fmt_acu(s.get("acus"))
+                    if metered
+                    else (
+                        f"${usd_rows[s['id']][0]:.2f}"
+                        if usd_rows.get(s["id"], (None, ""))[0] is not None
+                        else f"{mins.get(s['id'], 0.0):.1f} min"
+                    )
+                ),
+                "cap": (
+                    f"{TRIAGE_ACU_CAP if is_triage else cap:.0f}"
+                    if metered
+                    else f"{mins.get(s['id'], 0.0):.1f} min"
+                    + (" est." if usd_rows.get(s["id"], (None, ""))[1] == "estimate" else "")
+                ),
                 "acuPct": _pct(s.get("acus"), TRIAGE_ACU_CAP if is_triage else cap)
                 if metered
                 else _pct(mins.get(s["id"], 0.0), max(list(mins.values()) or [1.0])),
@@ -1843,11 +1918,32 @@ def report(
         r["devin_session_id"]: r["id"]
         for r in store._all("SELECT id, devin_session_id FROM sessions")
     }
+    rate0 = cost.observed_rate(store)
+    usd_by_sid = {
+        r["id"]: cost.session_usd(store, r, "rep", rate0)
+        for r in store._all("SELECT * FROM sessions")
+    }
+    pass_usd = sorted(
+        usd_by_sid[x["id"]][0]
+        for x in store._all("SELECT * FROM sessions")
+        if (store.latest_verdict(x["id"]) or {}).get("gate_result") == "pass"
+        and usd_by_sid[x["id"]][0] is not None
+    )
     pass_mins = sorted(
         mins_by_sid[s["id"]]
         for s in store._all("SELECT * FROM sessions")
         if (store.latest_verdict(s["id"]) or {}).get("gate_result") == "pass"
     )
+
+    def _receipt_cost(r: dict[str, Any]) -> str:
+        if sp["metered"]:
+            return _fmt_acu(r.get("acus"))
+        sid = sid_by_devin.get(r.get("devin_id"))
+        u, src = usd_by_sid.get(sid, (None, ""))
+        if u is not None:
+            return f"${u:.2f}" + (" est." if src == "estimate" else "")
+        return f"{mins_by_sid.get(sid, 0.0):.1f}m"
+
     tiles = [
         (
             "verified",
@@ -1868,17 +1964,28 @@ def report(
             )
             if sp["metered"]
             else (
-                "acu",
-                "AI working time per verified change",
-                (f"{_median(pass_mins):.1f}" if pass_mins else "n/a"),
-                "min, median",
-                f"p95 {_p95(pass_mins):.1f} min · n={len(pass_mins)}"
-                + (
-                    f" · est. ${_median(pass_mins) * sp['rate']:.2f} per change"
-                    if pass_mins and sp["rate"]
-                    else " · this plan is billed in credits; the API reports no ACU. Minutes come from our polls"
-                ),
-                "active minutes: gaps between our polls while the session reported working, each gap capped at 60 s; see swe_loop/cost.py",
+                (
+                    "acu",
+                    "Cost per verified change",
+                    f"${_median(pass_usd):.2f}",
+                    "median, console figures",
+                    f"p95 ${_p95(pass_usd):.2f} · n={len(pass_usd)} · {_median(pass_mins):.1f} min of AI work at the median"
+                    + (
+                        ""
+                        if sp["source"] == "console"
+                        else " · some sessions estimated at the observed rate"
+                    ),
+                    "dollars per session as shown in the Devin console, entered by a person on Settings; sessions without a figure are priced at the observed dollars per active minute",
+                )
+                if pass_usd
+                else (
+                    "acu",
+                    "AI working time per verified change",
+                    (f"{_median(pass_mins):.1f}" if pass_mins else "n/a"),
+                    "min, median",
+                    f"p95 {_p95(pass_mins):.1f} min · n={len(pass_mins)} · this plan is billed in credits; enter the console's figures in Settings to see dollars",
+                    "active minutes: gaps between our polls while the session reported working, each gap capped at 60 s; see swe_loop/cost.py",
+                )
             )
         ),
         (
@@ -1970,9 +2077,7 @@ def report(
                 else (PL["bad"][0] if r.get("gate") else PL["na"][0]),
                 "review": r.get("review") or "",
                 "retries": str(r.get("retries") or 0),
-                "acu": _fmt_acu(r.get("acus"))
-                if sp["metered"]
-                else f"{mins_by_sid.get(sid_by_devin.get(r.get('devin_id')), 0.0):.1f}m",
+                "acu": _receipt_cost(r),
                 "size": (r.get("size") or "·").upper(),
                 "mergedBy": r.get("merged_by") or "no",
             }
@@ -2022,16 +2127,17 @@ def report(
             continue
         fun_rows.append((name, n, None))
     cap = h["budget"].get("per_session_cap")
-    points = [
-        (
-            r["shard"],
-            float(r.get("acus") or 0)
-            if sp["metered"]
-            else mins_by_sid.get(sid_by_devin.get(r.get("devin_id")), 0.0),
-            tk_color(r["ticket"]),
-        )
-        for r in rep["receipts"]
-    ]
+
+    def _pv(r: dict[str, Any]) -> float:
+        if sp["metered"]:
+            return float(r.get("acus") or 0)
+        sid = sid_by_devin.get(r.get("devin_id"))
+        if pass_usd:
+            return usd_by_sid.get(sid, (None, ""))[0] or 0.0
+        return mins_by_sid.get(sid, 0.0)
+
+    points = [(r["shard"], _pv(r), tk_color(r["ticket"])) for r in rep["receipts"]]
+
     verd = store._all(
         "SELECT v.gate_result, v.decision, w.shard_id FROM verdicts v JOIN sessions s ON s.id = v.session_id "
         "JOIN work_orders w ON w.id = s.work_order_id ORDER BY v.created_at, v.rowid"
@@ -2077,8 +2183,10 @@ def report(
         "acu": charts.dot_strip(
             points,
             cap if sp["metered"] else None,
-            acu["median"] if sp["metered"] else (_median(pass_mins) if pass_mins else None),
-            unit="ACU" if sp["metered"] else "min",
+            acu["median"]
+            if sp["metered"]
+            else (_median(pass_usd) if pass_usd else (_median(pass_mins) if pass_mins else None)),
+            unit="ACU" if sp["metered"] else ("$" if pass_usd else "min"),
         ),
         "gate": charts.squares(sq),
         "burndown": charts.stacked_bar(stack),
@@ -2089,7 +2197,11 @@ def report(
         "acu": (
             f"n={len(points)} · cap {cap:g} ACU per session"
             if (cap and sp["metered"])
-            else f"n={len(points)} · active minutes per session; the plan reports no ACU"
+            else (
+                f"n={len(points)} · dollars per session from the console"
+                if pass_usd
+                else f"n={len(points)} · active minutes per session; the plan reports no ACU"
+            )
         ),
         "gate": f"{len(sq)} verdict(s), oldest first",
         "burndown": f"{bd0.get('total', 0)} sites measured",

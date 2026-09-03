@@ -83,9 +83,42 @@ def calibration(store: Store) -> dict[str, Any]:
     return {"credits_usd": c, "active_min_at_entry": m, "at": at, "usd_per_active_min": rate}
 
 
+def session_usd(
+    store: Store, row: dict[str, Any], kind: str, rate: float | None
+) -> tuple[float | None, str]:
+    """(dollars, source). source is 'console' when a person entered the figure, 'estimate' when
+    priced from active minutes at the observed rate, 'none' when neither exists."""
+    if row.get("cost_usd") is not None:
+        return float(row["cost_usd"]), "console"
+    if rate:
+        secs = (
+            repair_active_seconds(store, row)
+            if kind == "rep"
+            else triage_active_seconds(store, row)
+        )
+        return secs / 60.0 * rate, "estimate"
+    return None, "none"
+
+
+def observed_rate(store: Store) -> float | None:
+    """Dollars per active minute across the sessions that carry a console figure."""
+    usd, secs = 0.0, 0.0
+    for r in store._all("SELECT * FROM sessions WHERE cost_usd IS NOT NULL"):
+        usd += float(r["cost_usd"])
+        secs += repair_active_seconds(store, r)
+    for r in store._all("SELECT * FROM triage_sessions WHERE cost_usd IS NOT NULL"):
+        usd += float(r["cost_usd"])
+        secs += triage_active_seconds(store, r)
+    if secs > 0:
+        return usd / (secs / 60.0)
+    cal = calibration(store)
+    return cal["usd_per_active_min"]
+
+
 def spend(store: Store) -> dict[str, Any]:
-    """The one cost picture: reported ACU (0 on self-serve plans), measured active minutes,
-    and the dollar estimate when calibrated."""
+    """The one cost picture: reported ACU (0 on self-serve plans), measured active minutes, and
+    dollars: the console's figure per session where a person entered it, an estimate at the
+    observed rate for the rest."""
     sessions = store._all("SELECT * FROM sessions")
     tri = store.list_triage_sessions()
     acu = sum((s["acus_consumed"] or 0) for s in sessions) + sum(
@@ -94,19 +127,36 @@ def spend(store: Store) -> dict[str, Any]:
     active_s = sum(repair_active_seconds(store, s) for s in sessions) + sum(
         triage_active_seconds(store, t) for t in tri
     )
-    cal = calibration(store)
+    rate = observed_rate(store)
+    usd_console = sum(float(r["cost_usd"]) for r in sessions + tri if r.get("cost_usd") is not None)
+    n_console = sum(1 for r in sessions + tri if r.get("cost_usd") is not None)
+    usd_total = 0.0
+    any_usd = False
+    for kind, rows in (("rep", sessions), ("tri", tri)):
+        for r in rows:
+            u, _src = session_usd(store, r, kind, rate)
+            if u is not None:
+                usd_total += u
+                any_usd = True
     minutes = active_s / 60.0
-    usd = minutes * cal["usd_per_active_min"] if cal["usd_per_active_min"] else None
+    cal = calibration(store)
     return {
         "acu": round(acu, 2),
         "metered": acu > 0,
         "active_min": round(minutes, 1),
         "active_min_raw": minutes,
-        "usd": round(usd, 2) if usd is not None else None,
-        "rate": cal["usd_per_active_min"],
+        "usd": round(usd_total, 2) if any_usd else None,
+        "usd_console": round(usd_console, 2),
+        "n_console": n_console,
+        "n_sessions": len(sessions) + len(tri),
+        "rate": rate,
         "calibrated_at": cal["at"],
         "credits_usd": cal["credits_usd"],
-        "n_sessions": len(sessions) + len(tri),
+        "source": (
+            "console"
+            if n_console == len(sessions) + len(tri) and n_console
+            else ("mixed" if n_console else ("estimate" if rate else "none"))
+        ),
     }
 
 
