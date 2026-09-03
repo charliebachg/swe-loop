@@ -194,6 +194,15 @@ def run_triage(
         }
     spec = build_triage_spec(t, cfg, inventory_path=inventory_path, playbook_id=playbook_id)
     live = client.find_live(list(spec.tags))
+    if live is None and answer:
+        # a person is answering: wake the ticket's own session even when the org shows it as
+        # suspended (Devin wakes a sleeping session on any message); never start a second one
+        prev = store.list_triage_sessions(ticket_id)
+        if prev and prev[0].get("devin_session_id"):
+            try:
+                live = client.status(prev[0]["devin_session_id"])
+            except Exception:  # noqa: BLE001 - the org no longer knows it; start afresh
+                live = None
     state = live if live else client.start(spec)
     prior = store.triage_session_by_devin_id(state.session_id)
     if prior:

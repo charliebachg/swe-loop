@@ -159,3 +159,19 @@ def test_question_then_answer_adopts_the_same_session(tmp_path):
     assert len(st.list_triage_sessions()) == 1
     assert any(call[0] == "send_message" for call in t.calls)
     assert sum(1 for call in t.calls if call[0] == "create_session") == 1
+
+
+def test_answer_wakes_a_suspended_session_instead_of_starting_a_new_one(tmp_path, monkeypatch):
+    """The org reports a sleeping session as suspended and the live lookup no longer sees it; an
+    answer must still go to that session, never to a fresh one."""
+    st = _store(tmp_path)
+    t = _AsksFirst()
+    c = DevinClient(t)
+    r = run_triage(st, c, "tkt_D", CFG)
+    assert r["kind"] == "waiting"
+    devin_id = st.get_triage_session(r["session"])["devin_session_id"]
+    monkeypatch.setattr(c, "find_live", lambda tags, exclude=None: None)
+    r2 = run_triage(st, c, "tkt_D", CFG, answer="work from master")
+    assert r2["kind"] == "triaged" and r2["session"] == r["session"]
+    assert sum(1 for call in t.calls if call[0] == "create_session") == 1
+    assert [call for call in t.calls if call[0] == "send_message"][-1][1][0] == devin_id
