@@ -280,6 +280,8 @@ def build_app(
         inv = cfg.triage.get("inventory_url") or None
 
         def _go() -> None:
+            from swe_loop.cli import run_once
+
             try:
                 run_triage(
                     st, client, ticket_id, cfg, inventory_path=inv, playbook_id=pid, answer=text
@@ -291,6 +293,33 @@ def build_app(
                     ticket_id=ticket_id,
                     detail=f"{type(ex).__name__}: {ex}"[:200],
                 )
+                return
+            # the answer is the only thing that was missing: carry on without another click
+            lock: threading.Lock = request.app.state.run_lock
+            if not lock.acquire(blocking=False):
+                st.log(
+                    "automation",
+                    "a run is already in progress; it will pick this up",
+                    ticket_id=ticket_id,
+                )
+                return
+            try:
+                st.log(
+                    "automation",
+                    "continuing after your answer",
+                    ticket_id=ticket_id,
+                    detail="route, start the repair session, gate, review",
+                )
+                run_once(settings, cfg, st, client, log=lambda m: None)
+            except Exception as ex:  # noqa: BLE001 - surfaced on the page
+                st.log(
+                    "automation",
+                    "run failed",
+                    ticket_id=ticket_id,
+                    detail=f"{type(ex).__name__}: {ex}"[:200],
+                )
+            finally:
+                lock.release()
 
         th = threading.Thread(target=_go, name=f"swe-loop-answer-{ticket_id}", daemon=True)
         request.app.state.answer_threads = getattr(request.app.state, "answer_threads", []) + [th]

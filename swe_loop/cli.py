@@ -26,6 +26,7 @@ from swe_loop.config import Settings, TargetConfig
 from swe_loop.devin import DevinClient
 from swe_loop.dispatch import dispatch
 from swe_loop.gate import Gate, apply_result
+from swe_loop.gate import preflight as gate_preflight
 from swe_loop.knowledge import load_notes, load_playbook
 from swe_loop.poll import Poller
 from swe_loop.reduce import detect_conflicts, refresh_reviews, summary
@@ -202,7 +203,8 @@ def run_once(
     log(f"routed {len(decisions)} ticket(s)")
     gate = None
     repo_root = (ROOT / cfg.gate.get("repo_root", "../superset-fork")).resolve()
-    if repo_root.exists() and not fast:
+    not_ready = gate_preflight(repo_root, cfg)
+    if not fast and not not_ready:
         gate = Gate(
             store,
             cfg,
@@ -231,7 +233,7 @@ def run_once(
                     did = apply_result(g, store, client, poller)
                     out["gated"] += 1
                     log(f"  gate {g.gate_result}: {'; '.join(g.reasons)[:120]} -> {did}")
-                else:
+                elif fast:
                     store.log(
                         "gate",
                         "skipped",
@@ -239,6 +241,24 @@ def run_once(
                         session_id=sid,
                         detail="replay: a fake session has no real PR to check out",
                     )
+                else:
+                    # live, but this machine cannot verify: say so on the ticket, never imply a pass
+                    store.log(
+                        "gate",
+                        "cannot run here",
+                        ticket_id=t["id"],
+                        session_id=sid,
+                        detail=not_ready,
+                    )
+                    store.insert_verdict(
+                        session_id=sid,
+                        gate_result="missing_evidence",
+                        decision="escalate",
+                        reason=not_ready[:1000],
+                    )
+                    store.insert_escalation(t["id"], sid, "review_blocked", not_ready[:500])
+                    store.set_ticket_status(t["id"], "escalated")
+                    out["escalated"] += 1
             elif res.kind not in ("running",):
                 out["escalated"] += 1
             poller.enforce_budget()
@@ -363,22 +383,10 @@ def cmd_cost(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_apply_config(args: argparse.Namespace) -> int:
-    settings, cfg, store, client = _ctx()
-    if args.dry_run:
-        plan = plan_config(client if settings.live else None)
-        plan["mode"] = settings.mode
-        plan["note"] = "dry run: nothing was created" + (
-            "" if settings.live else "; replay mode, so the org was not read either"
-        )
-        print(json.dumps(plan, indent=1))
-        return 0
-    if not settings.live:
-        print(
-            "refusing: apply-config creates objects on the org and only runs in live mode",
-            file=sys.stderr,
-        )
-        return 2
+def apply_config(settings: Settings, cfg: TargetConfig, store: Store, client: DevinClient) -> dict:
+    """Create this target's playbooks and Knowledge notes on the organisation, once. Anything
+    already there is adopted, not duplicated, so calling it again is free. The playbook ids are
+    written to the store, which is how every later session finds them."""
     existing_pb = {p.get("title", ""): p.get("playbook_id") for p in client.t.list_playbooks()}
     existing_kn = {n.get("name", ""): n.get("note_id") for n in client.t.list_knowledge_notes()}
     made: dict[str, Any] = {}
@@ -403,7 +411,26 @@ def cmd_apply_config(args: argparse.Namespace) -> int:
         made[note.name] = client.t.create_knowledge_note(note.to_payload(pinned_repo=cfg.repo)).get(
             "note_id"
         )
-    print(json.dumps({"created": made, "already_on_the_org": skipped}, indent=1))
+    return {"created": made, "already_on_the_org": skipped}
+
+
+def cmd_apply_config(args: argparse.Namespace) -> int:
+    settings, cfg, store, client = _ctx()
+    if args.dry_run:
+        plan = plan_config(client if settings.live else None)
+        plan["mode"] = settings.mode
+        plan["note"] = "dry run: nothing was created" + (
+            "" if settings.live else "; replay mode, so the org was not read either"
+        )
+        print(json.dumps(plan, indent=1))
+        return 0
+    if not settings.live:
+        print(
+            "refusing: apply-config creates objects on the org and only runs in live mode",
+            file=sys.stderr,
+        )
+        return 2
+    print(json.dumps(apply_config(settings, cfg, store, client), indent=1))
     return 0
 
 

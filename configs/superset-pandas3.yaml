@@ -15,6 +15,7 @@ trigger:
     author: dependabot[bot]
     head_ref_prefix: dependabot/pip/
   issue_label: swe-loop            # tickets on the fork carrying this label enter the store
+  exclude_labels: [tracking, epic]  # an issue that describes other issues is never given a session
 
 detector:
   kind: pytest-warnings

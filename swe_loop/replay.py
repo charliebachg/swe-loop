@@ -175,7 +175,7 @@ def synthesise(
             decision="pass",
             reason="synthesised: T0 clean, acceptance exit 0",
             tree_hash=tree,
-            review_severity="requested:synthesised",
+            review_severity="completed:no issues",
         )
         store.set_ticket_status(tid, "reviewed")
     detect_conflicts(store)

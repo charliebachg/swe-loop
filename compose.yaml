@@ -10,3 +10,6 @@ services:
       SWE_LOOP_MODE: ${SWE_LOOP_MODE:-replay}
     volumes:
       - ./data:/app/data
+      # live mode only: the gate checks the pull request out here and runs the acceptance
+      # commands through this clone's interpreters, which must be built for Linux inside it
+      - ${SWE_LOOP_FORK:-../superset-fork}:/superset-fork

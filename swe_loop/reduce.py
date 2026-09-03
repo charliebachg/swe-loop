@@ -84,7 +84,18 @@ def readiness(store: Store, ticket_id: str) -> TicketReadiness:
             r.verified += 1
             if p["pull_request_url"]:
                 r.pr_urls.append(p["pull_request_url"])
-    r.reviewed = t["status"] in ("reviewed", "merged")
+    r.reviewed = t["status"] == "merged" or (
+        t["status"] == "reviewed"
+        and r.verified > 0
+        and all(
+            (
+                ((_latest_pass(store, wo["id"]) or {}).get("verdict") or {}).get("review_severity")
+                or ""
+            ).startswith("completed:")
+            for wo in store.work_orders_for(ticket_id)
+            if wo["status"] not in ("split", "refuse", "human_only")
+        )
+    )
     shards = sorted(files_by_shard)
     for i, a in enumerate(shards):
         for b in shards[i + 1 :]:

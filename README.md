@@ -63,12 +63,21 @@ python -m swe_loop seed      # fills an empty store from the recorded run
 python -m swe_loop serve     # the app on :8000, intake on /intake/github
 ```
 
-Live mode needs a Devin org-scoped service user key and a GitHub token that can read the fork.
+Live mode needs three things: a Devin org-scoped service user key, a GitHub token that can read
+and write the fork, and a local clone of the fork for the gate. The gate checks each pull request
+out into a detached worktree of that clone and runs the acceptance commands through its own
+interpreters, so the clone lives at `gate.repo_root` in the seam (by default `../superset-fork`,
+beside this repository) and carries `.venv-p2` and `.venv-p3`, built as
+`knowledge/superset-pandas-test-environments.md` describes. Settings shows whether it is ready
+before a run, and a live run that cannot verify says so on the ticket instead of implying a pass.
+In Docker, point `SWE_LOOP_FORK` at a clone whose two environments were built inside the
+container.
+
 Copy `.env.example` to `.env`, fill it in, set `SWE_LOOP_MODE=live`, then:
 
 ```
 python -m swe_loop apply-config --dry-run   # what would be created on the org; creates nothing
-python -m swe_loop apply-config             # the playbooks and Knowledge notes, once, idempotent
+python -m swe_loop apply-config             # the playbooks and Knowledge notes; the first live run does this itself
 python -m swe_loop seed --as-new            # the fork's open tickets, untriaged
 python -m swe_loop triage                   # one triage session per new ticket
 python -m swe_loop triage --ticket tkt_A --answer "..."   # answer a question; wakes the same session

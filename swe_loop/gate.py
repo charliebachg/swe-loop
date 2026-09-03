@@ -285,6 +285,7 @@ class Gate:
                 **{k: str(v) for k, v in self.cfg.detector.get("env", {}).items()},
             }
             failures: list[str] = []
+            infra: list[str] = []
             t1_ok = True
             for name, cmd in wo["acceptance"].items():
                 real = absolutize_command(cmd, self.ws.repo_root)
@@ -305,9 +306,20 @@ class Gate:
                 res.evidence_ids.append(
                     self._record(sid, "T1", f"{name}: {real}", path, tree, code, output, ok)
                 )
-                if not ok:
+                if code == 127:
+                    # the command was not found: this machine's toolchain, not the session's work
+                    infra.append(f"{name}: {output.strip()[:200] or 'command not found'}")
+                elif not ok:
                     t1_ok = False
                     failures.append(f"### {name} (exit {code})\n$ {cmd}\n{output[-4000:]}")
+            if infra:
+                # never tell a session its work failed because a tool is missing here
+                res.gate_result = "missing_evidence"
+                res.reasons.append(
+                    "the gate's own toolchain is incomplete, so the work was not verified: "
+                    + "; ".join(infra)
+                )
+                return self._finish(res, wo)
             res.tiers["T1"] = t1_ok
             if not t1_ok:
                 res.gate_result = "fail"
@@ -336,6 +348,25 @@ class Gate:
             tree_hash=res.tree_hash,
         )
         return res
+
+
+def preflight(repo_root: Path, cfg: Any = None) -> str | None:
+    """What the gate needs on this machine before it can verify anything: the target's clone and
+    the interpreters the acceptance commands name. Returns None when it is ready, else the reason
+    in one sentence. Settings shows it before a run; a live run refuses to pretend without it."""
+    root = Path(repo_root)
+    if not (root / ".git").exists():
+        return f"no clone of the target at {root}; the gate checks out the pull request there"
+    missing = [
+        v for v in ("venv-p2", "venv-p3") if not (root / f".{v}" / "bin" / "python").exists()
+    ]
+    if missing:
+        names = " and ".join(f".{v}" for v in missing)
+        return (
+            f"{names} missing in {root}; the acceptance commands run through them "
+            "(knowledge/superset-pandas-test-environments.md builds both)"
+        )
+    return None
 
 
 # ---------------------------------------------------------------------- what happens next

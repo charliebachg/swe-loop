@@ -73,9 +73,10 @@ def test_answer_wakes_the_triage_session(client):
     assert c.post("/tickets/tkt_Q/answer", content="text=", headers=FORM).status_code == 400
     r = c.post("/tickets/tkt_Q/answer", content="text=work+from+master", headers=FORM)
     assert r.status_code == 200
-    assert (
-        st.get_ticket("tkt_Q")["status"] == "triaged"
-    )  # the fake session re-delivered its verdict
+    # the answer alone carries the ticket on: verdict, route, session, gate, all unattended
+    assert st.get_ticket("tkt_Q")["status"] == "gated"
+    events = [ev["event"] for ev in st.timeline(ticket_id="tkt_Q", limit=40)]
+    assert "continuing after your answer" in events and "dispatched" in events
     assert any(
         ev["event"] == "answered by a person" for ev in st.timeline(ticket_id="tkt_Q", limit=20)
     )

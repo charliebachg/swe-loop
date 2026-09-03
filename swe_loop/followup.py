@@ -15,6 +15,7 @@ from swe_loop import reduce as reduce_mod
 from swe_loop.config import TargetConfig
 from swe_loop.devin import DevinClient
 from swe_loop.gate import Gate, apply_result
+from swe_loop.gate import preflight as gate_preflight
 from swe_loop.poll import Poller, output_digest
 from swe_loop.store import Store
 
@@ -149,7 +150,7 @@ def review_followup(
             "remarks": len(remarks),
         }
     repo_root = (ROOT / cfg.gate.get("repo_root", "../superset-fork")).resolve()
-    if fast or not repo_root.exists():
+    if fast or gate_preflight(repo_root, cfg):
         store.log(
             "gate",
             "skipped",

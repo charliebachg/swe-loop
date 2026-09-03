@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import httpx
 
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.devin import DevinClient, DevinError
+from swe_loop.gate import preflight as gate_preflight
 from swe_loop.store import Store
 
 _CACHE: dict[str, tuple[float, list[Check]]] = {}
@@ -149,6 +151,19 @@ def run_checks(
             str(settings.config_path),
             "ok",
             f"parsed: repo, trigger, detector, router ({len(cfg.forbidden_paths)} forbidden paths), session, gate",
+        )
+    )
+    root = (
+        Path(__file__).resolve().parents[1] / cfg.gate.get("repo_root", "../superset-fork")
+    ).resolve()
+    why = gate_preflight(root, cfg)
+    out.append(
+        Check(
+            "gate",
+            "the gate's workspace",
+            why or f"clone and both test environments ready at {root}",
+            "missing" if why else "ok",
+            "the pull request is checked out here and the acceptance commands run through its interpreters",
         )
     )
     b = store.budget_state()

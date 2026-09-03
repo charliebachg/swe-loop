@@ -74,6 +74,18 @@ def drafted_issues(
     return out
 
 
+def parent_number(repo: str, tickets_json: Path = INVENTORY / "tickets.json") -> int | None:
+    """The tracking issue the shards hang under. It describes the work; it is not work, so no
+    session is ever spent on it."""
+    if not tickets_json.exists():
+        return None
+    d = json.loads(tickets_json.read_text())
+    if d.get("repo") and d["repo"] != repo:
+        return None
+    n = (d.get("numbers") or {}).get("P")
+    return int(n) if n is not None else None
+
+
 def shard_letters(repo: str, tickets_json: Path = INVENTORY / "tickets.json") -> dict[int, str]:
     """Issue number to shard letter, when the repository is the one the inventory was drafted for.
     Keeps the ticket ids the rest of the app already knows (tkt_A, not tkt_is1)."""
@@ -91,9 +103,24 @@ def intake_issues(
     """Every issue becomes a ticket with status new, once. A ticket the store already has is
     left exactly as it is."""
     letters = shard_letters(source_repo)
+    parent = parent_number(source_repo)
+    exclude = {lbl.lower() for lbl in (cfg.trigger.get("exclude_labels") or [])}
     new_ids: list[str] = []
     known = 0
+    skipped = 0
     for issue in issues:
+        number = issue.get("number")
+        labels = {(lbl.get("name") or "").lower() for lbl in (issue.get("labels") or [])}
+        if (parent is not None and number == parent) or (labels & exclude):
+            skipped += 1
+            store.log(
+                "intake",
+                f"issue #{number} skipped",
+                detail="the tracking issue for the others; it describes work, it is not work"
+                if number == parent
+                else f"carries {', '.join(sorted(labels & exclude))}",
+            )
+            continue
         payload = {"action": "labeled", "issue": issue, "repository": {"full_name": source_repo}}
         ev = normalize("github", payload, cfg)
         if ev is None:
@@ -116,7 +143,7 @@ def intake_issues(
             detail=issue.get("html_url"),
         )
         new_ids.append(tid)
-    return {"issues": len(issues), "new": new_ids, "known": known}
+    return {"issues": len(issues), "new": new_ids, "known": known, "skipped": skipped}
 
 
 def run_automation(
@@ -150,13 +177,31 @@ def run_automation(
             else drafted_issues(repo, label)
         )
         got = intake_issues(store, cfg, issues, source_repo=repo)
-        result.update({"issues": got["issues"], "new_tickets": got["new"], "known": got["known"]})
+        result.update(
+            {
+                "issues": got["issues"],
+                "new_tickets": got["new"],
+                "known": got["known"],
+                "skipped": got["skipped"],
+            }
+        )
         store.log(
             "intake",
             f"{got['issues']} open issue(s) with label {label}; {len(got['new'])} new ticket(s)",
             detail=repo,
         )
         log(f"intake: {got['issues']} issue(s), {len(got['new'])} new")
+        if live and not store.get_setting("playbook_id.repair-pandas3"):
+            from swe_loop.cli import apply_config
+
+            made = apply_config(settings, cfg, store, client)
+            n = len(made["created"])
+            store.log(
+                "triage",
+                f"the organisation was configured: {n} object(s) created",
+                detail="playbooks and Knowledge notes; anything already there was adopted",
+            )
+            log(f"apply-config: {n} created, {len(made['already_on_the_org'])} already there")
         inv = cfg.triage.get("inventory_url") or None
         pid_tri = store.get_setting("playbook_id.triage-pandas3")
         verdicts = triage_all(store, client, cfg, inventory_path=inv, playbook_id=pid_tri)

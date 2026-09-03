@@ -29,9 +29,16 @@ def run_to_gated(tmp_path):
     return st, sids
 
 
-def pass_and_review(st, sid, ticket):
+def pass_and_review(st, sid, ticket, review="completed:no issues"):
+    """What the gate and the review read-back leave behind: a passing verdict carrying the
+    review's outcome, and the ticket marked reviewed."""
     st.insert_verdict(
-        session_id=sid, gate_result="pass", decision="pass", reason="t", tree_hash="abc"
+        session_id=sid,
+        gate_result="pass",
+        decision="pass",
+        reason="t",
+        tree_hash="abc",
+        review_severity=review,
     )
     st.set_ticket_status(ticket, "reviewed")
 
@@ -47,6 +54,18 @@ def test_readiness_needs_every_shard_verified_and_reviewed(tmp_path):
         and r.pr_urls
         and r.pr_urls[0].startswith("https://github.com/charliebachg/superset/pull/")
     )
+
+
+def test_not_ready_while_the_review_is_still_running(tmp_path):
+    """A passing gate is not enough: until Devin Review comes back, nobody is asked to merge."""
+    st, sids = run_to_gated(tmp_path)
+    pass_and_review(st, sids["tkt_D"], "tkt_D", review="requested:r1")
+    assert readiness(st, "tkt_D").verified == 1
+    assert not readiness(st, "tkt_D").ready
+    with pytest.raises(ValueError):
+        record_merge(st, "tkt_D", actor="someone")
+    st.conn.execute("UPDATE verdicts SET review_severity='completed:no issues'")
+    assert readiness(st, "tkt_D").ready
 
 
 def test_merge_is_recorded_by_a_person_and_never_before_ready(tmp_path):
