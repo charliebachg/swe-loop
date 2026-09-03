@@ -135,6 +135,7 @@ class Transport(Protocol):
     def list_insights(self, session_ids: list[str] | None = None) -> list[dict[str, Any]]: ...
     def list_automations(self) -> list[dict[str, Any]]: ...
     def list_playbooks(self) -> list[dict[str, Any]]: ...
+    def list_knowledge_notes(self) -> list[dict[str, Any]]: ...
     def list_secrets(self) -> list[dict[str, Any]]: ...
     def create_pr_review(self, pr_url: str) -> dict[str, Any]: ...
     def create_playbook(self, payload: dict[str, Any]) -> dict[str, Any]: ...
@@ -240,6 +241,9 @@ class HttpTransport:
     def list_playbooks(self) -> list[dict[str, Any]]:
         return self._paged("/playbooks", {})
 
+    def list_knowledge_notes(self) -> list[dict[str, Any]]:
+        return self._paged("/knowledge/notes", {})
+
     def list_secrets(self) -> list[dict[str, Any]]:
         return self._paged("/secrets", {})
 
@@ -286,6 +290,30 @@ class FakeTransport:
         repo = (payload.get("repos") or ["owner/repo"])[0]
         tags = payload.get("tags", [])
         shard = next((t.split(":", 1)[1] for t in tags if t.startswith("shard:")), "X")
+        if "triage" in tags:
+            ticket_id = next((t for t in tags if t.startswith("tkt_")), "tkt_X")
+            out: dict[str, Any] = {
+                "ticket_id": ticket_id,
+                "summary": "synthesised by FakeTransport; replace with a recorded fixture",
+                "classes": ["synthesised"],
+                "sites": [
+                    {
+                        "file": "superset/synthesised.py",
+                        "line": 1,
+                        "class": "synthesised",
+                        "kind": "mechanical",
+                        "tests": ["tests/unit_tests/synthesised_test.py"],
+                    }
+                ],
+                "acceptance_cmd": {"p2": "true", "p3": "true"},
+                "context_sufficient": True,
+                "missing": [],
+                "split": "one",
+                "shards": [],
+                "est_size": "S",
+                "needs_human": [],
+            }
+            return self._timeline(sid, out, pr_url=None)
         out = {
             "shard": shard,
             "self_reported_done": True,
@@ -297,6 +325,18 @@ class FakeTransport:
             "needs_human": [],
             "notes": "synthesised by FakeTransport; replace with a recorded fixture",
         }
+        return self._timeline(sid, out, pr_url=out["pr_url"])
+
+    @staticmethod
+    def _timeline(sid: str, out: dict[str, Any], *, pr_url: str | None) -> dict[str, Any]:
+        last: dict[str, Any] = {
+            "status": "exit",
+            "status_detail": "finished",
+            "acus_consumed": 2.1,
+            "structured_output": out,
+        }
+        if pr_url:
+            last["pull_requests"] = [{"url": pr_url}]
         return {
             "session_id": sid,
             "url": f"https://app.devin.ai/sessions/{sid}",
@@ -304,13 +344,7 @@ class FakeTransport:
                 {"status": "new", "status_detail": None, "acus_consumed": 0.0},
                 {"status": "running", "status_detail": "working", "acus_consumed": 0.6},
                 {"status": "running", "status_detail": "working", "acus_consumed": 1.4},
-                {
-                    "status": "exit",
-                    "status_detail": "finished",
-                    "acus_consumed": 2.1,
-                    "structured_output": out,
-                    "pull_requests": [{"url": out["pr_url"]}],
-                },
+                last,
             ],
             "insights": {"session_size": "S", "num_user_messages": 1, "num_devin_messages": 6},
         }
@@ -402,6 +436,10 @@ class FakeTransport:
 
     def list_playbooks(self) -> list[dict[str, Any]]:
         self.calls.append(("list_playbooks", None))
+        return []
+
+    def list_knowledge_notes(self) -> list[dict[str, Any]]:
+        self.calls.append(("list_knowledge_notes", None))
         return []
 
     def list_secrets(self) -> list[dict[str, Any]]:

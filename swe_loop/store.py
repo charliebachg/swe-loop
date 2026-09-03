@@ -68,6 +68,12 @@ CREATE TABLE IF NOT EXISTS sessions (
   self_reported_done INTEGER, pull_request_url TEXT, parent_session_id TEXT, attempt INTEGER NOT NULL DEFAULT 1,
   retries INTEGER NOT NULL DEFAULT 0, rejected_output_digest TEXT
 );
+CREATE TABLE IF NOT EXISTS triage_sessions (
+  id TEXT PRIMARY KEY, ticket_id TEXT NOT NULL REFERENCES tickets(id),
+  devin_session_id TEXT UNIQUE, url TEXT, playbook_id TEXT, tags_json TEXT,
+  created_at TEXT NOT NULL, terminal_at TEXT, status TEXT, status_detail TEXT,
+  acus_consumed REAL, verdict_json TEXT, outcome TEXT
+);
 CREATE TABLE IF NOT EXISTS evidence (
   id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id),
   tier TEXT NOT NULL, command TEXT NOT NULL, cwd TEXT NOT NULL, tree_hash TEXT NOT NULL,
@@ -426,6 +432,7 @@ class Store:
     def budget_state(self) -> dict[str, Any]:
         """The one definition of spend and cap, used by the dashboard and by enforcement."""
         spent = self._one("SELECT COALESCE(SUM(acus_consumed), 0) AS n FROM sessions")["n"]
+        spent += self._one("SELECT COALESCE(SUM(acus_consumed), 0) AS n FROM triage_sessions")["n"]
         b = self._one("SELECT * FROM budget WHERE id = 1") or {}
         return {
             "spent": spent,
@@ -437,6 +444,58 @@ class Store:
         return self._all(
             "SELECT * FROM sessions WHERE work_order_id=? ORDER BY attempt", work_order_id
         )
+
+    # ------------------------------------------------------------------ triage sessions
+    def insert_triage_session(
+        self,
+        *,
+        ticket_id: str,
+        devin_session_id: str,
+        url: str,
+        status: str,
+        status_detail: str | None,
+        playbook_id: str | None,
+        tags: list[str],
+    ) -> str:
+        tid = f"tri_{uuid.uuid4().hex[:8]}"
+        self.conn.execute(
+            "INSERT INTO triage_sessions (id, ticket_id, devin_session_id, url, playbook_id, tags_json, "
+            "created_at, status, status_detail) VALUES (?,?,?,?,?,?,?,?,?)",
+            (
+                tid,
+                ticket_id,
+                devin_session_id,
+                url,
+                playbook_id,
+                json.dumps(tags),
+                now(),
+                status,
+                status_detail,
+            ),
+        )
+        self.conn.commit()
+        return tid
+
+    def update_triage_session(self, tid: str, **fields: Any) -> None:
+        if "verdict" in fields:
+            fields["verdict_json"] = json.dumps(fields.pop("verdict"))
+        cols = ", ".join(f"{k}=?" for k in fields)
+        self.conn.execute(f"UPDATE triage_sessions SET {cols} WHERE id=?", (*fields.values(), tid))
+        self.conn.commit()
+
+    def get_triage_session(self, tid: str) -> dict[str, Any] | None:
+        r = self._one("SELECT * FROM triage_sessions WHERE id=?", tid)
+        if r and r.get("verdict_json"):
+            r["verdict"] = json.loads(r["verdict_json"])
+        return r
+
+    def list_triage_sessions(self, ticket_id: str | None = None) -> list[dict[str, Any]]:
+        if ticket_id:
+            return self._all(
+                "SELECT * FROM triage_sessions WHERE ticket_id=? ORDER BY created_at DESC, rowid DESC",
+                ticket_id,
+            )
+        return self._all("SELECT * FROM triage_sessions ORDER BY created_at DESC, rowid DESC")
 
     # ------------------------------------------------------------------ evidence
     def insert_evidence(

@@ -16,7 +16,7 @@ from jsonschema import Draft7Validator
 
 from swe_loop.config import TargetConfig
 from swe_loop.devin import SessionSpec
-from swe_loop.store import Store
+from swe_loop.store import Store, now
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "schemas" / "triage_verdict.schema.json"
@@ -150,3 +150,140 @@ def apply_verdict(store: Store, ticket_id: str, verdict: dict[str, Any]) -> list
                 )
             )
     return ids
+
+
+# ---------------------------------------------------------------------------- the runner
+def run_triage(
+    store: Store,
+    client: Any,
+    ticket_id: str,
+    cfg: TargetConfig,
+    *,
+    inventory_path: str | None = None,
+    playbook_id: str | None = None,
+    sleep: Any = None,
+    wall_clock: float = 3600.0,
+    min_wait: float = 5.0,
+    max_wait: float = 30.0,
+) -> dict[str, Any]:
+    """One triage session for one ticket, start to verdict. The session proposes; this code
+    validates the verdict against the schema and only then writes work orders. A terminal session
+    without structured output is a failure and is escalated, never treated as a pass."""
+    import time as _time
+
+    sleep = sleep or (
+        (lambda s_: _time.sleep(min(s_, 0.05)))
+        if getattr(client, "is_fake", False)
+        else _time.sleep
+    )
+    t = store.get_ticket(ticket_id)
+    if not t:
+        raise KeyError(ticket_id)
+    if t["status"] != "new":
+        return {
+            "ticket_id": ticket_id,
+            "kind": "skipped",
+            "detail": f"status is {t['status']}, not new",
+        }
+    spec = build_triage_spec(t, cfg, inventory_path=inventory_path, playbook_id=playbook_id)
+    live = client.find_live(list(spec.tags))
+    state = live if live else client.start(spec)
+    tid = store.insert_triage_session(
+        ticket_id=ticket_id,
+        devin_session_id=state.session_id,
+        url=state.url,
+        status=state.status or "new",
+        status_detail=state.status_detail,
+        playbook_id=playbook_id,
+        tags=list(spec.tags),
+    )
+    store.log(
+        "L1 triage",
+        "adopted live session" if live else "POST /sessions",
+        ticket_id=ticket_id,
+        detail=f"{state.session_id} cap {spec.max_acu_limit} ACU",
+    )
+    start = _time.monotonic()
+    delay = min_wait
+    while True:
+        state = client.status(state.session_id)
+        store.update_triage_session(
+            tid,
+            status=state.status,
+            status_detail=state.status_detail,
+            acus_consumed=state.acus_consumed,
+        )
+        store.log(
+            "L1 triage",
+            f"{state.status}/{state.status_detail or '-'}",
+            ticket_id=ticket_id,
+            detail=f"acus={state.acus_consumed}",
+        )
+        if state.terminal:
+            break
+        if _time.monotonic() - start > wall_clock:
+            try:
+                client.terminate(state.session_id)
+            except Exception as ex:  # noqa: BLE001 - best effort; the row is closed regardless
+                store.log(
+                    "L1 triage", "terminate call failed", ticket_id=ticket_id, detail=str(ex)[:120]
+                )
+            store.update_triage_session(
+                tid, terminal_at=now(), status="exit", status_detail="terminated", outcome="timeout"
+            )
+            store.insert_escalation(
+                ticket_id,
+                None,
+                "review_blocked",
+                f"triage session exceeded {wall_clock:.0f}s; terminated",
+            )
+            store.set_ticket_status(ticket_id, "escalated")
+            return {"ticket_id": ticket_id, "kind": "timeout", "session": tid}
+        sleep(delay)
+        delay = min(delay * 2, max_wait)
+
+    if state.too_large:
+        store.update_triage_session(tid, terminal_at=now(), outcome="too_large")
+        store.insert_escalation(
+            ticket_id,
+            None,
+            "usage_limit",
+            f"triage hit its {spec.max_acu_limit} ACU cap: the ticket is too large to scope in one session",
+        )
+        store.set_ticket_status(ticket_id, "escalated")
+        return {"ticket_id": ticket_id, "kind": "too_large", "session": tid}
+    out = state.structured_output
+    if not state.succeeded or not out:
+        store.update_triage_session(tid, terminal_at=now(), outcome="no_output")
+        store.insert_escalation(
+            ticket_id,
+            None,
+            "review_blocked",
+            f"triage session ended {state.status}/{state.status_detail} without a verdict",
+        )
+        store.set_ticket_status(ticket_id, "escalated")
+        return {"ticket_id": ticket_id, "kind": "no_output", "session": tid}
+    if out.get("ticket_id") != ticket_id:
+        out = {**out, "ticket_id": ticket_id}
+    try:
+        ids = apply_verdict(store, ticket_id, out)
+    except ValueError as ex:
+        store.update_triage_session(tid, terminal_at=now(), outcome="invalid", verdict=out)
+        store.insert_escalation(ticket_id, None, "review_blocked", str(ex)[:300])
+        store.set_ticket_status(ticket_id, "escalated")
+        return {"ticket_id": ticket_id, "kind": "invalid", "session": tid, "detail": str(ex)[:300]}
+    store.update_triage_session(tid, terminal_at=now(), outcome="triaged", verdict=out)
+    store.log(
+        "L1 triage",
+        "verdict accepted",
+        ticket_id=ticket_id,
+        detail=f"split {out['split']} · {len(out.get('sites', []))} site(s) · {len(ids)} work order(s) · needs_human {len(out.get('needs_human', []))}",
+    )
+    return {"ticket_id": ticket_id, "kind": "triaged", "session": tid, "work_orders": ids}
+
+
+def triage_all(
+    store: Store, client: Any, cfg: TargetConfig, *, ticket_id: str | None = None, **kw: Any
+) -> list[dict[str, Any]]:
+    tickets = [store.get_ticket(ticket_id)] if ticket_id else store.list_tickets("new")
+    return [run_triage(store, client, t["id"], cfg, **kw) for t in tickets if t]

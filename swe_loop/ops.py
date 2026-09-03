@@ -181,6 +181,10 @@ def build(store: Store) -> dict[str, Any]:
                 "elapsed": _elapsed(s["created_at"], s["terminal_at"]),
             }
         )
+    for tr in store.list_triage_sessions():
+        counts["acus"] += tr["acus_consumed"] or 0
+        if tr["devin_session_id"] and not tr["terminal_at"]:
+            counts["running"] += 1
     counts["acus"] = round(counts["acus"], 2)
     counts["cap"] = store.budget_state().get("cap")
     escalations = store.list_escalations()

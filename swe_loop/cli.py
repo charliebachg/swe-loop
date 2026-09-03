@@ -1,9 +1,11 @@
 """Command line: serve the dashboard, run the loop, seed or record a replay.
 
     python -m swe_loop serve                 # dashboard + intake on :8000
+    python -m swe_loop triage [--ticket ID]  # one triage session per new ticket; the verdict becomes work orders
     python -m swe_loop run                   # one pass: route, dispatch, poll, gate, reduce
     python -m swe_loop seed                  # fill an empty store for replay
     python -m swe_loop record data/replay/run.json
+    python -m swe_loop apply-config --dry-run  # what would be created on the org; creates nothing
     python -m swe_loop apply-config          # create playbooks and knowledge on the org (live only)
 
 Mode comes from the environment: without DEVIN_API_KEY everything is replay, always.
@@ -16,6 +18,7 @@ import json
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.devin import DevinClient
@@ -137,8 +140,78 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def plan_config(client: DevinClient | None) -> dict[str, Any]:
+    """What apply-config would create on the org, and what is already there. Read-only:
+    the only calls are GET listings, and only when a live client is given."""
+    existing_pb: set[str] = set()
+    existing_kn: set[str] = set()
+    if client is not None and not client.is_fake:
+        existing_pb = {p.get("name", "") for p in client.t.list_playbooks()}
+        existing_kn = {n.get("name", "") for n in client.t.list_knowledge_notes()}
+    playbooks = []
+    for name, schema in (
+        ("triage-pandas3", "triage_verdict.schema.json"),
+        ("repair-pandas3", "repair_result.schema.json"),
+    ):
+        pb = load_playbook(ROOT / "playbooks" / f"{name}.md", ROOT / "schemas" / schema)
+        payload = pb.to_payload()
+        playbooks.append(
+            {
+                "file": name,
+                "name": pb.name,
+                "sections": [ln[3:].strip() for ln in pb.body.splitlines() if ln.startswith("## ")],
+                "body_chars": len(pb.body),
+                "schema_fields": sorted((pb.structured_output_schema or {}).get("properties", {})),
+                "schema_bytes": len(json.dumps(pb.structured_output_schema or {})),
+                "payload_keys": sorted(payload),
+                "action": "exists on the org" if pb.name in existing_pb else "would create",
+            }
+        )
+    notes = [
+        {
+            "name": n.name,
+            "trigger_description": n.trigger_description,
+            "body_chars": len(n.body),
+            "action": "exists on the org" if n.name in existing_kn else "would create",
+        }
+        for n in load_notes()
+    ]
+    return {
+        "playbooks": playbooks,
+        "knowledge_notes": notes,
+        "secrets": "none: the target's tests need no credentials; repository access is the Devin GitHub App",
+        "automations": "none: v0 work enters through /intake/github or the run command; a native Automation is a v1 item",
+        "creates": sum(1 for x in playbooks + notes if x["action"] == "would create"),
+    }
+
+
+def cmd_triage(args: argparse.Namespace) -> int:
+    from swe_loop.triage import triage_all
+
+    settings, cfg, store, client = _ctx()
+    if not settings.live:
+        print("mode=replay: the triage session is faked", file=sys.stderr)
+    inv = str(INVENTORY / "inventory.json") if (INVENTORY / "inventory.json").exists() else None
+    results = triage_all(
+        store, client, cfg, ticket_id=args.ticket, inventory_path=inv, playbook_id=args.playbook_id
+    )
+    if not results:
+        print("no tickets with status new")
+    for r in results:
+        print(json.dumps(r))
+    return 0
+
+
 def cmd_apply_config(args: argparse.Namespace) -> int:
     settings, _cfg, _, client = _ctx()
+    if args.dry_run:
+        plan = plan_config(client if settings.live else None)
+        plan["mode"] = settings.mode
+        plan["note"] = "dry run: nothing was created" + (
+            "" if settings.live else "; replay mode, so the org was not read either"
+        )
+        print(json.dumps(plan, indent=1))
+        return 0
     if not settings.live:
         print(
             "refusing: apply-config creates objects on the org and only runs in live mode",
@@ -172,7 +245,17 @@ def main(argv: list[str] | None = None) -> int:
     ru = sub.add_parser("run")
     ru.add_argument("--playbook-id", default=None)
     ru.set_defaults(fn=cmd_run)
-    sub.add_parser("apply-config").set_defaults(fn=cmd_apply_config)
+    tr = sub.add_parser("triage")
+    tr.add_argument(
+        "--ticket", default=None, help="one ticket id; default: every ticket with status new"
+    )
+    tr.add_argument("--playbook-id", default=None)
+    tr.set_defaults(fn=cmd_triage)
+    ac = sub.add_parser("apply-config")
+    ac.add_argument(
+        "--dry-run", action="store_true", help="print what would be created; create nothing"
+    )
+    ac.set_defaults(fn=cmd_apply_config)
     args = p.parse_args(argv)
     return args.fn(args)
 

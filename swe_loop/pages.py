@@ -11,6 +11,7 @@ from swe_loop import reduce as reduce_mod
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.devin import DevinClient
 from swe_loop.store import Store
+from swe_loop.triage import TRIAGE_ACU_CAP
 
 NAV = [
     ("home", "Home", "/"),
@@ -460,6 +461,38 @@ def sessions(store: Store, cfg: TargetConfig) -> dict[str, Any]:
                 "created": (r["created_at"] or "")[11:19],
             }
         )
+    triage_rows = []
+    for tr in store.list_triage_sessions():
+        t = store.get_ticket(tr["ticket_id"]) or {}
+        live = tr["devin_session_id"] and not tr["terminal_at"]
+        detail = tr["status_detail"] or ""
+        triage_rows.append(
+            {
+                "id": tr["id"],
+                "kind": "triage",
+                "devin_id": tr["devin_session_id"],
+                "url": tr["url"],
+                "ticket": tr["ticket_id"],
+                "shard": "triage",
+                "source": SOURCE_LABELS.get(t.get("source", ""), (t.get("source", ""), ""))[0],
+                "status": tr["status"] or "new",
+                "status_detail": detail,
+                "pill": ops.STATUS_PILL.get(
+                    detail, ops.STATUS_PILL.get(tr["status"] or "", "p-na")
+                ),
+                "acus": tr["acus_consumed"],
+                "size": None,
+                "parent": None,
+                "children": [],
+                "pr_url": None,
+                "gate": None,
+                "outcome": tr["outcome"],
+                "eta": f"cap {TRIAGE_ACU_CAP} ACU" if live else "done",
+                "created": (tr["created_at"] or "")[11:19],
+                "elapsed": ops._elapsed(tr["created_at"], tr["terminal_at"]),
+            }
+        )
+    out = sorted(out + triage_rows, key=lambda r: r["created"], reverse=True)
     managed = any(r["parent_session_id"] for r in rows)
     return {
         "sessions": out,

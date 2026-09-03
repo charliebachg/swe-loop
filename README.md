@@ -34,7 +34,9 @@ Live mode needs a Devin org-scoped service user key and a GitHub token that can 
 Copy `.env.example` to `.env`, fill it in, set `SWE_LOOP_MODE=live`, then:
 
 ```
+python -m swe_loop apply-config --dry-run   # what would be created on the org, and what is already there; creates nothing
 python -m swe_loop apply-config   # creates the playbooks and Knowledge notes on the org, once
+python -m swe_loop triage         # one triage session per new ticket; the verdict, validated by code, becomes work orders
 python -m swe_loop run            # route, dispatch, poll, gate, reduce: one pass over open tickets
 python -m swe_loop record data/replay/run.json   # capture the run so replay shows real data
 ```
