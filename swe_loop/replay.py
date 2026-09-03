@@ -44,6 +44,11 @@ def redactions(extra: list[tuple[str, str]] | None = None) -> list[tuple[str, st
 
     root = Path(__file__).resolve().parents[1]
     pairs = [(str((root.parent / "superset-fork").resolve()), "../superset-fork"), (str(root), ".")]
+    import tempfile
+
+    for tmp in {tempfile.gettempdir(), os.path.realpath(tempfile.gettempdir())}:
+        if tmp and tmp != "/":
+            pairs.append((tmp, "<tmp>"))
     home = os.path.expanduser("~")
     if home and home != "/":
         pairs.append((home, "~"))

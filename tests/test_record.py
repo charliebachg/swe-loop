@@ -1,6 +1,7 @@
 """Recording a run captures every table the pages read and leaves no local path behind."""
 
 import os
+import tempfile
 from pathlib import Path
 
 from swe_loop.replay import TABLES, record, restore
@@ -29,7 +30,7 @@ def test_record_covers_triage_and_redacts_local_paths(tmp_path):
         session_id=sid,
         tier="T1",
         command=f"lint: {fork}/.venv-p2/bin/ruff check a.py",
-        cwd=f"{root}/tmp/worktree",
+        cwd=f"{tempfile.gettempdir()}/swe-loop-gate-abc",
         tree_hash="abc",
         exit_code=0,
         output="ok",
@@ -50,6 +51,7 @@ def test_record_covers_triage_and_redacts_local_paths(tmp_path):
     text = out.read_text()
     assert str(root) not in text and str(fork) not in text and os.path.expanduser("~") not in text
     assert "../superset-fork/.venv-p2/bin/ruff" in text and "./data/live/evidence/x.log" in text
+    assert tempfile.gettempdir() not in text and "<tmp>/swe-loop-gate-abc" in text
     st2 = Store(tmp_path / "r.sqlite")
     restore(st2, out)
     assert st2.get_triage_session(tid)["ticket_id"] == "tkt_D"
