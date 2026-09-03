@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   devin_session_id TEXT UNIQUE, url TEXT, playbook_id TEXT, tags_json TEXT,
   created_at TEXT NOT NULL, terminal_at TEXT, status TEXT, status_detail TEXT,
   acus_consumed REAL, session_size TEXT, structured_output_json TEXT,
-  self_reported_done INTEGER, pull_request_url TEXT, parent_session_id TEXT, attempt INTEGER NOT NULL DEFAULT 1
+  self_reported_done INTEGER, pull_request_url TEXT, parent_session_id TEXT, attempt INTEGER NOT NULL DEFAULT 1,
+  retries INTEGER NOT NULL DEFAULT 0, rejected_output_digest TEXT
 );
 CREATE TABLE IF NOT EXISTS evidence (
   id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id),
@@ -315,6 +316,7 @@ class Store:
             "structured_output_json",
             "self_reported_done",
             "pull_request_url",
+            "rejected_output_digest",
         }
         bad = set(fields) - allowed
         assert not bad, f"unknown session fields: {bad}"
@@ -328,6 +330,45 @@ class Store:
 
     def session_by_devin_id(self, devin_session_id: str) -> dict[str, Any] | None:
         return self._one("SELECT * FROM sessions WHERE devin_session_id=?", devin_session_id)
+
+    def mark_terminal(
+        self,
+        sid: str,
+        *,
+        status: str,
+        status_detail: str | None,
+        acus_consumed: float | None = None,
+    ) -> None:
+        """Status and terminal_at in one write, so a crash cannot leave a terminal status
+        without its timestamp (or the reverse)."""
+        self.conn.execute(
+            "UPDATE sessions SET status=?, status_detail=?, terminal_at=?, "
+            "acus_consumed=COALESCE(?, acus_consumed) WHERE id=?",
+            (status, status_detail, now(), acus_consumed, sid),
+        )
+
+    def bound_devin_ids(self) -> set[str]:
+        return {
+            r["devin_session_id"]
+            for r in self._all(
+                "SELECT devin_session_id FROM sessions WHERE devin_session_id IS NOT NULL"
+            )
+        }
+
+    def live_sessions(self) -> list[dict[str, Any]]:
+        return self._all(
+            "SELECT * FROM sessions WHERE terminal_at IS NULL AND devin_session_id IS NOT NULL"
+        )
+
+    def budget_state(self) -> dict[str, Any]:
+        """The one definition of spend and cap, used by the dashboard and by enforcement."""
+        spent = self._one("SELECT COALESCE(SUM(acus_consumed), 0) AS n FROM sessions")["n"]
+        b = self._one("SELECT * FROM budget WHERE id = 1") or {}
+        return {
+            "spent": spent,
+            "cap": b.get("acu_cap"),
+            "per_session_cap": b.get("per_session_cap"),
+        }
 
     def sessions_for(self, work_order_id: str) -> list[dict[str, Any]]:
         return self._all(
@@ -467,8 +508,7 @@ class Store:
         passed = self._one(
             "SELECT COUNT(DISTINCT session_id) AS n FROM verdicts WHERE gate_result = 'pass'"
         )["n"]
-        spent = self._one("SELECT COALESCE(SUM(acus_consumed), 0) AS n FROM sessions")["n"]
-        budget = self._one("SELECT * FROM budget WHERE id = 1") or {}
+        budget = self.budget_state()
 
         def pct(xs: list[float], p: float) -> float | None:
             if not xs:
@@ -484,11 +524,7 @@ class Store:
                 "passed_gate": passed,
                 "gap": said - passed,
             },
-            "budget": {
-                "spent": spent,
-                "cap": budget.get("acu_cap"),
-                "per_session_cap": budget.get("per_session_cap"),
-            },
+            "budget": budget,
         }
 
     def funnel(self) -> dict[str, int]:

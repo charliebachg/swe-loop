@@ -77,7 +77,8 @@ def test_repair_spec_carries_sites_constraints_and_cap(tmp_path):
     p = spec.to_payload()
     assert p["max_acu_limit"] == 6 and p["repos"] == ["charliebachg/superset"]
     assert p["structured_output_required"] is True
-    assert p["tags"][:4] == ["swe-loop", "repair", "tkt_A", "shard:A"]
+    assert p["tags"][0] == "swe-loop" and p["tags"][1] == f"wo:{wo['id']}"
+    assert {"repair", "target:superset-pandas3", "tkt_A", "shard:A"} <= set(p["tags"])
     prompt = p["prompt"]
     assert "client_processing.py:639" in prompt and "client_processing.py:754" in prompt
     assert ">=2.3.3, <3.1" in prompt and "lower bound does not move" in prompt

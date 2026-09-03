@@ -1,8 +1,9 @@
 """L4: dispatch a repair session for one routed work order.
 
 Order of operations is the point: the durable row is written first (`reserve_session`), then the
-API is called, then the row is bound to Devin's id. A crash between the two leaves a reserved row
-that the poller can reconcile, never a session nobody knows about.
+org is checked for a session already carrying this work order's tag, then the API is called, then
+the row is bound to Devin's id. A crash between reserve and bind leaves a reserved row that
+`reconcile` adopts or orphans; it never leaves a session nobody knows about.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from typing import Any
 
 from swe_loop.config import TargetConfig
 from swe_loop.devin import DevinClient, SessionSpec
-from swe_loop.store import Store
+from swe_loop.store import Store, now
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULT_SCHEMA_PATH = ROOT / "schemas" / "repair_result.schema.json"
@@ -28,47 +29,57 @@ def _sites_for(files: list[str], verdict: dict[str, Any] | None) -> list[dict[st
     return [s for s in (verdict or {}).get("sites", []) if s.get("file") in fs]
 
 
+def _verdict(ticket: dict[str, Any]) -> dict[str, Any] | None:
+    return json.loads(ticket["triage_verdict_json"]) if ticket.get("triage_verdict_json") else None
+
+
+def identity_tags(cfg: TargetConfig, wo: dict[str, Any]) -> list[str]:
+    """The two tags that identify a work order's session on the org: prefix plus the work order
+    id, which is unique. Shard letters are not unique across tickets or targets."""
+    return [cfg.session.get("tags_prefix", "swe-loop"), f"wo:{wo['id']}"]
+
+
 def build_repair_prompt(
     wo: dict[str, Any], ticket: dict[str, Any], cfg: TargetConfig, review: str
 ) -> str:
     """What / How / Result. Everything target-specific comes from the seam and the ticket."""
-    verdict = (
-        json.loads(ticket["triage_verdict_json"]) if ticket.get("triage_verdict_json") else None
-    )
-    sites = _sites_for(wo["files"], verdict)
+    sites = _sites_for(wo["files"], _verdict(ticket))
     ext = ticket.get("external_ref") or ticket["id"]
     rng = cfg.session.get("version_range", "")
     what = (
-        f"In `{cfg.repo}`, starting from branch `{cfg.base_branch}`, fix every call site listed below in "
-        f"{', '.join(f'`{f}`' for f in wo['files'])} so the code runs correctly on both versions of the "
-        f"library named in the ticket ({cfg.name}). Ticket: {ext}, shard {wo['shard_id']}. "
-        f"Open one pull request against the fork."
+        f"In `{cfg.repo}`, starting from branch `{cfg.base_branch}`, fix every call site listed "
+        f"below in {', '.join(f'`{f}`' for f in wo['files'])} so the code runs correctly on both "
+        f"versions of the library named in the ticket ({cfg.name}). Ticket: {ext}, shard "
+        f"{wo['shard_id']}. Open one pull request against the fork."
     )
     site_lines = []
     for s in sites:
         lines = ",".join(str(x) for x in (s.get("lines") or [s.get("line")]) if x)
         msg = s.get("r3") or s.get("r2") or s.get("prescribed_fix") or ""
-        site_lines.append(
-            f"- `{s['file']}:{lines}` [{', '.join(s.get('classes') or [s.get('class', '')])}] {msg[:200]}"
-        )
+        classes = ", ".join(s.get("classes") or [s.get("class", "")])
+        site_lines.append(f"- `{s['file']}:{lines}` [{classes}] {msg[:200]}")
     if not site_lines:
         site_lines = [
             f"- every site in `{f}` that the acceptance commands expose" for f in wo["files"]
         ]
+    compat = (
+        f"- Keep every change compatible with the version range `{rng}`; the lower bound does not move."
+        if rng
+        else "- Keep every change compatible with both library versions."
+    )
     dos = [
         "Do:",
         "- Read the library's own message for each site before changing it; it usually names the replacement.",
-        f"- Keep every change compatible with the version range `{rng}`; the lower bound does not move."
-        if rng
-        else "- Keep every change compatible with both library versions.",
+        compat,
         "- Run `ruff format` and `ruff check` on the files you changed. The repository uses ruff, not black.",
         f"- Title the PR `{cfg.session.get('pr_title_prefix', 'fix')}: <summary>` and fill the pull request template.",
         "- Keep the diff to the files listed above.",
     ]
     if review == "required":
         dos.append(
-            "- These sites warned on the current version but did not fail on the new one: the behaviour "
-            "changes silently. State in the PR what the old and new behaviour are and why the fix preserves the intent."
+            "- These sites warned on the current version but did not fail on the new one: the "
+            "behaviour changes silently. State in the PR what the old and new behaviour are and "
+            "why the fix preserves the intent."
         )
     donts = [
         "Don't:",
@@ -81,9 +92,10 @@ def build_repair_prompt(
     result = (
         "All acceptance commands exit 0 on your branch:\n" + "\n".join(acc) + "\n"
         "A pull request exists against the fork with a conventional-commit title. "
-        "Provide structured output matching the repair result schema and call provide_structured_output "
-        "with is_final=true: shard, self_reported_done, files_changed, call_sites_fixed (file, line, change), "
-        "tests_run, tests_passed, acceptance (exit codes), pr_url, branch, needs_human (site, reason)."
+        "Provide structured output matching the repair result schema and call "
+        "provide_structured_output with is_final=true: shard, self_reported_done, files_changed, "
+        "call_sites_fixed (file, line, change), tests_run, tests_passed, acceptance (exit codes), "
+        "pr_url, branch, needs_human (site, reason)."
     )
     return (
         f"## What\n{what}\n\nSites:\n" + "\n".join(site_lines) + "\n\n"
@@ -99,30 +111,32 @@ def build_repair_spec(
     *,
     review: str = "normal",
     playbook_id: str | None = None,
+    per_session_cap: float | None = None,
 ) -> SessionSpec:
-    verdict = (
-        json.loads(ticket["triage_verdict_json"]) if ticket.get("triage_verdict_json") else None
-    )
     classes = sorted(
         {
             c
-            for s in _sites_for(wo["files"], verdict)
+            for s in _sites_for(wo["files"], _verdict(ticket))
             for c in (s.get("classes") or [s.get("class", "")])
             if c
         }
     )
     tags = (
-        cfg.session.get("tags_prefix", "swe-loop"),
+        *identity_tags(cfg, wo),
         "repair",
+        f"target:{cfg.name}",
         ticket["id"],
         f"shard:{wo['shard_id']}",
-        *classes[:3],
+        *classes[:2],
     )
+    cap = cfg.max_acu_limit
+    if per_session_cap:
+        cap = int(min(cap, per_session_cap))
     return SessionSpec(
         prompt=build_repair_prompt(wo, ticket, cfg, review),
         tags=tags,
         repos=(cfg.repo,),
-        max_acu_limit=cfg.max_acu_limit,
+        max_acu_limit=cap,
         structured_output_schema=load_result_schema(),
         playbook_id=playbook_id,
         title=f"repair {ticket.get('external_ref') or ticket['id']} shard {wo['shard_id']}",
@@ -130,11 +144,34 @@ def build_repair_spec(
 
 
 def active_session_for(store: Store, work_order_id: str) -> dict[str, Any] | None:
-    """Idempotency at the store level: one live session per work order."""
+    """One live, bound session per work order. Reserved-but-unbound rows are not live; they
+    belong to `reconcile`."""
     for s in store.sessions_for(work_order_id):
-        if s["terminal_at"] is None and s["status"] not in ("exit", "error", "suspended"):
+        if (
+            s["devin_session_id"]
+            and s["terminal_at"] is None
+            and s["status"] not in ("exit", "error", "suspended", "orphaned")
+        ):
             return s
     return None
+
+
+def reconcile(store: Store, client: DevinClient, sid: str, cfg: TargetConfig) -> str:
+    """A reserved row with no Devin id, left by a crash between reserve and bind. Adopt the
+    session on the org carrying this work order's tag, alive or finished, unless it is already
+    bound to another row; otherwise mark the row orphaned. Returns the row's new status."""
+    row = store.get_session(sid)
+    if not row or row["devin_session_id"]:
+        return row["status"] if row else "missing"
+    wo = store.get_work_order(row["work_order_id"])
+    found = client.find(identity_tags(cfg, wo), exclude=store.bound_devin_ids(), alive_only=False)
+    if found:
+        store.bind_devin_session(
+            sid, devin_session_id=found.session_id, url=found.url, status=found.status
+        )
+        return "bound"
+    store.update_session(sid, status="orphaned", terminal_at=now())
+    return "orphaned"
 
 
 def dispatch(
@@ -147,19 +184,33 @@ def dispatch(
     playbook_id: str | None = None,
     attempt: int = 1,
 ) -> str:
-    """Reserve the row, call the API, bind the id. Returns our session id."""
+    """Reserve the row, adopt or create the session, bind the id. Returns our session id."""
     existing = active_session_for(store, wo["id"])
     if existing:
         return existing["id"]
+    for stale in store.sessions_for(wo["id"]):
+        if (
+            stale["devin_session_id"] is None
+            and stale["status"] == "reserved"
+            and reconcile(store, client, stale["id"], cfg) == "bound"
+        ):
+            return stale["id"]
     ticket = store.get_ticket(wo["ticket_id"])
     if not ticket:
         raise KeyError(wo["ticket_id"])
-    spec = build_repair_spec(wo, ticket, cfg, review=review, playbook_id=playbook_id)
+    budget = store.budget_state()
+    spec = build_repair_spec(
+        wo,
+        ticket,
+        cfg,
+        review=review,
+        playbook_id=playbook_id,
+        per_session_cap=budget.get("per_session_cap"),
+    )
     sid = store.reserve_session(
         work_order_id=wo["id"], playbook_id=playbook_id, tags=list(spec.tags), attempt=attempt
     )
-    # v3 has no idempotency flag: if a live session already carries this shard's tags, adopt it
-    live = client.find_live([spec.tags[0], f"shard:{wo['shard_id']}"])
+    live = client.find_live(identity_tags(cfg, wo), exclude=store.bound_devin_ids())
     state = live if live else client.start(spec)
     store.bind_devin_session(
         sid, devin_session_id=state.session_id, url=state.url, status=state.status or "new"

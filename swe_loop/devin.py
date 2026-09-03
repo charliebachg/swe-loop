@@ -2,16 +2,23 @@
 
 Two transports:
 - HttpTransport talks to https://api.devin.ai/v3/organizations/{org_id}. Bearer auth with an
-  org-scoped service user key. 429 and 5xx back off with jitter. Polling only; there is no
-  outbound webhook from Devin.
+  org-scoped service user key. 429, 5xx and transport errors back off with jitter. Polling
+  only; there is no outbound webhook from Devin.
 - FakeTransport replays fixtures from data/replay/sessions/*.json, or synthesises a plausible
   session when no fixture exists. It records every call, so tests can assert what would have
   been sent. It is the default unless mode is live AND a key is present.
 
-Terminal rule, from the v3 status model: a session is terminal when `status` is exit/error/
-suspended, or when `status_detail` is anything other than "working" (which also catches
-waiting_for_user and waiting_for_approval). Success is exit + finished. A terminal session with
-no structured output is a failure, never a pass.
+Verified against the org on 2026-09-03: list endpoints paginate with `first` (default 100,
+max 200) and `after` (cursor; an invalid value is a 400, an unknown parameter name is silently
+ignored). `tags` and `session_ids` are array parameters. Responses carry `items`, `end_cursor`,
+`has_next_page`, `total`.
+
+Two distinct predicates on a session, because they answer different questions:
+- `terminal`: the poller stops waiting. True for exit/error/suspended, and for any
+  `status_detail` other than "working" (waiting_for_user and waiting_for_approval included).
+- `alive`: the session still exists at Devin and can be resumed or adopted. True unless the
+  status is exit/error/suspended. A session parked on a question is alive.
+Success is exit + finished. A terminal session with no structured output is a failure.
 """
 
 from __future__ import annotations
@@ -30,6 +37,8 @@ from swe_loop.config import Settings
 API_BASE = "https://api.devin.ai/v3"
 TERMINAL_STATUSES = {"exit", "error", "suspended"}
 ATTENTION_DETAILS = {"waiting_for_user", "waiting_for_approval"}
+PAGE_SIZE = 100
+MAX_PAGES = 50
 
 
 class DevinError(RuntimeError):
@@ -77,11 +86,16 @@ class SessionState:
     acus_consumed: float | None = None
     structured_output: dict[str, Any] | None = None
     pull_requests: tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
     raw: dict[str, Any] = field(default_factory=dict)
 
     @property
     def terminal(self) -> bool:
         return self.status in TERMINAL_STATUSES or self.status_detail not in (None, "", "working")
+
+    @property
+    def alive(self) -> bool:
+        return self.status not in TERMINAL_STATUSES
 
     @property
     def succeeded(self) -> bool:
@@ -106,6 +120,7 @@ class SessionState:
             acus_consumed=d.get("acus_consumed"),
             structured_output=d.get("structured_output"),
             pull_requests=tuple(p.get("url") if isinstance(p, dict) else str(p) for p in prs),
+            tags=tuple(d.get("tags") or ()),
             raw=d,
         )
 
@@ -144,9 +159,19 @@ class HttpTransport:
     def _req(self, method: str, path: str, **kw: Any) -> dict[str, Any]:
         url = f"{self.base}{path}"
         delay = 1.0
+        last = "no attempt made"
         for attempt in range(self.max_retries + 1):
-            r = self.client.request(method, url, headers=self.headers, **kw)
+            try:
+                r = self.client.request(method, url, headers=self.headers, **kw)
+            except httpx.HTTPError as ex:  # timeouts and connection errors: retry, then DevinError
+                last = f"{type(ex).__name__}: {ex}"
+                if attempt == self.max_retries:
+                    raise DevinError(0, last) from ex
+                self.sleep(min(delay + random.uniform(0, delay), 60))
+                delay = min(delay * 2, 30)
+                continue
             if r.status_code == 429 or r.status_code >= 500:
+                last = f"{r.status_code}: {r.text[:200]}"
                 if attempt == self.max_retries:
                     raise DevinError(r.status_code, r.text[:200])
                 retry_after = r.headers.get("Retry-After")
@@ -159,7 +184,25 @@ class HttpTransport:
             if not r.content:
                 return {}
             return r.json()
-        raise DevinError(0, "unreachable")
+        raise DevinError(0, last)
+
+    def _paged(self, path: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+        """Cursor pagination with `first`/`after`. A cursor that stops advancing ends the loop."""
+        items: list[dict[str, Any]] = []
+        after: str | None = None
+        seen: set[str] = set()
+        for _ in range(MAX_PAGES):
+            q: dict[str, Any] = {"first": PAGE_SIZE, **params}
+            if after:
+                q["after"] = after
+            page = self._req("GET", path, params=q)
+            items += page.get("items", [])
+            nxt = page.get("end_cursor")
+            if not page.get("has_next_page") or not nxt or nxt in seen:
+                break
+            seen.add(nxt)
+            after = nxt
+        return items
 
     def create_session(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._req("POST", "/sessions", json=payload)
@@ -168,19 +211,11 @@ class HttpTransport:
         return self._req("GET", f"/sessions/{session_id}")
 
     def list_sessions(self, tags: list[str] | None = None) -> list[dict[str, Any]]:
-        items: list[dict[str, Any]] = []
-        cursor = None
-        while True:
-            params: dict[str, Any] = {"limit": 100}
-            if tags:
-                params["tags"] = ",".join(tags)
-            if cursor:
-                params["cursor"] = cursor
-            page = self._req("GET", "/sessions", params=params)
-            items += page.get("items", [])
-            if not page.get("has_next_page"):
-                break
-            cursor = page.get("end_cursor")
+        params: dict[str, Any] = {"tags": list(tags)} if tags else {}
+        items = self._paged("/sessions", params)
+        if tags:  # confirm client-side regardless of the server's any/all semantics
+            want = set(tags)
+            items = [i for i in items if want <= set(i.get("tags") or [])]
         return items
 
     def send_message(self, session_id: str, text: str) -> dict[str, Any]:
@@ -192,21 +227,8 @@ class HttpTransport:
         )
 
     def list_insights(self, session_ids: list[str] | None = None) -> list[dict[str, Any]]:
-        items: list[dict[str, Any]] = []
-        cursor = None
-        while True:
-            params: dict[str, Any] = {"limit": 100}
-            if cursor:
-                params["cursor"] = cursor
-            page = self._req("GET", "/sessions/insights", params=params)
-            items += page.get("items", [])
-            if not page.get("has_next_page"):
-                break
-            cursor = page.get("end_cursor")
-        if session_ids:
-            wanted = set(session_ids)
-            items = [i for i in items if i.get("session_id") in wanted]
-        return items
+        params: dict[str, Any] = {"session_ids": list(session_ids)} if session_ids else {}
+        return self._paged("/sessions/insights", params)
 
     def create_pr_review(self, pr_url: str) -> dict[str, Any]:
         return self._req("POST", "/pr-reviews", json={"pr_url": pr_url})
@@ -227,15 +249,13 @@ class FakeTransport:
         self.synthesize = synthesize
         self.calls: list[tuple[str, Any]] = []
         self._fixtures: list[dict[str, Any]] = []
-        self._sessions: dict[
-            str, dict[str, Any]
-        ] = {}  # id -> {"timeline": [...], "i": int, "created": payload}
+        self._sessions: dict[str, dict[str, Any]] = {}
         self._counter = 0
+        self.fail_terminate: set[str] = set()  # tests: session ids whose terminate raises
         if self.replay_dir and (self.replay_dir / "sessions").is_dir():
             for f in sorted((self.replay_dir / "sessions").glob("*.json")):
                 self._fixtures.append(json.loads(f.read_text()))
 
-    # helpers
     def _pick_fixture(self, payload: dict[str, Any]) -> dict[str, Any] | None:
         tags = set(payload.get("tags", []))
         for fx in self._fixtures:
@@ -251,15 +271,17 @@ class FakeTransport:
         sid = f"fake-{self._counter:03d}"
         repo = (payload.get("repos") or ["owner/repo"])[0]
         tags = payload.get("tags", [])
+        shard = next((t.split(":", 1)[1] for t in tags if t.startswith("shard:")), "X")
         out = {
+            "shard": shard,
             "self_reported_done": True,
             "files_changed": [],
-            "pr_url": f"https://github.com/{repo}/pull/{900 + self._counter}",
+            "call_sites_fixed": [],
             "tests_run": 0,
             "tests_passed": 0,
+            "pr_url": f"https://github.com/{repo}/pull/{900 + self._counter}",
             "needs_human": [],
             "notes": "synthesised by FakeTransport; replace with a recorded fixture",
-            "tags": tags,
         }
         return {
             "session_id": sid,
@@ -279,6 +301,20 @@ class FakeTransport:
             "insights": {"session_size": "S", "num_user_messages": 1, "num_devin_messages": 6},
         }
 
+    def _state(self, sid: str, advance: bool) -> dict[str, Any]:
+        s = self._sessions[sid]
+        tl = s["fixture"]["timeline"]
+        idx = min(s["i"], len(tl) - 1) if advance else min(max(s["i"] - 1, 0), len(tl) - 1)
+        if advance:
+            s["i"] += 1
+        state = dict(tl[idx])
+        if s["terminated"]:
+            state.update(status="exit", status_detail="terminated")
+        state.update(
+            session_id=sid, url=s["fixture"]["url"], tags=sorted(s["created"].get("tags", []))
+        )
+        return state
+
     # transport API
     def create_session(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.calls.append(("create_session", payload))
@@ -296,32 +332,25 @@ class FakeTransport:
             "terminated": False,
         }
         first = fx["timeline"][0]
-        return {"session_id": sid, "url": fx["url"], **first}
+        return {
+            "session_id": sid,
+            "url": fx["url"],
+            "tags": sorted(payload.get("tags", [])),
+            **first,
+        }
 
     def get_session(self, session_id: str) -> dict[str, Any]:
         self.calls.append(("get_session", session_id))
-        s = self._sessions[session_id]
-        tl = s["fixture"]["timeline"]
-        state = tl[min(s["i"], len(tl) - 1)]
-        s["i"] += 1
-        if s["terminated"]:
-            state = {**state, "status": "exit", "status_detail": "finished"}
-        return {"session_id": session_id, "url": s["fixture"]["url"], **state}
+        return self._state(session_id, advance=True)
 
     def list_sessions(self, tags: list[str] | None = None) -> list[dict[str, Any]]:
         self.calls.append(("list_sessions", tags))
-        out = []
         want = set(tags or [])
-        for sid, s in self._sessions.items():
-            have = set(s["created"].get("tags", []))
-            if want and not want <= have:
-                continue
-            tl = s["fixture"]["timeline"]
-            state = tl[min(max(s["i"] - 1, 0), len(tl) - 1)]
-            out.append(
-                {"session_id": sid, "url": s["fixture"]["url"], "tags": sorted(have), **state}
-            )
-        return out
+        return [
+            self._state(sid, advance=False)
+            for sid, s in self._sessions.items()
+            if want <= set(s["created"].get("tags", []))
+        ]
 
     def send_message(self, session_id: str, text: str) -> dict[str, Any]:
         self.calls.append(("send_message", (session_id, text)))
@@ -330,6 +359,8 @@ class FakeTransport:
 
     def terminate(self, session_id: str, archive: bool = True) -> dict[str, Any]:
         self.calls.append(("terminate", (session_id, archive)))
+        if session_id in self.fail_terminate:
+            raise DevinError(404, "session not found")
         self._sessions[session_id]["terminated"] = True
         return {"ok": True, "archived": archive}
 
@@ -383,13 +414,23 @@ class DevinClient:
     def status(self, session_id: str) -> SessionState:
         return SessionState.from_raw(self.t.get_session(session_id))
 
-    def find_live(self, tags: list[str]) -> SessionState | None:
-        """Live-mode idempotency: v3 dropped `idempotent`, so pre-check by tags."""
-        for raw in self.t.list_sessions(tags):
-            st = SessionState.from_raw(raw)
-            if not st.terminal:
-                return st
-        return None
+    def find(
+        self, tags: list[str], *, exclude: set[str] | None = None, alive_only: bool = True
+    ) -> SessionState | None:
+        """Sessions on the org carrying every tag, minus `exclude`. An alive one wins; with
+        alive_only=False the last-listed terminal one is returned when no live one exists."""
+        exclude = exclude or set()
+        cands = [SessionState.from_raw(r) for r in self.t.list_sessions(tags)]
+        cands = [c for c in cands if c.session_id and c.session_id not in exclude]
+        for c in cands:
+            if c.alive:
+                return c
+        if alive_only or not cands:
+            return None
+        return cands[-1]
+
+    def find_live(self, tags: list[str], *, exclude: set[str] | None = None) -> SessionState | None:
+        return self.find(tags, exclude=exclude, alive_only=True)
 
     def message(self, session_id: str, text: str) -> None:
         self.t.send_message(session_id, text)

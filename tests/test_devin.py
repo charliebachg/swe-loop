@@ -166,6 +166,69 @@ def test_http_transport_backs_off_on_429_and_fails_on_401():
     assert ex.value.status == 401
 
 
+def test_list_sessions_uses_first_after_and_array_tags():
+    seen = []
+
+    def handler(req: httpx.Request):
+        seen.append(req)
+        if "after" not in req.url.params:
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {"session_id": "a", "status": "running", "tags": ["swe-loop", "wo:1"]}
+                    ],
+                    "has_next_page": True,
+                    "end_cursor": "c1",
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "items": [{"session_id": "b", "status": "running", "tags": ["swe-loop"]}],
+                "has_next_page": False,
+                "end_cursor": None,
+            },
+        )
+
+    t = HttpTransport("k", "o", client=_mock_client(handler), sleep=lambda s: None)
+    got = t.list_sessions(["swe-loop", "wo:1"])
+    assert [i["session_id"] for i in got] == ["a"]  # b lacks wo:1: filtered client-side
+    q0, q1 = seen[0].url.params, seen[1].url.params
+    assert q0["first"] == "100" and "after" not in q0 and "limit" not in q0 and "cursor" not in q0
+    assert q0.get_list("tags") == ["swe-loop", "wo:1"]  # repeated array parameter
+    assert q1["after"] == "c1"
+
+
+def test_pagination_stops_when_the_cursor_stops_advancing():
+    n = {"calls": 0}
+
+    def handler(req: httpx.Request):
+        n["calls"] += 1
+        return httpx.Response(200, json={"items": [], "has_next_page": True, "end_cursor": "same"})
+
+    t = HttpTransport("k", "o", client=_mock_client(handler), sleep=lambda s: None)
+    t.list_sessions()
+    assert n["calls"] == 2  # page one, page "same", then stop
+
+
+def test_transport_errors_become_devin_errors():
+    def handler(req: httpx.Request):
+        raise httpx.ReadTimeout("slow", request=req)
+
+    t = HttpTransport("k", "o", client=_mock_client(handler), sleep=lambda s: None, max_retries=1)
+    with pytest.raises(DevinError) as ex:
+        t.get_session("s1")
+    assert ex.value.status == 0 and "ReadTimeout" in ex.value.detail
+
+
+def test_alive_versus_terminal():
+    s = SessionState("x", "u", "running", "waiting_for_user")
+    assert s.terminal and s.alive
+    s = SessionState("x", "u", "exit", "finished")
+    assert s.terminal and not s.alive
+
+
 def test_http_transport_pages_insights():
     pages = [
         {
@@ -183,6 +246,15 @@ def test_http_transport_pages_insights():
     def handler(req: httpx.Request):
         return httpx.Response(200, json=pages.pop(0))
 
-    t = HttpTransport("k", "o", client=_mock_client(handler), sleep=lambda s: None)
+    seen = []
+    orig = handler
+
+    def handler2(req):
+        seen.append(req)
+        return orig(req)
+
+    t = HttpTransport("k", "o", client=_mock_client(handler2), sleep=lambda s: None)
     got = t.list_insights(["b"])
-    assert got == [{"session_id": "b", "session_size": "L"}]
+    assert [i["session_id"] for i in got] == ["a", "b"]  # the server filters; we page
+    assert seen[0].url.params.get_list("session_ids") == ["b"]
+    assert seen[1].url.params["after"] == "c1"
