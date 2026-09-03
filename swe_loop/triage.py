@@ -110,6 +110,12 @@ def apply_verdict(store: Store, ticket_id: str, verdict: dict[str, Any]) -> list
     problems = validate_verdict(verdict)
     if problems:
         raise ValueError("verdict rejected: " + "; ".join(problems))
+    # a live verdict (2026-09-03) put `review: required` on the shard, not at the top; the
+    # router reads the top, so lift it
+    if verdict.get("review") != "required" and any(
+        sh.get("review") == "required" for sh in verdict.get("shards") or []
+    ):
+        verdict = {**verdict, "review": "required"}
     t = store.get_ticket(ticket_id)
     if not t:
         raise KeyError(ticket_id)

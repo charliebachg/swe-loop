@@ -125,3 +125,19 @@ def test_apply_verdict_refuses_invalid(tmp_path):
     st.upsert_ticket(id="t1", source="manual", title="x", status="triaged")
     with pytest.raises(ValueError):
         apply_verdict(st, "t1", {"ticket_id": "t1"})
+
+
+def test_review_required_on_a_shard_is_lifted_for_the_router(tmp_path):
+    from swe_loop.config import TargetConfig
+    from swe_loop.router import route_all
+    from swe_loop.store import Store
+
+    st = Store(tmp_path / "t.sqlite")
+    st.upsert_ticket(id="tkt_pu42671", source="manual", title="x", status="new")
+    v = {**GOOD, "split": "one", "shards": [{**GOOD["shards"][0], "review": "required"}]}
+    v.pop("review", None)
+    apply_verdict(st, "tkt_pu42671", v)
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    d = route_all(st, cfg)
+    assert d and d[0].review == "required"
+    assert "review required" in st.get_ticket("tkt_pu42671")["router_reason"]
