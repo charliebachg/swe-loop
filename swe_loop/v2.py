@@ -1325,11 +1325,12 @@ def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
         else "not requested"
     )
     if review == "no issues":
-        review_txt = "Devin Review found no issues"
+        review_txt = "the AI reviewer found nothing"
     elif "found" in review:
-        review_txt = f"Devin Review left {review.split()[0]} remark(s)"
+        n = review.split()[0]
+        review_txt = f"the AI reviewer left {n} comment" + ("" if n == "1" else "s")
     else:
-        review_txt = "Devin Review " + review
+        review_txt = "the AI reviewer is " + review
     if st == "merged":
         return plain(f"Merged by your team. Every check passed on a clean copy; {review_txt}.")
     if st == "escalated" or (route and route != "devin"):
@@ -1799,11 +1800,18 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
                 "cap": (
                     f"{TRIAGE_ACU_CAP if is_triage else cap:.0f}"
                     if metered
-                    else f"{mins.get(s['id'], 0.0):.0f} min"
+                    else (
+                        f"{mins.get(s['id'], 0.0):.0f} min"
+                        if usd_rows.get(s["id"], (None,))[0] is not None
+                        else ""
+                    )
                 ),
                 "acuPct": _pct(s.get("acus"), TRIAGE_ACU_CAP if is_triage else cap)
                 if metered
                 else _pct(mins.get(s["id"], 0.0), max(list(mins.values()) or [1.0])),
+                "did": "read the ticket and wrote the plan"
+                if is_triage
+                else "wrote the fix and opened a pull request",
                 "size": size or "·",
                 "sizeBg": PL["bad"][1]
                 if size in ("L", "XL")
@@ -1857,9 +1865,9 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
         "perSession": f"{cap:.0f}",
         "managed": "in use" if ss.get("managed") else "not exercised in this run",
         "sessionRows": rows,
-        "etaFoot": "time left: estimate from finished sessions"
-        + (f" ({basis})" if basis else "")
-        + " · cap is the hard limit · L and XL flagged",
+        "etaFoot": "Cost is what the console charged where a person entered it, otherwise our own "
+        "measure of the minutes the AI was working. Click a row for the timeline, the checks and "
+        "what the session claimed.",
         "drawerOpen": bool(drawer_id) and bool(d.get("id")),
         "closeDrawer": "/devin/sessions",
         "d": d,
@@ -1888,9 +1896,7 @@ def _drawer(store: Store, sid: str, cap: float) -> dict[str, Any]:
         "acu": _fmt_acu(s.get("acus_consumed"))
         if (s.get("acus_consumed") or 0) > 0
         else f"{cost.repair_active_seconds(store, s) / 60.0:.1f} min",
-        "cap": f"{cap:.0f}"
-        if (s.get("acus_consumed") or 0) > 0
-        else f"Devin's limit {cap:.0f} ACU",
+        "cap": f"{cap:.0f}" if (s.get("acus_consumed") or 0) > 0 else "",
         "acuPct": _pct(s.get("acus_consumed"), cap) if (s.get("acus_consumed") or 0) > 0 else "0",
         "size": (s.get("session_size") or "·").upper(),
         "retries": str(s.get("retries") or 0),

@@ -140,7 +140,7 @@ def test_ops_page_lists_sessions_and_the_feed(tmp_path, monkeypatch):
     app = build_app(Settings.from_env(), st, seed_replay=False)
     with TestClient(app) as c:
         html = c.get("/devin/sessions").text
-        assert "Sessions" in html and "time left" in html and "fake-" in html
+        assert "Sessions" in html and "Cost is what the console charged" in html and "fake-" in html
         assert "Checks passed" in c.get("/report").text
         sid = o["sessions"][0]["id"]
         det = c.get(f"/sessions/{sid}").json()

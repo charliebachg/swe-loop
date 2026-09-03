@@ -130,9 +130,8 @@ def test_tracker_rows_stages_and_merge(client):
 def test_sessions_page_eta_parent_and_drawer(client):
     c, st = client
     html = c.get("/devin/sessions").text
-    assert "fake-" in html and "Issues on the fork" in html
-    assert "not exercised in this run" in html  # Managed Devins, honestly
-    assert "single" in html and "done" in html
+    assert "fake-" in html and "wrote the fix and opened a pull request" in html
+    assert "ticket" in html and "checks" in html  # the columns that remain say something
     # a live session gets an estimate from the finished ones (give them a real elapsed time)
     st.conn.execute(
         "UPDATE sessions SET terminal_at = datetime(created_at, '+25 minutes') WHERE terminal_at IS NOT NULL"
