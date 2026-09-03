@@ -61,6 +61,7 @@ class TargetConfig:
     acceptance: dict[str, Any] = field(default_factory=dict)
     router: dict[str, Any] = field(default_factory=dict)
     session: dict[str, Any] = field(default_factory=dict)
+    gate: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path | str) -> TargetConfig:

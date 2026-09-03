@@ -40,3 +40,8 @@ session:
   tags_prefix: swe-loop
   pr_title_prefix: "fix(deps)"
   version_range: ">=2.31, <4"
+
+gate:
+  repo_root: ../widgets
+  evidence_dir: data/live/evidence
+  timeout_s: 600

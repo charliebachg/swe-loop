@@ -354,6 +354,8 @@ class FakeTransport:
 
     def send_message(self, session_id: str, text: str) -> dict[str, Any]:
         self.calls.append(("send_message", (session_id, text)))
+        if session_id not in self._sessions:
+            raise DevinError(404, f"session {session_id} not found")
         self._sessions[session_id]["messages"].append(text)
         return {"ok": True}
 
