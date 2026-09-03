@@ -86,6 +86,11 @@ def dot_strip(
 ) -> str:
     """ACU per session as dots on one axis; the cap as a red line; the median as a tick.
     points: (label, value, color)."""
+    label = {
+        "ACU": "ACU per session",
+        "$": "dollars per session",
+        "min": "minutes per session",
+    }.get(unit, f"{unit} per session")
     h, pad = 74, 16
     if points and all(v == 0 for _, v, _ in points):
         note = (
@@ -98,7 +103,7 @@ def dot_strip(
             h,
             f'<text x="0" y="30" font-size="12" fill="{INK}" style="{MONO}">every session reports 0.0 {unit}</text>'
             f'<text x="0" y="50" font-size="11" fill="{FAINT}" style="{MONO}">{escape(note)}</text>',
-            "ACU per session",
+            label,
         )
     top = max([cap or 0] + [v for _, v, _ in points]) or 1.0
     sx = lambda v: pad + (w - 2 * pad) * v / top
@@ -132,7 +137,7 @@ def dot_strip(
         out.append(
             f'<text x="{sx(v):.1f}" y="{44 - dy}" font-size="8" font-weight="700" fill="#fff" text-anchor="middle" style="{MONO}">{escape(label[:1])}</text>'
         )
-    return _svg(w, h, "".join(out), "ACU per session")
+    return _svg(w, h, "".join(out), label)
 
 
 def squares(states: list[tuple[str, str, str]], w: int = 520) -> str:
