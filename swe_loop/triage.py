@@ -241,7 +241,7 @@ def run_triage(
             "triage",
             f"{state.status}/{state.status_detail or '-'}",
             ticket_id=ticket_id,
-            detail=f"acus={state.acus_consumed}",
+            detail=f"acus={state.acus_consumed}" if state.acus_consumed else None,
         )
         if state.delivered or state.terminal:
             break

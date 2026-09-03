@@ -66,7 +66,6 @@ def test_sidebar_links_every_module(client):
     for href in (
         "/automations",
         "/tickets-page",
-        "/tracker",
         "/report",
         "/devin/sessions",
         "/devin/playbooks",
@@ -91,10 +90,13 @@ def test_settings_store_helpers(tmp_path):
 def test_tickets_page_groups_by_source(client):
     c, _ = client
     html = c.get("/tickets-page").text
-    assert "Issues on the fork" in html and "Scan" in html
-    assert "human-only" in html and "sessions never edit tests" in html
+    assert "General" in html and "Scan Agent" in html and "Others" in html
+    assert "For your team to decide" in html and "sessions never edit tests" in html
     assert 'href="https://github.com/charliebachg/superset/issues/4"' in html
-    assert html.count("/tracker?open=tkt_") >= 5
+    assert html.count("/tickets-page?open=tkt_") >= 5
+    assert "Merged by a person." in html  # the one-line summary per ticket
+    pipe = c.get("/tickets-page?view=pipeline").text
+    assert "right now" in pipe and 'title="intake' in pipe
 
 
 def test_tracker_rows_stages_and_merge(client):
@@ -150,8 +152,8 @@ def test_sessions_page_eta_parent_and_drawer(client):
 def test_automations_run_now_dispatches_a_routed_ticket(client):
     c, st = client
     html = c.get("/automations").text
-    assert "Repair" in html and "Scan" in html and "schedule:recurring" in html
-    assert "Run now" in html and "replay" in html
+    assert "Issues from the fork" in html and "Scan" in html and "Add automation" in html
+    assert ">Run<" in html and "replay" in html
     # a fresh routed ticket, then run now dispatches it on the fake transport
     st.upsert_ticket(
         id="tkt_X",

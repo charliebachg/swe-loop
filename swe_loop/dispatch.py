@@ -242,7 +242,7 @@ def dispatch(
         "reserved",
         ticket_id=wo["ticket_id"],
         session_id=sid,
-        detail=f"shard {wo['shard_id']} cap {spec.max_acu_limit} ACU",
+        detail=f"shard {wo['shard_id']}, Devin's limit {spec.max_acu_limit} ACU",
     )
     live = client.find_live(identity_tags(cfg, wo), exclude=store.bound_devin_ids())
     state = live if live else client.start(spec)

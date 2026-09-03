@@ -33,8 +33,8 @@ def test_automations_seeded_as_a_list(client):
     html = c.get("/automations").text
     ids = [a["id"] for a in st.list_automations()]
     assert ids == ["auto_repair", "auto_scan"]
-    assert "github:pull_request" in html and "schedule:recurring" in html
-    assert "Add an automation" in html and "Run now" in html
+    assert "Issues from the fork" in html and "on a schedule" in html
+    assert "Add automation" in html and ">Run<" in html
     assert "\u2014" not in html
     # seeding is idempotent
     c.get("/automations")
@@ -117,8 +117,8 @@ def test_playbooks_list_detail_and_add(client):
 def test_tickets_summary_filters_and_detail(client):
     c, _st, _ = client
     html = c.get("/tickets-page").text
-    assert "awaiting triage" in html and "to Devin" in html and "Issues on the fork" in html
-    assert 'hx-get="/tickets-page?sel=tkt_D"' in html
+    assert "awaiting triage" in html and "to Devin" in html and "General" in html
+    assert 'hx-get="/tickets-page?open=tkt_D"' in html
     assert "to a person" in c.get("/tickets-page?f=human").text
     d = c.get("/partials/ticket/tkt_D").text
     assert "Sites" in d and "Acceptance" in d and "routed to Devin" in d

@@ -10,7 +10,7 @@ import hashlib
 import hmac
 import re
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import yaml
 
@@ -45,6 +45,10 @@ class Adapter(Protocol):
 
     def matches(self, payload: dict[str, Any]) -> bool: ...
     def normalize(self, payload: dict[str, Any], cfg: TargetConfig) -> NormalizedEvent | None: ...
+
+
+if TYPE_CHECKING:
+    from swe_loop.store import Store
 
 
 def parse_work_order(body: str) -> dict[str, Any] | None:
@@ -211,3 +215,46 @@ def ticket_id_for(ev: NormalizedEvent) -> str:
     if ev.work_order and ev.work_order.get("shard"):
         return f"tkt_{ev.work_order['shard']}"
     return f"tkt_{ev.kind[:2]}{ev.number}" if ev.number is not None else f"tkt_{ev.kind}"
+
+
+def ingest(
+    store: Store, ev: NormalizedEvent, *, ticket_id: str | None = None, as_new: bool = False
+) -> str:
+    """One normalised event becomes one ticket (created or updated). Work orders only when the
+    event already carries an acceptance command; otherwise the triage session scopes it.
+    as_new=True ignores any carried work order: a triage session scopes the ticket regardless.
+    An existing ticket is left alone (its status is the loop's, not the event's)."""
+    tid = ticket_id or ticket_id_for(ev)
+    if store.get_ticket(tid):
+        return tid
+    wo = {} if as_new else (ev.work_order or {})
+    route = wo.get("route")
+    verdict = None
+    if wo.get("acceptance"):
+        verdict = {
+            "acceptance_cmd": wo["acceptance"],
+            "context_sufficient": True,
+            "split": "one",
+            "est_size": "XS" if len(wo.get("files", [])) <= 1 else "S",
+            "needs_human": route == "human",
+            "review": wo.get("review"),
+        }
+    store.upsert_ticket(
+        id=tid,
+        source=ev.source,
+        title=ev.title,
+        status="triaged" if verdict else "new",
+        external_ref=ev.external_ref,
+        cls=",".join(wo.get("classes", [])) or None,
+        triage_verdict=verdict,
+    )
+    if verdict and route == "devin" and not store.work_orders_for(tid):
+        store.insert_work_order(
+            ticket_id=tid,
+            shard_id=str(wo.get("shard", tid)),
+            files=list(wo.get("files", [])),
+            tests=list(wo.get("tests", [])),
+            acceptance=dict(wo["acceptance"]),
+            est_size=verdict["est_size"],
+        )
+    return tid

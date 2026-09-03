@@ -78,7 +78,8 @@ python -m swe_loop cost --set 58d404d2=1.78 # the console's figure for a session
 python -m swe_loop record data/replay/run.json            # capture the run for replay, redacted
 ```
 
-Without `DEVIN_API_KEY` the mode is forced to replay. No key, no sessions.
+Or open Automations and click Run: it is the same chain from a button, and the pages refresh
+while it works. Without `DEVIN_API_KEY` the mode is forced to replay. No key, no sessions.
 
 ## What happens, in order
 
@@ -118,9 +119,8 @@ agent: each step says who does it, the AI or a person, and every session is pric
 | page | shows |
 |---|---|
 | **Home** | the last run in five steps, what needs a person now with the buttons to answer, merge or dismiss, what is running, and what just happened; the equivalent engineer-hours line explains its basis on hover |
-| **Automations** | how work enters: the trigger, target, playbook and cap of each automation; add one, switch it off, run one pass |
-| **Tickets** | every ticket with its route and the reason, filterable; the detail shows sites, the library's messages and the acceptance commands |
-| **Tracker** | each ticket's run through the steps: sessions, the gate's receipts, the review, the merge control |
+| **Automations** | how work enters and what happens when it runs. The default automation, Issues from the fork, is on: Run pulls the repository's open issues with the label, makes a ticket of each new one, starts one triage session per ticket, routes them, starts the repair sessions, checks every PR from a clean checkout and asks Devin Review; the page follows along and keeps each run's history. Add your own with a trigger, a playbook and a session limit. Scan, a session that finds the work itself, is listed for the next version |
+| **Tickets** | every ticket in two views. The list groups them by source (General, Scan Agent, Others) and gives each a one-line account of what it is doing right now, with its live session and its PR a click away. The pipeline view shows the eight steps per ticket, who does each, and where it stands. Open a ticket for its scope, the sessions, the gate's receipts, the review and the merge control |
 | **Report** | the funnel from sites to merges, cost per verified change, where the gate said no, the burn-down against the inventory, session sizes, receipts, tripwires, routing and refusals |
 | **Devin · Sessions** | every session with its status, minutes, dollars and size; click a row for its timeline, structured output and verdicts |
 | **Devin · Playbooks** | the procedures sessions follow, with their structured output schema and last output; add one, attach it to an automation |

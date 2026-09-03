@@ -156,7 +156,7 @@ def run_checks(
         Check(
             "budget",
             "budget",
-            f"{b['cap']:.0f} ACU cap · {b['per_session_cap']:.0f} per session"
+            f"Devin's limit {b['per_session_cap']:.0f} ACU per session · run cap {b['cap']:.0f} ACU on a metered plan"
             if b.get("cap")
             else "no cap set",
             "ok" if b.get("cap") else "missing",

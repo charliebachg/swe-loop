@@ -23,10 +23,11 @@
   </div>
   <div class="card"><h3>Budget <span class="who code">enforced by the poller</span></h3>
     <form method="post" action="/settings/budget" style="display:flex; gap:10px; align-items:end; flex-wrap:wrap">
-      <label style="font-size:12px;color:var(--muted)">ACU cap<br><input name="acu_cap" type="number" step="1" min="1" value="{{ s.budget.cap | int if s.budget.cap else 300 }}" style="padding:6px 8px;border:1px solid var(--rule);border-radius:4px;width:120px"></label>
-      <label style="font-size:12px;color:var(--muted)">per session<br><input name="per_session_cap" type="number" step="1" min="1" value="{{ s.budget.per_session_cap | int if s.budget.per_session_cap else s.seam.caps.acu }}" style="padding:6px 8px;border:1px solid var(--rule);border-radius:4px;width:120px"></label>
+      {% if cost.metered %}<label style="font-size:12px;color:var(--muted)">ACU cap for the run<br><input name="acu_cap" type="number" step="1" min="1" value="{{ s.budget.cap | int if s.budget.cap else 300 }}" style="padding:6px 8px;border:1px solid var(--rule);border-radius:6px;width:120px"></label>
+      {% else %}<label style="font-size:12px;color:var(--muted)">spend cap for the run, dollars<br><input name="usd_cap" type="number" step="1" min="1" value="{{ usdCap | int if usdCap else '' }}" placeholder="750" style="padding:6px 8px;border:1px solid var(--rule);border-radius:6px;width:120px"></label>{% endif %}
+      <label style="font-size:12px;color:var(--muted)">Devin's limit per session, ACU<br><input name="per_session_cap" type="number" step="1" min="1" value="{{ s.budget.per_session_cap | int if s.budget.per_session_cap else s.seam.caps.acu }}" style="padding:6px 8px;border:1px solid var(--rule);border-radius:6px;width:120px"></label>
       <button class="btn" type="submit">Save</button>
-      <span class="foot">spent so far {{ s.budget.spent }} ACU · at the cap every live session is terminated and archived</span>
+      <span class="foot">{% if cost.metered %}spent so far {{ s.budget.spent }} ACU{% else %}spent so far {{ acuSpent }}{% endif %} · at the cap every live session is terminated and archived · the per-session limit is Devin's own ceiling, sent with every session</span>
     </form>
     <h3 style="margin-top:18px">Cost <span class="who code">measured by us; the plan reports no ACU</span></h3>
     <p class="foot">This organisation is on a self-serve plan, billed in dollar credits. The API reports 0 ACU for every session. The console lists dollars per session; enter them below. Minutes the AI was actively working are measured from our own polls: <b>{{ cost.active_min }} min</b> across {{ cost.n_sessions }} session(s){% if cost.usd is not none %}, <b>${{ cost.usd }}</b>{% if cost.rate %} at ${{ "%.3f" | format(cost.rate) }} per active minute{% endif %}{% else %}. Sessions without a console figure are priced by minutes at the rate for their kind{% endif %}.</p>

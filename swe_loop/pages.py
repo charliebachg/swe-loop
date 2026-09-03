@@ -17,7 +17,6 @@ NAV = [
     ("home", "Home", "/"),
     ("automations", "Automations", "/automations"),
     ("tickets", "Tickets", "/tickets-page"),
-    ("tracker", "Tracker", "/tracker"),
     ("report", "Report", "/report"),
 ]
 NAV_DEVIN = [
@@ -50,8 +49,8 @@ def _owner_link(e: dict[str, Any]) -> str:
     if e.get("session_id"):
         return f"/devin/sessions#{e['session_id']}"
     if e.get("ticket_id"):
-        return f"/tracker#{e['ticket_id']}"
-    return "/tracker"
+        return f"/tickets-page?open={e['ticket_id']}"
+    return "/tickets-page"
 
 
 def home(store: Store) -> dict[str, Any]:
@@ -66,7 +65,7 @@ def home(store: Store) -> dict[str, Any]:
                 "ticket_id": e["ticket_id"],
                 "reason": e["reason"],
                 "since": e["created_at"],
-                "link": f"/tracker#{e['ticket_id']}",
+                "link": f"/tickets-page?open={e['ticket_id']}",
                 "action": "a person decides",
             }
         )
@@ -85,7 +84,7 @@ def home(store: Store) -> dict[str, Any]:
                 "ticket_id": tid,
                 "reason": reason,
                 "since": "",
-                "link": f"/tracker#{tid}",
+                "link": f"/tickets-page?open={tid}",
                 "action": "a person merges",
             }
         )
@@ -520,19 +519,30 @@ VERIFIED_SOURCES = [
     ("linear · jira · pylon · incident_io · gitlab", "issue and pipeline events"),
 ]
 TRIGGER_CHOICES = [
-    ("github:pull_request", "GitHub · pull request opened or updated"),
-    ("github:issues", "GitHub · issue opened or labelled"),
-    ("github:check_run", "GitHub · check run failed"),
-    ("github:push", "GitHub · push to a branch"),
-    ("schedule:recurring", "Schedule · recurring"),
-    ("webhook:incoming", "Webhook · incoming"),
-    ("slack:message", "Slack · message"),
+    ("github:issues", "Issues on the repository carrying a label"),
+    ("github:pull_request", "A pull request opened by a bot"),
+    ("github:check_run", "A failed check on a branch"),
+    ("manual", "On click only"),
+    ("schedule", "Periodically, on a schedule"),
 ]
 KIND_NOTES = {
-    "repair": "reads the tickets and runs the loop: route, dispatch, poll and manage, gate, review, a person merges",
-    "scan": "points a triage session at the repository on a schedule; its verdict becomes tickets in the Scan group",
-    "custom": "a trigger, a playbook and a cap; the loop between trigger and merge is the same",
+    "repair": "Run pulls the open issues with the label, makes a ticket of each new one, starts one triage session per ticket, routes them, starts the repair sessions, checks every PR from a clean checkout and asks Devin Review. You merge.",
+    "scan": "Next version: a scan session reads the repository for one class of problem and files what it finds as tickets. The same loop takes them from there.",
+    "custom": "Run does the same as the default: issues to tickets, triage, route, repair, gate, review. You merge.",
 }
+
+
+def DEFAULT_TRIGGER(cfg: TargetConfig) -> dict[str, Any]:
+    return {
+        "source": "github",
+        "event": "issues",
+        "actions": ["opened", "labeled"],
+        "match": {},
+        "issue_label": cfg.trigger.get("issue_label", "swe-loop"),
+    }
+
+
+DEFAULT_NOTE = "The default. Every issue on the repository carrying the label becomes a ticket and goes through the whole loop."
 
 
 def seed_automations(store: Store, cfg: TargetConfig) -> None:
@@ -540,23 +550,32 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
     if store.get_automation("auto_repair") is None:
         store.upsert_automation(
             id="auto_repair",
-            name="Repair",
+            name="Issues from the fork",
             kind="repair",
             enabled=True,
             availability="live",
-            trigger={
-                "source": cfg.trigger.get("source", "github"),
-                "event": cfg.trigger.get("event", "pull_request"),
-                "actions": cfg.trigger.get("actions", []),
-                "match": cfg.trigger.get("match", {}),
-                "issue_label": cfg.trigger.get("issue_label", "swe-loop"),
-            },
+            trigger=DEFAULT_TRIGGER(cfg),
             target=cfg.repo,
-            playbook="repair-pandas3",
+            playbook="triage-pandas3 then repair-pandas3",
             max_acu=cfg.max_acu_limit,
             concurrency=4,
-            notes="v0: the running lane",
+            notes=DEFAULT_NOTE,
         )
+    sc = store.get_automation("auto_scan")
+    if sc and (sc.get("notes") or "").startswith(("v1:", "Next version.")):
+        store.set_automation("auto_scan", notes=None)
+    if store.get_automation("auto_repair") is not None:
+        a = store.get_automation("auto_repair")
+        if a and a["name"] == "Repair":  # a store from before the rename
+            store.conn.execute(
+                "UPDATE automations SET name=?, trigger_json=?, playbook=?, notes=? WHERE id='auto_repair'",
+                (
+                    "Issues from the fork",
+                    json.dumps(DEFAULT_TRIGGER(cfg), sort_keys=True),
+                    "triage-pandas3 then repair-pandas3",
+                    DEFAULT_NOTE,
+                ),
+            )
     if store.get_automation("auto_scan") is None:
         store.upsert_automation(
             id="auto_scan",
@@ -570,7 +589,7 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
             max_acu=3,
             concurrency=1,
             schedule="every weekday at 06:00",
-            notes="v1: a triage session in investigative mode; files the tickets itself",
+            notes=None,
         )
 
 
@@ -602,8 +621,8 @@ def automations(
                 ),
                 "kind_note": KIND_NOTES.get(a["kind"], KIND_NOTES["custom"]),
                 "native": native.get(a["name"]),
-                "runnable": a["kind"] == "repair" and a["availability"] == "live",
-                "running": running and a["kind"] == "repair",
+                "runnable": a["kind"] in ("repair", "custom") and a["availability"] == "live",
+                "running": running and store.get_setting("automation.running") == a["id"],
             }
         )
     return {
@@ -740,7 +759,7 @@ def playbooks(store: Store, cfg: TargetConfig, client: DevinClient | None) -> di
         except Exception:  # noqa: BLE001
             org = {}
     used_by = {
-        "pb_triage": ("the triage stage", "/tracker"),
+        "pb_triage": ("the triage step", "/tickets-page?view=pipeline"),
         "pb_repair": ("every repair session", "/devin/sessions"),
         "pb_scan": ("the Scan automation", "/automations"),
     }

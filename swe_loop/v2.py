@@ -7,6 +7,7 @@ are computed the way the mock computed them, from the same constants."""
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -53,7 +54,6 @@ PAGES = {
     "home": ("Home", "/"),
     "automations": ("Automations", "/automations"),
     "tickets": ("Tickets", "/tickets-page"),
-    "tracker": ("Tracker", "/tracker"),
     "report": ("Report", "/report"),
     "sessions": ("Sessions", "/devin/sessions"),
     "playbooks": ("Playbooks", "/devin/playbooks"),
@@ -64,7 +64,7 @@ PAGES = {
     "next": ("Next", "/devin/next"),
     "settings": ("Settings", "/settings"),
 }
-JOURNEY = ["home", "automations", "tickets", "tracker", "report"]
+JOURNEY = ["home", "automations", "tickets", "report"]
 
 # Plain words for a reader who has never used an AI engineer. The internal name stays in tooltips.
 ACTOR_PLAIN = {
@@ -233,6 +233,8 @@ def _hhmmss(iso: str | None) -> str:
 def ev(e: dict[str, Any]) -> dict[str, Any]:
     actor = _actor_for_layer(e.get("layer", ""), e.get("event", ""))
     detail = e.get("detail") or ""
+    if re.fullmatch(r"acus=0(\.0+)?", detail):
+        detail = ""
     return {
         "time": _hhmmss(e.get("at")),
         "layer": e.get("layer", ""),
@@ -243,7 +245,9 @@ def ev(e: dict[str, Any]) -> dict[str, Any]:
         "bg": ACT[actor][1],
         "evColor": PL["bad"][0] if _bad_event(e.get("event", ""), detail) else INK,
         "hasDetail": bool(detail),
-        "link": url("/tracker", open=e.get("ticket_id")) if e.get("ticket_id") else "/tracker",
+        "link": url("/tickets-page", open=e.get("ticket_id"))
+        if e.get("ticket_id")
+        else "/tickets-page",
         "session_id": e.get("session_id"),
     }
 
@@ -362,6 +366,28 @@ def usd_label(sp: dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------- frame
+def _usd_or_min(store: Store, row: dict[str, Any], kind: str, rates: dict[str, float]) -> str:
+    """A session's cost so far, in dollars when we can price it, else its active minutes."""
+    usd, _src = cost.session_usd(store, row, kind, rates)
+    if usd is not None:
+        return f"${usd:.2f}"
+    secs = (
+        cost.triage_active_seconds(store, row)
+        if kind == "tri"
+        else cost.repair_active_seconds(store, row)
+    )
+    return f"{secs / 60.0:.0f} min"
+
+
+def _usd_cap(store: Store) -> float | None:
+    """The spend cap a person set on Settings, in dollars; none until set."""
+    try:
+        v = float(store.get_setting("usd_cap") or 0)
+    except ValueError:
+        return None
+    return v or None
+
+
 def frame(settings: Settings, cfg: TargetConfig, store: Store, active: str) -> dict[str, Any]:
     b = store.budget_state()
     sp = cost.spend(store)
@@ -406,6 +432,10 @@ def frame(settings: Settings, cfg: TargetConfig, store: Store, active: str) -> d
         if active in JOURNEY
         else ("our side" if active == "settings" else "Devin")
     )
+    per_label = (
+        f"{b['per_session_cap']:.0f}" if b.get("per_session_cap") else str(cfg.max_acu_limit)
+    )
+    usd_cap = _usd_cap(store)
     return {
         "nav": nav,
         "navDevin": nav_devin,
@@ -436,13 +466,25 @@ def frame(settings: Settings, cfg: TargetConfig, store: Store, active: str) -> d
             (f"{b['cap']:.0f}" if b.get("cap") else "no cap")
             if sp["metered"]
             else (
-                f"{sp['active_min']:.0f} min of AI work"
-                if sp["usd"] is not None
-                else "dollars: enter in Settings"
+                f"${usd_cap:.0f} cap"
+                if usd_cap
+                else (
+                    f"{sp['active_min']:.0f} min of AI work"
+                    if sp["usd"] is not None
+                    else "dollars: enter in Settings"
+                )
             )
         ),
-        "acuPct": _pct(b.get("spent"), b.get("cap")) if sp["metered"] else "0",
+        "acuPct": _pct(b.get("spent"), b.get("cap"))
+        if sp["metered"]
+        else (_pct(sp["usd"], usd_cap) if usd_cap and sp["usd"] is not None else "0"),
         "costUnit": "ACU" if sp["metered"] else "",
+        "spentLabel": (
+            f"ACU spent · cap {per_label} per session"
+            if sp["metered"]
+            else f"spent · Devin's limit {per_label} ACU per session"
+        ),
+        "costHead": "ACU of cap" if sp["metered"] else "cost · AI minutes",
         "perSession": f"{b['per_session_cap']:.0f}"
         if b.get("per_session_cap")
         else str(cfg.max_acu_limit),
@@ -450,7 +492,7 @@ def frame(settings: Settings, cfg: TargetConfig, store: Store, active: str) -> d
         "mode": settings.mode,
         "target": cfg.repo,
         "active": active,
-        "goTracker": "/tracker",
+        "goTracker": "/tickets-page?view=pipeline",
         "goSessions": "/devin/sessions",
         "goTickets": "/tickets-page",
     }
@@ -560,7 +602,13 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
     wos = [w for t in tickets for w in store.work_orders_for(t["id"])]
     sess = store._all("SELECT * FROM sessions")
     sum((x["acus_consumed"] or 0) for x in store.list_triage_sessions())
-    rep_acu = sum((s["acus_consumed"] or 0) for s in sess)
+    sp_home = cost.spend(store)
+    kind_rates_home = cost.rates(store)
+    spent_short = (
+        f"{sp_home['acu']:.1f} ACU used"
+        if sp_home["metered"]
+        else (usd_label(sp_home) or f"{sp_home['active_min']:.0f} min") + " so far"
+    )
     passed = [s for s in sess if (store.latest_verdict(s["id"]) or {}).get("gate_result") == "pass"]
     [s for s in sess if s["retries"]]
     reviewed = [s for s in sess if (store.latest_verdict(s["id"]) or {}).get("review_severity")]
@@ -574,7 +622,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
             len([w for w in wos if w["status"] in ("dispatched", "devin")]),
             f"{len(to_person)} held for your team" if to_person else "all started",
         ),
-        (len(sess), f"{len(sess)} fix{'es' if len(sess) != 1 else ''} · {rep_acu:.1f} ACU used"),
+        (len(sess), f"{len(sess)} fix{'es' if len(sess) != 1 else ''} · {spent_short}"),
         (
             len(passed),
             f"{len(passed)} passed · {sum(1 for x in sess if store.latest_verdict(x['id']) and store.latest_verdict(x['id'])['gate_result'] != 'pass')} failed",
@@ -635,7 +683,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                     "fg": d["dotFg"],
                     "ring": d["color"],
                     "title": f"#{issue} {t.get('title', '')[:70]} · {state}",
-                    "go": url("/tracker", open=t["id"]),
+                    "go": url("/tickets-page", open=t["id"]),
                 }
             )
         loop.append(
@@ -661,7 +709,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                 **pill(kind),
                 "reason": n["reason"],
                 "action": n["action"],
-                "go": url("/tracker", open=n["ticket_id"]),
+                "go": url("/tickets-page", open=n["ticket_id"]),
             }
         )
     raw_mode = q.get("tl") == "raw"
@@ -813,7 +861,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                 "what": (t.get("title") or e["reason"])[:70],
                 "hover": e["reason"],
                 "age": _age(e["created_at"]),
-                "go": url("/tracker", open=e["ticket_id"]),
+                "go": url("/tickets-page", open=e["ticket_id"]),
                 "answerUrl": f"/tickets/{e['ticket_id']}/answer" if can_answer else "",
                 "mergeUrl": "",
                 "dismissUrl": f"/escalations/{e['id']}/resolve",
@@ -853,7 +901,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                         None,
                     )
                 ),
-                "go": url("/tracker", open=tid),
+                "go": url("/tickets-page", open=tid),
                 "answerUrl": "",
                 "mergeUrl": f"/tickets/{tid}/merge-form",
                 "dismissUrl": "",
@@ -868,14 +916,16 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                     "ticket": x["ticket_id"],
                     "stage": "scoping",
                     "elapsed": ops._elapsed(x["created_at"], None),
-                    "acu": _fmt_acu(x["acus_consumed"]),
-                    "cap": f"{TRIAGE_ACU_CAP}",
-                    "pct": _pct(x["acus_consumed"], TRIAGE_ACU_CAP),
+                    "acu": _fmt_acu(x["acus_consumed"])
+                    if sp_home["metered"]
+                    else _usd_or_min(store, x, "tri", kind_rates_home),
+                    "cap": f"{TRIAGE_ACU_CAP}" if sp_home["metered"] else "",
+                    "pct": _pct(x["acus_consumed"], TRIAGE_ACU_CAP) if sp_home["metered"] else "0",
                     "last": (store.timeline(ticket_id=x["ticket_id"], limit=1) or [{}])[0].get(
                         "event", ""
                     ),
                     "needsInput": x["status_detail"] == "waiting_for_user",
-                    "go": url("/tracker", open=x["ticket_id"]),
+                    "go": url("/tickets-page", open=x["ticket_id"]),
                 }
             )
     for x in store.live_sessions():
@@ -890,13 +940,19 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                 "ticket": tid,
                 "stage": stage,
                 "elapsed": ops._elapsed(x["created_at"], None),
-                "acu": _fmt_acu(x["acus_consumed"]),
-                "cap": f"{b['per_session_cap']:.0f}" if b.get("per_session_cap") else "·",
-                "pct": _pct(x["acus_consumed"], b.get("per_session_cap")),
+                "acu": _fmt_acu(x["acus_consumed"])
+                if sp_home["metered"]
+                else _usd_or_min(store, x, "rep", kind_rates_home),
+                "cap": (f"{b['per_session_cap']:.0f}" if b.get("per_session_cap") else "·")
+                if sp_home["metered"]
+                else "",
+                "pct": _pct(x["acus_consumed"], b.get("per_session_cap"))
+                if sp_home["metered"]
+                else "0",
                 "last": (store.timeline(session_id=x["id"], limit=1) or [{}])[0].get("event", ""),
                 "needsInput": x["status_detail"] in ("waiting_for_user", "waiting_for_approval")
                 and not x.get("pull_request_url"),
-                "go": url("/tracker", open=tid),
+                "go": url("/tickets-page", open=tid),
             }
         )
     enabled = [r for r in store.list_automations() if r["enabled"] and r["availability"] == "live"]
@@ -1152,13 +1208,70 @@ def _passes(row: dict[str, Any], f: str) -> bool:
     )
 
 
+SOURCE_GROUPS = [
+    ("General", {"inventory", "fork", "github", "manual", "issues", "webhook"}, ""),
+    (
+        "Scan Agent",
+        {"scan"},
+        "Next version. A scan session reads the repository for one class of problem and files what it finds here; the loop takes it from there.",
+    ),
+    (
+        "Others",
+        {"gmail", "slack", "email", "linear", "jira"},
+        "Gmail and Slack are not connected. A new source is one new adapter; everything after intake stays the same.",
+    ),
+]
+VIEWS = [("list", "List"), ("pipeline", "Pipeline")]
+
+
+def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
+    """One sentence on what the ticket is doing right now, for someone who has not read the
+    design."""
+    st, route = t["status"], t.get("router_decision")
+    sd, verdict = row.get("sd"), row.get("verdict")
+    review = (
+        _review_short(verdict["review_severity"])
+        if verdict and verdict.get("review_severity")
+        else "not requested"
+    )
+    if review == "no issues":
+        review_txt = "Devin Review found no issues"
+    elif "found" in review:
+        review_txt = f"Devin Review left {review.split()[0]} remark(s)"
+    else:
+        review_txt = "Devin Review " + review
+    if st == "merged":
+        return f"Merged by a person. Checks passed on a clean checkout; {review_txt}."
+    if st == "escalated" or (route and route != "devin"):
+        return "For your team to decide: " + (t.get("router_reason") or "a person decides")[:150]
+    if st == "new":
+        return "Waiting for a triage session to read it."
+    if st in ("triaged", "routed"):
+        return f"Scoped by the AI: {row.get('count') or 'the sites are known'}. Waiting for a repair session."
+    if st in ("dispatched", "running"):
+        el = (sd or {}).get("elapsed") or ""
+        since = f", {el} so far" if el else ""
+        return f"The AI is working on the fix{since}. Open the session to watch."
+    if st == "gated":
+        if verdict and verdict.get("gate_result") != "pass":
+            return "Checks failed: " + (verdict.get("reason") or "see the receipts")[:150]
+        if row.get("ready"):
+            return f"Ready for you: checks passed on a clean checkout, {review_txt}. Review the PR and merge."
+        if review == "requested":
+            return "Checks passed on a clean checkout. Devin Review is reading the PR."
+        return f"Checks passed on a clean checkout; {review_txt}. Waiting for the merge decision."
+    return row.get("note") or ""
+
+
 def tickets(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
     tk_page = pages.tickets(store)
     sm = tk_page["summary"]
-    rows = [r for g in tk_page["groups"] for r in g["rows"]]
+    info = {r["id"]: r for g in tk_page["groups"] for r in g["rows"]}
+    view = q.get("view") if q.get("view") in dict(VIEWS) else "list"
     f = q.get("f", "all")
-    sel = q.get("sel") or (rows[0]["id"] if rows else None)
-    shown = [r for r in rows if _passes(r, f)]
+    open_ids = {x for x in (q.get("open") or "").split(",") if x}
+    extra = {"view": view if view != "list" else None, "f": f if f != "all" else None}
+    tr = tracker(store, cfg, q, base="/tickets-page", extra=extra)
 
     def col(n: Any, good: str) -> str:
         return good if n else FAINT
@@ -1171,62 +1284,84 @@ def tickets(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any
         "mergedColor": col(sm["merged"], PL["ok"][0]),
         "pendingColor": FAINT,
     }
+    keep_open = ",".join(sorted(open_ids)) or None
     chips = [
         {
             "label": label,
-            "set": url("/tickets-page", f=key if key != "all" else None, sel=sel),
+            "set": url(
+                "/tickets-page", view=extra["view"], f=key if key != "all" else None, open=keep_open
+            ),
             "border": "#2457a8" if f == key else "#d6d2c9",
             "bg": "#2457a8" if f == key else "#fff",
             "fg": "#fff" if f == key else INK,
         }
         for key, label in FILTERS
     ]
-    out_rows = []
-    for r in shown:
-        route = r["route"]
-        st_kind = _pill_kind(r["pill"])
-        out_rows.append(
-            {
-                **dot(r["id"], r["status"] == "merged"),
-                "id": r["id"],
-                "issue": f"#{r['issue']}" if r.get("issue") else "",
-                "issueUrl": r.get("issue_url") or "#",
-                "title": r["title"],
-                "count": (
-                    f"{len(r['files'])} file{'s' if len(r['files']) != 1 else ''} · {r['sites']} site{'s' if r['sites'] != 1 else ''}"
-                    if r.get("files")
-                    else f"{r['sites']} site(s)"
-                ),
-                "classes": ", ".join(r["classes"][:4])
-                + (f" +{len(r['classes']) - 4}" if len(r["classes"]) > 4 else ""),
-                "sessions": f"{r['sessions']} session{'s' if r['sessions'] != 1 else ''}",
-                "why": r.get("reason") or "",
-                "route": "devin"
-                if route == "devin"
-                else ("a person" if route else "awaiting triage"),
-                "routeBg": PL["devin"][1]
-                if route == "devin"
-                else (PL["person"][1] if route else PL["na"][1]),
-                "routeFg": PL["devin"][0]
-                if route == "devin"
-                else (PL["person"][0] if route else PL["na"][0]),
-                "status": r["status"],
-                "stBg": PL[st_kind][1],
-                "stFg": PL[st_kind][0],
-                "bg": "#eef2f9" if r["id"] == sel else "#fff",
-                "select": url("/tickets-page", f=f if f != "all" else None, sel=r["id"]),
-                "track": url("/tracker", open=r["id"]),
-            }
+    views = [
+        {
+            "label": label,
+            "set": url(
+                "/tickets-page", view=key if key != "list" else None, f=extra["f"], open=keep_open
+            ),
+            "on": key == view,
+            "bg": "#1f2530" if key == view else "#fff",
+            "fg": "#fff" if key == view else INK,
+        }
+        for key, label in VIEWS
+    ]
+    rows = []
+    for r in tr["trackerRows"]:
+        t = store.get_ticket(r["id"]) or {}
+        i = info.get(r["id"], {})
+        if not _passes({"route": t.get("router_decision"), "status": t.get("status")}, f):
+            continue
+        sd = r.get("sd")
+        files = i.get("files") or []
+        sites = i.get("sites") or 0
+        r["count"] = (
+            f"{len(files)} file{'s' if len(files) != 1 else ''} · {sites} site{'s' if sites != 1 else ''}"
+            if files
+            else f"{sites} site{'s' if sites != 1 else ''}"
         )
-    tk = _ticket_panel(store, sel, f, q) if sel else _empty_panel()
+        r["summary"] = _summary(t, r)
+        r["source"] = t.get("source") or ""
+        r["title"] = i.get("title") or t.get("title") or r["id"]
+        r["age"] = _age(t.get("created_at"))
+        n_s = i.get("sessions", 0)
+        r["nSessions"] = f"{n_s} session{'s' if n_s != 1 else ''}"
+        tri = store.list_triage_sessions(r["id"])
+        live_url = (sd or {}).get("url") or (tri[-1].get("url") if tri else None)
+        r["sessionUrl"] = live_url or ""
+        r["sessionLabel"] = (
+            "open the session" if sd else ("open the triage session" if live_url else "")
+        )
+        r["prLabel"] = f"PR #{r['pr']}" if r.get("pr") and r["pr"] != "none" else ""
+        r["scope"] = _ticket_panel(store, r["id"], f, q) if r["open"] else None
+        r["isRunning"] = t.get("status") in ("dispatched", "running")
+        rows.append(r)
+    groups = []
+    placed: set[str] = set()
+    for name, sources, note in SOURCE_GROUPS:
+        g_rows = [r for r in rows if r["source"] in sources]
+        placed.update(r["id"] for r in g_rows)
+        groups.append(
+            {"name": name, "rows": g_rows, "note": note if not g_rows else "", "empty": not g_rows}
+        )
+    groups[0]["rows"].extend(r for r in rows if r["id"] not in placed)
+    for g in groups:
+        g["count"] = str(len(g["rows"]))
     return {
         "sm": summary,
         "chips": chips,
-        "ticketCount": f"{len(shown)}" + ("" if len(shown) == len(rows) else f" of {len(rows)}"),
-        "tickets": out_rows,
-        "noTickets": not shown,
+        "views": views,
+        "isList": view == "list",
+        "groups": groups,
+        "trackerRows": rows,
+        "stageHead": tr["stageHead"],
+        "ticketCount": f"{len(rows)}"
+        + ("" if len(rows) == len(tr["trackerRows"]) else f" of {len(tr['trackerRows'])}"),
+        "noTickets": not rows,
         "emptyText": EMPTY.get(f, "No tickets."),
-        "tk": tk,
     }
 
 
@@ -1252,7 +1387,7 @@ def _empty_panel() -> dict[str, Any]:
         "tlLabel": "",
         "toggleTl": "/tickets-page",
         "timeline": [],
-        "track": "/tracker",
+        "track": "/tickets-page?view=pipeline",
     }
 
 
@@ -1320,14 +1455,37 @@ def _ticket_panel(store: Store, tid: str, f: str, q: dict[str, str]) -> dict[str
             "/tickets-page", f=f if f != "all" else None, sel=d["id"], tl=None if tl_open else "1"
         ),
         "timeline": timeline,
-        "track": url("/tracker", open=d["id"]),
+        "track": url("/tickets-page", open=d["id"]),
     }
 
 
 # ---------------------------------------------------------------------------- tracker
-def tracker(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
+def tracker(
+    store: Store,
+    cfg: TargetConfig,
+    q: dict[str, str],
+    *,
+    base: str = "/tickets-page",
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     tr = pages.tracker(store)
+    extra = extra or {}
     open_ids = {x for x in (q.get("open") or "").split(",") if x}
+    metered = cost.spend(store)["metered"]
+    kind_rates = cost.rates(store)
+
+    def _spent(sd: dict[str, Any] | None) -> tuple[str, str]:
+        """(short label for the strip, the line under the session) for one repair session."""
+        if not sd:
+            return "", ""
+        if metered:
+            return f"{_fmt_acu(sd['acus'])} ACU", f"{_fmt_acu(sd['acus'])} ACU"
+        row = store.get_session(sd["id"]) or {}
+        mins = cost.repair_active_seconds(store, row) / 60.0 if row else 0.0
+        usd, _src = cost.session_usd(store, row, "rep", kind_rates) if row else (None, "")
+        money = f"${usd:.2f} · " if usd is not None else ""
+        return f"{mins:.0f} min", f"{money}{mins:.0f} min of AI work"
+
     store.budget_state().get("per_session_cap") or cfg.max_acu_limit
     rows = []
     for r in tr["rows"]:
@@ -1342,7 +1500,7 @@ def tracker(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any
             "verdict" if t.get("triage_verdict_json") else ("waiting" if pat[1] == "b" else ""),
             ("devin" if r["route"] == "devin" else ("person" if r["route"] else "")),
             ("refused" if pat[3] == "b" else ("reserved" if sd else "")),
-            (f"{_fmt_acu(sd['acus'])} ACU" if sd else ""),
+            _spent(sd)[0],
             (
                 f"{sum(1 for e in passed_t1 if e['passed'])}/{len(passed_t1)}"
                 + (f" r{sd['retries']}" if sd and sd["retries"] else "")
@@ -1405,7 +1563,11 @@ def tracker(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any
                 "note": r.get("last_event") or "",
                 "open": is_open,
                 "chev": "▲" if is_open else "▼",
-                "toggle": url("/tracker", open=",".join(sorted(others))),
+                "toggle": url(base, **extra, open=",".join(sorted(others)) or None),
+                "route": r["route"],
+                "ready": bool(r["ready"]),
+                "sd": sd,
+                "verdict": verdict,
                 "hasShard": bool(sd),
                 "files": ", ".join(sd["files"]) if sd else "",
                 "session": (sd["devin_id"] or sd["id"])[:12] if sd else "",
@@ -1414,7 +1576,7 @@ def tracker(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any
                 if sd and sd.get("pr_url")
                 else "none",
                 "prUrl": (sd["pr_url"] or "#") if sd else "#",
-                "acuLine": f"{_fmt_acu(sd['acus'])} ACU · {(sd['size'] or '?').upper()} · retries {sd['retries']} · {sd['elapsed']}"
+                "acuLine": f"{_spent(sd)[1]} · size {(sd['size'] or '?').upper()} · retries {sd['retries']} · {sd['elapsed']}"
                 if sd
                 else "",
                 "state": f"{sd['status']}/{sd['status_detail']}" if sd else "",
@@ -1503,7 +1665,7 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
                 "url": s.get("url") or "#",
                 "tk": s["ticket"],
                 "shard": "triage" if is_triage else s["shard"],
-                "track": url("/tracker", open=s["ticket"]),
+                "track": url("/tickets-page", open=s["ticket"]),
                 "source": s.get("source") or "",
                 "status": _short_status(
                     s["status"],
@@ -1524,7 +1686,7 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
                 "cap": (
                     f"{TRIAGE_ACU_CAP if is_triage else cap:.0f}"
                     if metered
-                    else f"{mins.get(s['id'], 0.0):.1f} min"
+                    else f"{mins.get(s['id'], 0.0):.0f} min"
                 ),
                 "acuPct": _pct(s.get("acus"), TRIAGE_ACU_CAP if is_triage else cap)
                 if metered
@@ -1544,7 +1706,7 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
                 "pr": (s.get("pr_url") or "").rsplit("/", 1)[-1]
                 and f"#{(s.get('pr_url') or '').rsplit('/', 1)[-1]}"
                 or ("verdict" if is_triage else "none yet"),
-                "prUrl": s.get("pr_url") or url("/tracker", open=s["ticket"]),
+                "prUrl": s.get("pr_url") or url("/tickets-page", open=s["ticket"]),
                 "gate": (s.get("outcome") or "scoping") if is_triage else (gate or "not run"),
                 "gateBg": PL["gate"][1]
                 if (gate == "pass" or s.get("outcome") == "triaged")
@@ -1566,7 +1728,7 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
                 "bg": "#eef2f9" if s["id"] == drawer_id else "#fff",
                 "open": url("/devin/sessions", drawer=s["id"])
                 if not is_triage
-                else url("/tracker", open=s["ticket"]),
+                else url("/tickets-page", open=s["ticket"]),
             }
         )
     d = (
@@ -1613,7 +1775,9 @@ def _drawer(store: Store, sid: str, cap: float) -> dict[str, Any]:
         "acu": _fmt_acu(s.get("acus_consumed"))
         if (s.get("acus_consumed") or 0) > 0
         else f"{cost.repair_active_seconds(store, s) / 60.0:.1f} min",
-        "cap": f"{cap:.0f}" if (s.get("acus_consumed") or 0) > 0 else f"cap {cap:.0f} ACU",
+        "cap": f"{cap:.0f}"
+        if (s.get("acus_consumed") or 0) > 0
+        else f"Devin's limit {cap:.0f} ACU",
         "acuPct": _pct(s.get("acus_consumed"), cap) if (s.get("acus_consumed") or 0) > 0 else "0",
         "size": (s.get("session_size") or "·").upper(),
         "retries": str(s.get("retries") or 0),
@@ -1661,6 +1825,35 @@ def _drawer(store: Store, sid: str, cap: float) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------- automations
+def _took(a: str | None, b: str | None) -> str:
+    if not a or not b:
+        return "running"
+    from datetime import datetime
+
+    secs = (datetime.fromisoformat(b) - datetime.fromisoformat(a)).total_seconds()
+    return f"{int(secs // 60)} min {int(secs % 60)} s" if secs >= 60 else f"{int(secs)} s"
+
+
+def _run_line(res: dict[str, Any]) -> str:
+    if not res:
+        return "no result recorded"
+    if res.get("error"):
+        return f"failed: {res['error']}"
+    parts = []
+    if "issues" in res:
+        n_new = len(res.get("new_tickets") or [])
+        parts.append(f"{res['issues']} issue(s) found, {n_new} new ticket(s)")
+    if "triaged" in res:
+        parts.append(f"{res['triaged']} triage session(s)")
+    if "dispatched" in res:
+        parts.append(f"{res['dispatched']} repair session(s)")
+    if "gated" in res:
+        parts.append(f"{res['gated']} checked by the gate")
+    if res.get("escalated"):
+        parts.append(f"{res['escalated']} to a person")
+    return " · ".join(parts) or "nothing to do"
+
+
 def automations(
     store: Store,
     cfg: TargetConfig,
@@ -1672,152 +1865,148 @@ def automations(
     name: str = "",
 ) -> dict[str, Any]:
     a = pages.automations(store, cfg, settings, client, running)
-    sel = q.get("sel") or (a["rows"][0]["id"] if a["rows"] else None)
+    open_ids = {x for x in (q.get("open") or "").split(",") if x}
+    add_open = q.get("add") == "1" or err
+    mono = "'JetBrains Mono',monospace"
     autos = []
     for r in a["rows"]:
         is_next = r["availability"] == "next"
-        kind = "na" if is_next else ("run" if r["running"] else ("ok" if r["enabled"] else "na"))
+        state_kind = (
+            "na" if is_next else ("run" if r["running"] else ("ok" if r["enabled"] else "na"))
+        )
+        is_open = r["id"] in open_ids
+        others = (open_ids - {r["id"]}) if is_open else (open_ids | {r["id"]})
+        t = r["trigger"]
+        src = t.get("source", "")
+        if src == "github" and t.get("event") == "issues":
+            trig = f"issues on {r['target']} with label {t.get('issue_label') or 'any'}"
+            how = "on click, by webhook" + (f", {r['schedule']}" if r.get("schedule") else "")
+        elif src == "github":
+            trig = f"{t.get('event', '')} on {r['target']}" + (
+                " · " + ", ".join(f"{k}={v}" for k, v in (t.get("match") or {}).items())
+                if t.get("match")
+                else ""
+            )
+            how = "by webhook"
+        elif src == "schedule":
+            trig = "on a schedule"
+            how = r.get("schedule") or "no schedule set"
+        elif src == "manual":
+            trig = "on click only"
+            how = "the Run button"
+        else:
+            trig = f"{src}:{t.get('event', '')}"
+            how = "by webhook"
+        runs = store.list_automation_runs(r["id"], 8)
+        produced: list[str] = []
+        for run in runs:
+            for tid in run["result"].get("new_tickets") or []:
+                if tid not in produced:
+                    produced.append(tid)
+        kind_label = {
+            "repair": "event-based · default",
+            "scan": "scan · next version",
+            "custom": "event-based",
+        }.get(r["kind"], r["kind"])
         autos.append(
             {
                 "id": r["id"],
                 "name": r["name"],
-                "kind": r["kind"],
-                "state": "next"
+                "kindLabel": kind_label,
+                "state": "next version"
                 if is_next
-                else ("running" if r["running"] else ("enabled" if r["enabled"] else "disabled")),
-                "stBg": PL[kind][1],
-                "stFg": PL[kind][0],
-                "trigger": r["trigger_label"],
-                "triggerShort": r["trigger_detail"],
+                else ("running" if r["running"] else ("on" if r["enabled"] else "off")),
+                "stBg": PL[state_kind][1],
+                "stFg": PL[state_kind][0],
+                "trigger": trig,
+                "how": how,
                 "playbook": r["playbook"] or "none",
-                "cap": f"{int(r['max_acu'])} ACU per session" if r.get("max_acu") else "no cap",
+                "limit": f"{int(r['max_acu'])} ACU" if r.get("max_acu") else "none",
                 "conc": str(r["concurrency"]),
                 "lastRun": (
                     f"last run {r['last_run'][:16].replace('T', ' ')}"
                     if r.get("last_run")
                     else "never run"
                 ),
-                "enabled": bool(r["enabled"]) and not is_next,
                 "isNext": is_next,
                 "opacity": ".72" if is_next else "1",
-                "bg": "#eef2f9" if r["id"] == sel else "#fff",
-                "shadow": "inset 3px 0 0 #2457a8" if r["id"] == sel else "none",
-                "select": url("/automations", sel=r["id"]),
+                "open": is_open,
+                "chev": "▲" if is_open else "▼",
+                "bg": "#faf9f6" if is_open else "#fff",
+                "toggle": url("/automations", open=",".join(sorted(others)) or None),
                 "toggleUrl": f"/automations/{r['id']}/toggle",
-                "toggleLabel": "Disable" if r["enabled"] else "Enable",
+                "toggleLabel": "Switch off" if r["enabled"] else "Switch on",
                 "runnable": bool(r["runnable"]),
-                "canRun": bool(r["enabled"]) and not r["running"],
+                "canRun": bool(r["enabled"]) and not r["running"] and not running,
                 "runUrl": f"/automations/{r['id']}/run",
-                "runLabel": "Running…" if r["running"] else "Run now",
-                "_row": r,
+                "runLabel": "Running…" if r["running"] else "Run",
+                "removable": r["kind"] in ("custom", "scan") and r["id"] != "auto_scan",
+                "removeUrl": f"/automations/{r['id']}/delete",
+                "desc": r.get("kind_note") or "",
+                "notes": r.get("notes") or "",
+                "rows": [
+                    {"k": "what starts it", "v": trig, "mono": True},
+                    {"k": "how it runs", "v": how, "mono": False},
+                    {"k": "repository", "v": r["target"], "mono": True},
+                    {"k": "playbook", "v": r["playbook"] or "none", "mono": True},
+                    {
+                        "k": "per session",
+                        "v": f"Devin's limit {int(r['max_acu'])} ACU · {r['concurrency']} sessions at once"
+                        if r.get("max_acu")
+                        else f"{r['concurrency']} sessions at once",
+                        "mono": False,
+                    },
+                    {
+                        "k": "on the Devin org",
+                        "v": (
+                            f"native Automation {r['native'].get('id') or r['native'].get('automation_id')}"
+                            if r.get("native")
+                            else a["native_note"]
+                        ),
+                        "mono": False,
+                    },
+                ],
+                "runs": [
+                    {
+                        "when": run["started_at"][:16].replace("T", " "),
+                        "took": _took(run["started_at"], run.get("finished_at")),
+                        "line": _run_line(run["result"]),
+                        **pill(
+                            "run"
+                            if run["status"] == "running"
+                            else ("bad" if run["status"] == "failed" else "ok")
+                        ),
+                        "status": run["status"],
+                    }
+                    for run in runs
+                ],
+                "hasRuns": bool(runs),
+                "produced": [
+                    {"id": tid, "go": url("/tickets-page", open=tid), "color": tk_color(tid)}
+                    for tid in produced
+                ],
             }
         )
-    a0 = next((x for x in autos if x["id"] == sel), autos[0] if autos else None)
-    mono, sans = "'JetBrains Mono',monospace", "'Instrument Sans',system-ui,sans-serif"
-    au: dict[str, Any] = {
-        "name": "",
-        "kind": "",
-        "state": "",
-        "stBg": PL["na"][1],
-        "stFg": PL["na"][0],
-        "enabled": False,
-        "isNext": False,
-        "desc": "",
-        "rows": [],
-        "toggleUrl": "",
-        "toggleLabel": "",
-        "runnable": False,
-        "canRun": False,
-        "runUrl": "",
-        "runLabel": "",
-        "removable": False,
-        "removeUrl": "",
-        "actionNote": "",
-    }
-    if a0:
-        r = a0["_row"]
-        native = r.get("native")
-        last = r.get("last_result") or {}
-        au = {
-            **{
-                k: a0[k]
-                for k in (
-                    "name",
-                    "kind",
-                    "state",
-                    "stBg",
-                    "stFg",
-                    "enabled",
-                    "isNext",
-                    "toggleUrl",
-                    "toggleLabel",
-                    "runnable",
-                    "canRun",
-                    "runUrl",
-                    "runLabel",
-                )
-            },
-            "desc": (r.get("kind_note") or "") + (f" {r['notes']}." if r.get("notes") else ""),
-            "rows": [
-                {"k": "trigger", "v": r["trigger_label"], "font": mono, "size": "12px"},
-                {"k": "match", "v": r["trigger_detail"] or "any", "font": sans, "size": "13px"},
-                {"k": "target", "v": r["target"], "font": mono, "size": "12px"},
-                {"k": "playbook", "v": r["playbook"] or "none", "font": mono, "size": "12px"},
-                {
-                    "k": "cap · concurrency",
-                    "v": f"{a0['cap']} · {a0['conc']} at once",
-                    "font": sans,
-                    "size": "13px",
-                },
-                {
-                    "k": "schedule",
-                    "v": r.get("schedule") or "on the trigger",
-                    "font": sans,
-                    "size": "13px",
-                },
-                {
-                    "k": "Devin Automation",
-                    "v": (
-                        f"native Automation {native.get('id') or native.get('automation_id')}"
-                        if native
-                        else a["native_note"]
-                    ),
-                    "font": sans,
-                    "size": "13px",
-                },
-                {
-                    "k": "last result",
-                    "v": (
-                        f"dispatched {last.get('dispatched', 0)} · finished {last.get('finished', 0)} · gated {last.get('gated', 0)} · escalated {last.get('escalated', 0)}"
-                        if last and "dispatched" in last
-                        else (a0["lastRun"])
-                    ),
-                    "font": sans,
-                    "size": "13px",
-                },
-            ],
-            "removable": r["kind"] == "custom",
-            "removeUrl": f"/automations/{r['id']}/delete",
-            "actionNote": "seeded config; remove is for user-added ones"
-            if r["kind"] != "custom"
-            else "user-added config",
-        }
-        if a0["isNext"]:
-            au["actionNote"] = "next: nothing runs until the scan session exists"
-    for x in autos:
-        x.pop("_row", None)
     return {
         "autos": autos,
-        "au": au,
+        "addOpen": add_open,
+        "addUrl": url(
+            "/automations", add=None if add_open else "1", open=",".join(sorted(open_ids)) or None
+        ),
         "autoErr": err,
         "autoName": name,
         "autoNameBorder": PL["bad"][0] if err else "#d6d2c9",
         "autoNameShadow": f"0 0 0 3px {PL['bad'][1]}" if err else "none",
-        "autoFoot": f"{a['routed']} routed, waiting for the next pass"
-        + ("" if a["live"] else " · replay: sessions faked, gate skipped"),
+        "autoFoot": (
+            f"{a['routed']} ticket(s) routed and waiting for the next run"
+            if a["routed"]
+            else "Nothing is waiting for a run."
+        )
+        + ("" if a["live"] else " · replay: sessions are simulated, the gate is skipped"),
         "cap": a["cap"],
         "playbookNames": a["playbook_names"],
         "triggerChoices": a["trigger_choices"],
+        "mono": mono,
     }
 
 
@@ -1872,7 +2061,7 @@ def playbooks(
                 "chip": "next" if is_next else r["agent"],
                 "chipBg": ACT[actor][1],
                 "chipFg": ACT[actor][0],
-                "meta": f"{r['name']} · {len(r['sections'])} sections · schema: {len(r['schema_fields'])} fields · cap {int(r['max_acu']) if r.get('max_acu') else '·'} ACU · {r['source']}"
+                "meta": f"{r['name']} · {len(r['sections'])} sections · schema: {len(r['schema_fields'])} fields · Devin's limit {int(r['max_acu']) if r.get('max_acu') else '·'} ACU · {r['source']}"
                 + (" · on the org" if r.get("org_id") else ""),
                 "usedBy": r["used_by"],
                 "usedGo": r["used_by_link"],
@@ -1916,7 +2105,7 @@ def playbooks(
             "chip": "next" if is_next else d["agent"],
             "chipBg": ACT[actor][1],
             "chipFg": ACT[actor][0],
-            "meta": f"cap {int(d['max_acu']) if d.get('max_acu') else '·'} ACU · source {d['source']} · updated {d['updated_at'][:16].replace('T', ' ')}",
+            "meta": f"Devin's limit {int(d['max_acu']) if d.get('max_acu') else '·'} ACU · source {d['source']} · updated {d['updated_at'][:16].replace('T', ' ')}",
             "hasBody": not is_next,
             "isNext": is_next,
             "nextNote": (
@@ -2068,9 +2257,15 @@ def report(
         (
             "budget",
             "Budget",
-            _fmt_acu(h["budget"]["spent"]),
-            f"/ {h['budget']['cap'] if h['budget'].get('cap') else 'no cap'} ACU",
-            f"per-session cap {h['budget'].get('per_session_cap') or 'n/a'}",
+            _fmt_acu(h["budget"]["spent"])
+            if sp["metered"]
+            else (usd_label(sp) or f"{sp['active_min']:.0f} min"),
+            (
+                f"/ {h['budget']['cap'] if h['budget'].get('cap') else 'no cap'} ACU"
+                if sp["metered"]
+                else (f"/ ${_usd_cap(store):.0f} cap" if _usd_cap(store) else "/ no cap set")
+            ),
+            f"Devin's limit {h['budget'].get('per_session_cap') or 'n/a'} ACU per session",
             h["budget"]["sql"],
         ),
     ]
@@ -2264,7 +2459,7 @@ def report(
     chart_notes = {
         "funnel": f"{rep['funnel'][0][1]} decided · drops in red",
         "acu": (
-            f"n={len(points)} · cap {cap:g} ACU per session"
+            f"n={len(points)} · Devin's limit {cap:g} ACU per session"
             if (cap and sp["metered"])
             else (
                 f"n={len(points)} · dollars per session from the console"
@@ -2276,7 +2471,9 @@ def report(
         "burndown": f"{bd0.get('total', 0)} sites measured",
         "size": "L and XL unhealthy",
     }
+    tripwires = [t for t in tripwires if sp["metered"] or "ACU" not in t.get("name", "")]
     return {
+        "unitLabel": "ACU" if sp["metered"] else "$",
         "charts": chart_svgs,
         "chartNotes": chart_notes,
         "answer": answer,

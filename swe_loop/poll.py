@@ -140,7 +140,7 @@ class Poller:
             f"{state.status}/{state.status_detail or '-'}",
             ticket_id=ticket["id"],
             session_id=sid,
-            detail=f"acus={state.acus_consumed}",
+            detail=f"acus={state.acus_consumed}" if state.acus_consumed else None,
         )
 
         if not state.terminal:

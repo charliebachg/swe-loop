@@ -1,88 +1,77 @@
 {% extends "shell.html" %}{% block title %}Tickets{% endblock %}{% block content %}
-        <div style="display:flex;align-items:stretch;border-top:1px solid #e2dfd8;border-bottom:1px solid #e2dfd8;padding:12px 0;margin-bottom:24px">
+        {% include "v2/_refresh.html" %}
+        {% set PILL = "display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif" %}
+        <div style="display:flex;align-items:stretch;border-top:1px solid #e2dfd8;border-bottom:1px solid #e2dfd8;padding:12px 0;margin-bottom:20px">
           <div style="padding:0 20px 0 0"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums">{{ sm.total }}</div><div style="font-size:12px;color:#626b78;margin-top:3px">tickets · {{ sm.sites }} sites</div></div>
           <div style="padding:0 20px;border-left:1px solid #e2dfd8"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ sm.devinColor }}">{{ sm.devin }}</div><div style="font-size:12px;color:#626b78;margin-top:3px">to Devin · routed by code</div></div>
           <div style="padding:0 20px;border-left:1px solid #e2dfd8"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ sm.humanColor }}">{{ sm.human }}</div><div style="font-size:12px;color:#626b78;margin-top:3px">to a person · refused or human-only</div></div>
-          <div style="padding:0 20px;border-left:1px solid #e2dfd8"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ sm.activeColor }}">{{ sm.active }}</div><div style="font-size:12px;color:#626b78;margin-top:3px">active · dispatched, running, at the gate</div></div>
+          <div style="padding:0 20px;border-left:1px solid #e2dfd8"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ sm.activeColor }}">{{ sm.active }}</div><div style="font-size:12px;color:#626b78;margin-top:3px">active · the AI is working or the gate is checking</div></div>
           <div style="padding:0 20px;border-left:1px solid #e2dfd8"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ sm.mergedColor }}">{{ sm.merged }}</div><div style="font-size:12px;color:#626b78;margin-top:3px">merged · by a person</div></div>
           <div style="padding:0 20px;border-left:1px solid #e2dfd8"><div style="font:600 22px/1.1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ sm.pendingColor }}">{{ sm.pending }}</div><div style="font-size:12px;color:#626b78;margin-top:3px">awaiting triage · no verdict yet</div></div>
         </div>
-        <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:26px;align-items:start">
-          <section style="min-width:0">
-            <div style="display:flex;gap:4px;margin:0 0 14px">{% for c in chips %}<button hx-get="{{ c.set }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="padding:0 10px;border-radius:12px;border:1px solid {{ c.border }};background:{{ c.bg }};color:{{ c.fg }};font-family:'Instrument Sans',system-ui,sans-serif;font-size:12px;font-weight:500;line-height:22px;cursor:pointer;white-space:nowrap">{{ c.label }}</button>{% endfor %}</div>
-            <div style="display:flex;align-items:baseline;gap:10px;margin:0 0 10px;white-space:nowrap">
-              <span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Issues on the fork</span><span style="font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ ticketCount }}</span>
-              <span style="margin-left:auto;font:11px/18px 'JetBrains Mono',monospace;padding:0 7px;border-radius:4px;background:#eaeef4;color:#5b6f8a">from the measured inventory</span>
-            </div>
-            <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
-              {% for t in tickets %}
-                <div id="{{ t.id }}" hx-get="{{ t.select }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="display:grid;grid-template-columns:22px 1fr auto;gap:14px;padding:13px 16px;border-bottom:1px solid #ecebe6;cursor:pointer;background:{{ t.bg }}" data-hover="background:#faf9f6">
-                  <span style="width:22px;height:22px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;font:600 10.5px/1 'JetBrains Mono',monospace;background:{{ t.dotBg }};color:{{ t.dotFg }};box-shadow:inset 0 0 0 2px {{ t.color }};margin-top:1px">{{ t.L }}</span>
-                  <div style="min-width:0">
-                    <div style="font-size:14px;font-weight:600;text-wrap:pretty;letter-spacing:-.005em">{{ t.title }} <a href="{{ t.issueUrl }}" target="_blank" onclick="event.stopPropagation()" style="font:500 12px/1.4 'JetBrains Mono',monospace">{{ t.issue }}</a></div>
-                    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:#626b78;margin-top:4px;align-items:baseline"><span style="font:500 12px/1.4 'JetBrains Mono',monospace;color:{{ t.color }}">{{ t.id }}</span><span>{{ t.count }}</span><span style="font:11px/1.4 'JetBrains Mono',monospace">{{ t.classes }}</span><span>{{ t.sessions }}</span></div>
-                    <div style="font-size:12px;color:#8f97a3;margin-top:3px;text-wrap:pretty">{{ t.why }}</div>
-                  </div>
-                  <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end">
-                    <span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ t.routeBg }};color:{{ t.routeFg }}">{{ t.route }}</span>
-                    <span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ t.stBg }};color:{{ t.stFg }}">{{ t.status }}</span>
-                    <a href="{{ t.track }}" onclick="event.stopPropagation()" style="font-size:12px">track →</a>
-                  </div>
-                </div>
-              {% endfor %}
-              {% if noTickets %}<div style="padding:16px;font-size:13px;color:#8f97a3">{{ emptyText }}</div>{% endif %}
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:24px">
-              <div><div style="display:flex;align-items:baseline;gap:10px;margin:0 0 8px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#8f97a3">Scan</span><span style="margin-left:auto;font:11px/18px 'JetBrains Mono',monospace;padding:0 7px;border-radius:4px;background:#e9e7e1;color:#8f97a3">next</span></div><div style="border:1px dashed #d6d2c9;border-radius:10px;padding:12px 14px;font-size:12.5px;color:#8f97a3;text-wrap:pretty;min-height:84px">No tickets from this source yet. A scan session will point at the repository, find the work, and file tickets here.</div></div>
-              <div><div style="display:flex;align-items:baseline;gap:10px;margin:0 0 8px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#8f97a3">Gmail</span><span style="margin-left:auto;font:11px/18px 'JetBrains Mono',monospace;padding:0 7px;border-radius:4px;background:#e9e7e1;color:#8f97a3">next</span></div><div style="border:1px dashed #d6d2c9;border-radius:10px;padding:12px 14px;font-size:12.5px;color:#8f97a3;min-height:84px">No tickets from this source yet.</div></div>
-              <div><div style="display:flex;align-items:baseline;gap:10px;margin:0 0 8px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#8f97a3">Slack</span><span style="margin-left:auto;font:11px/18px 'JetBrains Mono',monospace;padding:0 7px;border-radius:4px;background:#e9e7e1;color:#8f97a3">next</span></div><div style="border:1px dashed #d6d2c9;border-radius:10px;padding:12px 14px;font-size:12.5px;color:#8f97a3;min-height:84px">No tickets from this source yet.</div></div>
-            </div>
-          </section>
-          <section style="min-width:0;position:sticky;top:80px">
-            <div style="display:flex;align-items:baseline;gap:10px;margin:0 0 10px">
-              <span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Work order</span><span style="font:500 12px/1.4 'JetBrains Mono',monospace;color:{{ tk.color }}">{{ tk.id }}</span><a href="{{ tk.issueUrl }}" target="_blank" style="font:12px/1.4 'JetBrains Mono',monospace">issue {{ tk.issue }}</a>
-              <a href="{{ tk.track }}" style="margin-left:auto;font-size:12.5px">track →</a>
-            </div>
-            <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden;border-top:3px solid {{ tk.color }}">
-              <div style="padding:16px 18px 14px;border-bottom:1px solid #ecebe6">
-                <div style="font:600 16px/1.35 'Instrument Sans',system-ui,sans-serif;letter-spacing:-.01em;text-wrap:pretty">{{ tk.title }}</div>
-                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">{% for p in tk.pills %}<span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ p.bg }};color:{{ p.fg }}">{{ p.label }}</span>{% endfor %}</div>
-                <div style="display:grid;grid-template-columns:64px 1fr;gap:6px 12px;margin-top:12px;font-size:12.5px;align-items:baseline">
-                  <span style="font:500 10.5px/1.6 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f97a3">why</span><span style="text-wrap:pretty">{{ tk.why }}</span>
-                  <span style="font:500 10.5px/1.6 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f97a3">classes</span><span style="font:11.5px/1.6 'JetBrains Mono',monospace;color:#626b78">{{ tk.classes }}</span>
-                  <span style="font:500 10.5px/1.6 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f97a3">files</span><span style="font:11.5px/1.6 'JetBrains Mono',monospace;color:#626b78;text-wrap:pretty">{{ tk.files }}</span>
-                </div>
-              </div>
-              <div style="padding:12px 18px 14px;border-bottom:1px solid #ecebe6">
-                <div style="display:flex;align-items:baseline;gap:8px"><span style="font:500 10.5px/1.6 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f97a3">sites</span><span style="font-size:12px;color:#8f97a3">the library's own message per site</span></div>
-                {% if tk.hasSites %}
-                  {% for s in tk.sites %}
-                    <div style="display:grid;grid-template-columns:1fr auto auto;gap:6px 12px;margin-top:8px;font-size:12.5px;align-items:start">
-                      <span style="min-width:0"><span style="font:12px/1.5 'JetBrains Mono',monospace">{{ s.loc }}</span> <span style="font:11px/1.5 'JetBrains Mono',monospace;color:#8f97a3">{{ s.cls }}</span><span style="display:block;color:#626b78;font-size:12px;margin-top:2px;text-wrap:pretty">{{ s.msg }}</span></span>
-                      {% if s.warned %}<span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:#fff3d6;color:#b8862a">warned</span>{% else %}<span></span>{% endif %}
-                      {% if s.broke %}<span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:#f9e4df;color:#b4452e">broke</span>{% else %}<span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:#e9e7e1;color:#8f97a3">{{ s.kind }}</span>{% endif %}
-                    </div>
-                  {% endfor %}
-                {% endif %}
-                {% if tk.noSites %}<div style="margin-top:8px;border:1px dashed #d6d2c9;border-radius:7px;padding:10px 12px;font-size:12px;color:#8f97a3;text-wrap:pretty">{{ tk.siteNote }}</div>{% endif %}
-              </div>
-              {% if tk.hasAcceptance %}
-                <div style="padding:12px 18px 14px;border-bottom:1px solid #ecebe6">
-                  <div style="display:flex;align-items:baseline;gap:8px"><span style="font:500 10.5px/1.6 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#1f8a80">acceptance</span><span style="font-size:12px;color:#8f97a3">the gate re-runs these itself, from a clean checkout</span></div>
-                  {% for a in tk.acceptance %}<div style="background:#f3f1ec;padding:7px 10px;font:11px/1.55 'JetBrains Mono',monospace;border-radius:5px;margin:6px 0 0;white-space:pre-wrap;word-break:break-word;border-left:3px solid #1f8a80"><span style="font-weight:600">{{ a.name }}</span>  {{ a.cmd }}</div>{% endfor %}
-                </div>
-              {% endif %}
-              {% if tk.hasTimeline %}
-                <div style="padding:10px 18px 14px">
-                  <button hx-get="{{ tk.toggleTl }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="border:0;background:none;padding:0;color:#2457a8;font:12.5px/1.4 'Instrument Sans',system-ui,sans-serif;cursor:pointer">{{ tk.tlLabel }}</button>
-                  {% if tk.tlOpen %}
-                    <div style="margin-top:8px;display:flex;flex-direction:column;gap:2px">
-                      {% for e in tk.timeline %}<div style="display:grid;grid-template-columns:58px 82px 1fr;gap:10px;font-size:12px;align-items:baseline;padding:2px 0 2px 10px;border-left:3px solid {{ e.fg }}"><span style="font:11px/1.5 'JetBrains Mono',monospace;color:#8f97a3">{{ e.time }}</span><span style="font:11px/1.5 'JetBrains Mono',monospace;color:{{ e.fg }}">{{ e.layer }}</span><span><span style="font-weight:500">{{ e.event }}</span> <span style="font:11px/1.5 'JetBrains Mono',monospace;color:#626b78;word-break:break-all">{{ e.detail }}</span></span></div>{% endfor %}
-                    </div>
-                  {% endif %}
-                </div>
-              {% endif %}
-            </div>
-          </section>
+        <div style="display:flex;align-items:center;gap:14px;margin:0 0 14px;flex-wrap:wrap">
+          <span style="display:inline-flex;border:1px solid #1f2530;border-radius:8px;overflow:hidden">{% for v in views %}<button hx-get="{{ v.set }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="padding:0 12px;border:0;background:{{ v.bg }};color:{{ v.fg }};font:500 12px/24px 'Instrument Sans',system-ui,sans-serif;cursor:pointer">{{ v.label }}</button>{% endfor %}</span>
+          <span style="display:flex;gap:4px">{% for c in chips %}<button hx-get="{{ c.set }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="padding:0 10px;border-radius:12px;border:1px solid {{ c.border }};background:{{ c.bg }};color:{{ c.fg }};font-family:'Instrument Sans',system-ui,sans-serif;font-size:12px;font-weight:500;line-height:22px;cursor:pointer;white-space:nowrap">{{ c.label }}</button>{% endfor %}</span>
+          <span style="font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ ticketCount }} shown · click a ticket for its scope, sessions, receipts and the merge control</span>
+          {% if not isList %}<span style="margin-left:auto;display:flex;gap:14px;font:11px/1.4 'JetBrains Mono',monospace;color:#626b78;align-items:center">
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:10px;border-radius:2px;background:#5b6f8a"></span>code</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:10px;border-radius:2px;background:#7a4fb5"></span>Devin</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:10px;border-radius:2px;background:#1f8a80"></span>the gate</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:10px;border-radius:2px;background:#b8862a"></span>a person</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:10px;border-radius:2px;background:#fff;box-shadow:inset 0 0 0 2px #b8862a"></span>now, waiting</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:10px;border-radius:2px;background:#b4452e"></span>refused</span>
+          </span>{% endif %}
         </div>
+        {% if isList %}
+        {% for g in groups %}
+        <div style="display:flex;align-items:baseline;gap:10px;margin:{% if not loop.first %}22px{% else %}0{% endif %} 0 8px">
+          <span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">{{ g.name }}</span><span style="font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ g.count }}</span>
+        </div>
+        {% if g.empty %}<div style="border:1px dashed #d6d2c9;border-radius:10px;padding:12px 14px;font-size:12.5px;color:#8f97a3;text-wrap:pretty">{{ g.note or emptyText }}</div>{% else %}
+        <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
+          {% for r in g.rows %}
+          <div id="{{ r.id }}" style="border-bottom:1px solid #ecebe6">
+            <div hx-get="{{ r.toggle }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="display:grid;grid-template-columns:22px 1fr auto 18px;gap:14px;padding:13px 16px;cursor:pointer;background:{{ r.bg }};align-items:start" data-hover="background:#faf9f6">
+              <span style="width:22px;height:22px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;font:600 10.5px/1 'JetBrains Mono',monospace;background:{{ r.dotBg }};color:{{ r.dotFg }};box-shadow:inset 0 0 0 2px {{ r.color }};margin-top:1px">{{ r.L }}</span>
+              <div style="min-width:0">
+                <div style="font-size:14px;font-weight:600;text-wrap:pretty;letter-spacing:-.005em">{{ r.title }} <a href="{{ r.issueUrl }}" target="_blank" onclick="event.stopPropagation()" style="font:500 12px/1.4 'JetBrains Mono',monospace">{{ r.issue }}</a></div>
+                <div style="font-size:13px;color:#14181f;margin-top:5px;text-wrap:pretty">{% if r.isRunning %}<span style="display:inline-block;width:8px;height:8px;border-radius:4px;background:#b8862a;margin-right:6px;vertical-align:middle"></span>{% endif %}{{ r.summary }}</div>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:#626b78;margin-top:5px;align-items:baseline"><span style="font:500 12px/1.4 'JetBrains Mono',monospace;color:{{ r.color }}">{{ r.id }}</span><span>{{ r.count }}</span><span>{{ r.nSessions }}</span><span>{{ r.age }}</span>{% if r.sessionUrl %}<a href="{{ r.sessionUrl }}" target="_blank" onclick="event.stopPropagation()" style="color:#7a4fb5">{{ r.sessionLabel }} ↗</a>{% endif %}{% if r.prLabel %}<a href="{{ r.prUrl }}" target="_blank" onclick="event.stopPropagation()">{{ r.prLabel }} ↗</a>{% endif %}</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end">
+                <span style="{{ PILL }};background:{% if r.route == 'devin' %}#f1eafa{% elif r.route %}#fff3d6{% else %}#e9e7e1{% endif %};color:{% if r.route == 'devin' %}#7a4fb5{% elif r.route %}#b8862a{% else %}#8f97a3{% endif %}">{% if r.route == 'devin' %}Devin{% elif r.route %}a person{% else %}awaiting triage{% endif %}</span>
+                <span style="{{ PILL }};background:{{ r.stBg }};color:{{ r.stFg }}">{{ r.status }}</span>
+              </div>
+              <span style="color:#8f97a3;font-size:11px;text-align:right;padding-top:4px">{{ r.chev }}</span>
+            </div>
+            {% if r.open %}{% include "v2/_ticket_run.html" %}{% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% endfor %}
+        {% else %}
+        <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
+          <div style="display:grid;grid-template-columns:104px minmax(360px,1.4fr) 1fr 110px 18px;gap:16px;padding:10px 16px 8px;border-bottom:1px solid #e2dfd8;align-items:end">
+            <span style="font:500 10.5px/1.4 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f97a3">ticket</span>
+            <span style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px">{% for h in stageHead %}<span style="min-width:0"><span style="display:block;font:500 10.5px/1.3 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#14181f">{{ h.name }}</span><span style="display:block;font:10.5px/1.3 'JetBrains Mono',monospace;color:{{ h.color }}">{{ h.actor }}</span></span>{% endfor %}</span>
+            <span style="font:500 10.5px/1.4 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f97a3">right now</span>
+            <span style="font:500 10.5px/1.4 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f97a3">status</span>
+            <span></span>
+          </div>
+          {% for r in trackerRows %}
+            <div id="{{ r.id }}" style="border-bottom:1px solid #ecebe6">
+              <div hx-get="{{ r.toggle }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="display:grid;grid-template-columns:104px minmax(360px,1.4fr) 1fr 110px 18px;gap:16px;padding:{{ r.pad }} 16px;align-items:center;cursor:pointer;background:{{ r.bg }}" data-hover="background:#faf9f6">
+                <span style="display:flex;gap:8px;align-items:center;min-width:0"><span style="width:22px;height:22px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;font:600 10.5px/1 'JetBrains Mono',monospace;flex:none;background:{{ r.dotBg }};color:{{ r.dotFg }};box-shadow:inset 0 0 0 2px {{ r.color }}">{{ r.L }}</span><span style="display:flex;flex-direction:column;min-width:0"><span style="font:600 12px/1.3 'JetBrains Mono',monospace;color:{{ r.idColor }}">{{ r.id }}</span><a href="{{ r.issueUrl }}" target="_blank" onclick="event.stopPropagation()" style="font:11px/1.3 'JetBrains Mono',monospace">{{ r.issue }}</a></span></span>
+                <span style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px">{% for c in r.cells %}<span title="{{ c.title }}" style="height:{{ c.h }};border-radius:3px;background:{{ c.bg }};box-shadow:{{ c.shadow }};color:{{ c.fg }};font:500 10px/1 'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap;padding:0 4px">{{ c.label }}</span>{% endfor %}</span>
+                <span style="min-width:0;font-size:12.5px;color:#14181f;text-wrap:pretty">{{ r.summary }}</span>
+                <span style="display:flex;gap:4px;flex-wrap:wrap"><span style="{{ PILL }};background:{{ r.stBg }};color:{{ r.stFg }}">{{ r.status }}</span>{% if r.isEscalated %}<span style="{{ PILL }};background:#fff3d6;color:#b8862a">a person</span>{% endif %}</span>
+                <span style="color:#8f97a3;font-size:11px;text-align:right">{{ r.chev }}</span>
+              </div>
+              {% if r.open %}{% include "v2/_ticket_run.html" %}{% endif %}
+            </div>
+          {% endfor %}
+          {% if noTickets %}<div style="padding:16px;font-size:13px;color:#8f97a3">{{ emptyText }}</div>{% endif %}
+        </div>
+        {% endif %}
       {% endblock %}

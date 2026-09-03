@@ -55,6 +55,10 @@ CREATE TABLE IF NOT EXISTS tickets (
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
   triage_verdict_json TEXT, router_decision TEXT, router_reason TEXT
 );
+CREATE TABLE IF NOT EXISTS automation_runs (
+  id TEXT PRIMARY KEY, automation_id TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT,
+  status TEXT NOT NULL, result_json TEXT
+);
 CREATE TABLE IF NOT EXISTS work_orders (
   id TEXT PRIMARY KEY, ticket_id TEXT NOT NULL REFERENCES tickets(id),
   shard_id TEXT NOT NULL, files_json TEXT NOT NULL, tests_json TEXT NOT NULL,
@@ -737,6 +741,31 @@ class Store:
             fields["last_result"] = json.dumps(fields["last_result"])
         sets = ", ".join(f"{k}=?" for k in fields)
         self.conn.execute(f"UPDATE automations SET {sets} WHERE id=?", (*fields.values(), aid))
+
+    def start_automation_run(self, aid: str) -> str:
+        rid = new_id("run")
+        self.conn.execute(
+            "INSERT INTO automation_runs (id, automation_id, started_at, status) VALUES (?,?,?,?)",
+            (rid, aid, now(), "running"),
+        )
+        return rid
+
+    def finish_automation_run(self, rid: str, result: dict[str, Any], status: str = "done") -> None:
+        self.conn.execute(
+            "UPDATE automation_runs SET finished_at=?, status=?, result_json=? WHERE id=?",
+            (now(), status, json.dumps(result), rid),
+        )
+
+    def list_automation_runs(self, aid: str, limit: int = 10) -> list[dict[str, Any]]:
+        out = []
+        for r in self._all(
+            "SELECT * FROM automation_runs WHERE automation_id=? ORDER BY started_at DESC LIMIT ?",
+            aid,
+            limit,
+        ):
+            r["result"] = json.loads(r.pop("result_json") or "{}")
+            out.append(r)
+        return out
 
     def delete_automation(self, aid: str) -> None:
         self.conn.execute("DELETE FROM automations WHERE id=? AND kind='custom'", (aid,))

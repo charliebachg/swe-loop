@@ -14,13 +14,12 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from swe_loop import connect, cost, ops, pages, replay, v2
+from swe_loop import connect, cost, ops, pages, replay, runner, v2
 from swe_loop import reduce as reduce_mod
-from swe_loop.cli import run_once
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.devin import DevinClient
-from swe_loop.intake import NormalizedEvent, normalize, ticket_id_for, verify_github_signature
-from swe_loop.store import Store, now
+from swe_loop.intake import ingest, normalize, verify_github_signature
+from swe_loop.store import Store
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = Jinja2Templates(directory=str(ROOT / "templates"))
@@ -118,9 +117,15 @@ def build_app(
     def _page(request: Request, active: str, template: str, ctx: dict[str, Any]) -> HTMLResponse:
         """A designed page. An HTMX request gets the content block only; the frame stays."""
         st: Store = request.app.state.store
+        busy = request.app.state.run_lock.locked() or bool(st.live_sessions())
         full = {
             **pages.shell(settings, cfg, st, active),
             **v2.frame(settings, cfg, st, active),
+            "refreshUrl": (
+                str(request.url.path) + (f"?{request.url.query}" if request.url.query else "")
+            )
+            if busy
+            else "",
             **ctx,
         }
         if request.headers.get("HX-Request"):
@@ -154,10 +159,12 @@ def build_app(
         st: Store = request.app.state.store
         return _page(request, "tickets", "v2/tickets.html", v2.tickets(st, cfg, _q(request)))
 
-    @app.get("/tracker", response_class=HTMLResponse)
-    def tracker_v2(request: Request) -> HTMLResponse:
-        st: Store = request.app.state.store
-        return _page(request, "tracker", "v2/tracker.html", v2.tracker(st, cfg, _q(request)))
+    @app.get("/tracker")
+    def tracker_redirect(request: Request) -> RedirectResponse:
+        """The pipeline view lives on the Tickets page now."""
+        return RedirectResponse(
+            v2.url("/tickets-page", **{**_q(request), "view": "pipeline"}), status_code=303
+        )
 
     @app.get("/report", response_class=HTMLResponse)
     def report_v2(request: Request) -> HTMLResponse:
@@ -185,7 +192,7 @@ def build_app(
         request: Request, err: bool = False, name: str = "", sel: str | None = None
     ) -> HTMLResponse:
         st: Store = request.app.state.store
-        q = {**_q(request), **({"sel": sel} if sel else {})}
+        q = {**_q(request), **({"open": sel} if sel else {})}
         return _page(
             request,
             "automations",
@@ -312,7 +319,10 @@ def build_app(
             except ValueError:
                 pass  # not ready: the re-rendered row says why
         return _page(
-            request, "tracker", "v2/tracker.html", v2.tracker(st, cfg, {"open": ticket_id})
+            request,
+            "tickets",
+            "v2/tickets.html",
+            v2.tickets(st, cfg, {**_q(request), "view": "pipeline", "open": ticket_id}),
         )
 
     @app.get("/settings", response_class=HTMLResponse)
@@ -324,6 +334,7 @@ def build_app(
             "settings",
             cost=cost.spend(request.app.state.store),
             cost_rows=v2.cost_rows(request.app.state.store),
+            usdCap=v2._usd_cap(st),
             s=pages.settings_page(settings, cfg, st, request.app.state.client),
         )
 
@@ -359,14 +370,19 @@ def build_app(
     @app.post("/settings/budget")
     async def settings_budget(request: Request) -> RedirectResponse:
         form = parse_qs((await request.body()).decode())
+        st: Store = request.app.state.store
+        b = st.budget_state()
         try:
-            cap = float(form.get("acu_cap", ["0"])[0])
+            cap = float((form.get("acu_cap") or [b.get("cap") or 300])[0])
             per = float(form.get("per_session_cap", ["0"])[0])
+            usd_cap = float((form.get("usd_cap") or ["0"])[0] or 0)
         except ValueError as ex:
             raise HTTPException(status_code=400, detail="numbers only") from ex
-        if cap <= 0 or per <= 0:
+        if cap <= 0 or per <= 0 or usd_cap < 0:
             raise HTTPException(status_code=400, detail="caps must be positive")
-        request.app.state.store.set_budget(cap, per)
+        st.set_budget(cap, per)
+        if "usd_cap" in form:
+            st.set_setting("usd_cap", str(usd_cap) if usd_cap else "")
         connect.clear_cache()
         return RedirectResponse("/settings", status_code=303)
 
@@ -381,8 +397,13 @@ def build_app(
         name = form.get("name", "")
         if not name:
             raise HTTPException(status_code=400, detail="name is required")
-        trig = form.get("trigger", "github:pull_request")
+        trig = form.get("trigger", "github:issues")
         source, _, event = trig.partition(":")
+        if source == "manual":
+            event = "click"
+        if source == "schedule":
+            event = "recurring"
+        scan = form.get("kind") == "scan"
         match: dict[str, str] = {}
         for part in (form.get("match") or "").split(";"):
             if "=" in part:
@@ -393,9 +414,9 @@ def build_app(
             trigger["issue_label"] = match.pop("label")
         aid = st.upsert_automation(
             name=name[:80],
-            kind="custom",
+            kind="scan" if scan else "custom",
             enabled=False,
-            availability="live",
+            availability="next" if scan else "live",
             trigger=trigger,
             target=form.get("target") or cfg.repo,
             playbook=form.get("playbook") or None,
@@ -430,9 +451,9 @@ def build_app(
         a = st.get_automation(aid)
         if not a:
             raise HTTPException(status_code=404)
-        if a["kind"] != "repair" or a["availability"] != "live":
+        if a["kind"] not in ("repair", "custom") or a["availability"] != "live":
             raise HTTPException(
-                status_code=409, detail="only the Repair automation runs in this version"
+                status_code=409, detail="a scan automation is for the next version; nothing runs"
             )
         if not a["enabled"]:
             raise HTTPException(status_code=409, detail="the automation is disabled")
@@ -440,20 +461,20 @@ def build_app(
         if not lock.acquire(blocking=False):
             raise HTTPException(status_code=409, detail="a pass is already running")
         client = request.app.state.client
+        st.set_setting("automation.running", aid)
         st.log(
             "automation",
-            f"{a['name']}: run now",
-            detail="one pass: route, dispatch, poll, gate, reduce",
+            f"{a['name']}: run",
+            detail="issues to tickets, triage, route, repair, gate, review",
         )
 
         def _go() -> None:
             try:
-                out = run_once(settings, cfg, st, client, log=lambda m: None)
-                st.set_automation(aid, last_run=now(), last_result=out)
+                runner.run_automation(settings, cfg, st, client, aid, log=lambda m: None)
             except Exception as ex:  # noqa: BLE001 - surfaced on the page, never silent
                 st.log("automation", "run failed", detail=f"{type(ex).__name__}: {ex}"[:300])
-                st.set_automation(aid, last_run=now(), last_result={"error": type(ex).__name__})
             finally:
+                st.set_setting("automation.running", "")
                 lock.release()
 
         th = threading.Thread(target=_go, name="swe-loop-run", daemon=True)
@@ -560,43 +581,6 @@ def build_app(
         return {"headline": st.metrics(), "funnel": st.funnel()}
 
     return app
-
-
-def ingest(store: Store, ev: NormalizedEvent) -> str:
-    """One normalised event becomes one ticket (created or updated). Work orders only when the
-    event already carries an acceptance command; otherwise the triage session scopes it."""
-    tid = ticket_id_for(ev)
-    wo = ev.work_order or {}
-    route = wo.get("route")
-    verdict = None
-    if wo.get("acceptance"):
-        verdict = {
-            "acceptance_cmd": wo["acceptance"],
-            "context_sufficient": True,
-            "split": "one",
-            "est_size": "XS" if len(wo.get("files", [])) <= 1 else "S",
-            "needs_human": route == "human",
-            "review": wo.get("review"),
-        }
-    store.upsert_ticket(
-        id=tid,
-        source=ev.source,
-        title=ev.title,
-        status="triaged" if verdict else "new",
-        external_ref=ev.external_ref,
-        cls=",".join(wo.get("classes", [])) or None,
-        triage_verdict=verdict,
-    )
-    if verdict and route == "devin" and not store.work_orders_for(tid):
-        store.insert_work_order(
-            ticket_id=tid,
-            shard_id=str(wo.get("shard", tid)),
-            files=list(wo.get("files", [])),
-            tests=list(wo.get("tests", [])),
-            acceptance=dict(wo["acceptance"]),
-            est_size=verdict["est_size"],
-        )
-    return tid
 
 
 app = build_app()
