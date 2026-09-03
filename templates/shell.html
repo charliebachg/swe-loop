@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}swe-loop{% endblock %}</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/2.0.4/htmx.min.js"></script>
+<style>
+  :root { --ink:#1a222d; --muted:#5a6574; --rule:#dfe3e9; --ground:#f4f5f7; --surface:#fff; --accent:#2c5ba6; --accent-soft:#e7eef9;
+          --pass:#2e7d4f; --pass-soft:#e3f2e8; --fail:#b4452e; --fail-soft:#f9e4df; --warn:#b8862a; --warn-soft:#fff3d6; --na:#8a94a3; --na-soft:#eceff3;
+          --devin:#5b7fb5; --devin-soft:#eef3fb; --gate:#8a5fb5; --gate-soft:#f4ecfa; --human:#b4452e; --side:#1a222d; --side-ink:#c9d1dc; --side-dim:#6f7a89 }
+  * { box-sizing:border-box } body { margin:0; background:var(--ground); color:var(--ink); font:14px/1.5 "IBM Plex Sans", system-ui, sans-serif }
+  .app { display:grid; grid-template-columns:224px 1fr; min-height:100vh }
+  aside { background:var(--side); color:var(--side-ink); padding:18px 0 30px; position:sticky; top:0; height:100vh; overflow-y:auto }
+  aside .brand { padding:0 18px 14px; font-weight:600; font-size:16px; color:#fff; display:flex; align-items:baseline; gap:8px } aside .brand small { font:11px "IBM Plex Mono", monospace; color:var(--side-dim) }
+  aside h4 { margin:16px 18px 6px; font:11px "IBM Plex Mono", monospace; letter-spacing:.1em; text-transform:uppercase; color:var(--side-dim) }
+  aside hr { border:0; border-top:1px solid #2a3442; margin:12px 18px }
+  aside a { display:flex; align-items:center; gap:10px; padding:7px 18px; color:var(--side-ink); text-decoration:none; font-size:13.5px }
+  aside a:hover { background:#242e3b } aside a.on { background:var(--accent); color:#fff }
+  aside a .dot { width:8px; height:8px; border-radius:4px; background:var(--pass); flex:none } aside a.next { color:var(--side-dim) } aside a.next .dot { background:transparent; border:1.5px solid var(--side-dim) }
+  aside a .tag { margin-left:auto; font:10px "IBM Plex Mono", monospace; color:var(--side-dim) }
+  .main { display:flex; flex-direction:column; min-width:0 }
+  .top { background:var(--surface); border-bottom:1px solid var(--rule); padding:12px 26px; display:flex; align-items:center; gap:18px; position:sticky; top:0; z-index:3 }
+  .top h1 { font-size:17px; margin:0; font-weight:600 } .top .mode { font:12px "IBM Plex Mono", monospace; color:var(--muted); margin-left:auto } .top .mode b { color:var(--warn) } .top .mode b.live { color:var(--pass) }
+  .top .gear { color:var(--muted); text-decoration:none; font-size:18px; line-height:1 } .top .gear:hover { color:var(--ink) }
+  .page { padding:22px 26px 80px; display:flex; flex-direction:column; gap:16px; min-width:0 }
+  .lede { color:var(--muted); margin:0; max-width:80ch }
+  .card { background:var(--surface); border:1px solid var(--rule); border-radius:8px; padding:16px 18px; overflow-x:auto }
+  .card h3 { margin:0 0 10px; font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:500; display:flex; align-items:center; gap:10px }
+  .card h3 .who { margin-left:auto; text-transform:none; letter-spacing:0; font:11px "IBM Plex Mono", monospace; padding:2px 8px; border-radius:4px }
+  .who.devin { background:var(--devin-soft); color:var(--devin) } .who.code { background:var(--pass-soft); color:var(--pass) } .who.person { background:var(--fail-soft); color:var(--human) } .who.gate { background:var(--gate-soft); color:var(--gate) } .who.next { background:var(--na-soft); color:var(--na) }
+  table { border-collapse:collapse; width:100%; font-size:13px } th,td { text-align:left; padding:7px 9px; border-bottom:1px solid var(--rule); vertical-align:top } th { font:500 11px "IBM Plex Mono", monospace; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); white-space:nowrap }
+  tr:last-child td { border-bottom:0 } .num { text-align:right; font-variant-numeric:tabular-nums } .mono { font-family:"IBM Plex Mono", Menlo, monospace; font-size:12px } .wrap { white-space:normal }
+  .pill { display:inline-block; padding:1px 8px; border-radius:10px; font-size:11px; font-weight:600; white-space:nowrap }
+  .p-ok { background:var(--pass-soft); color:var(--pass) } .p-bad { background:var(--fail-soft); color:var(--fail) } .p-run { background:var(--warn-soft); color:var(--warn) } .p-na { background:var(--na-soft); color:var(--na) } .p-devin { background:var(--devin-soft); color:var(--devin) } .p-gate { background:var(--gate-soft); color:var(--gate) }
+  a { color:var(--accent); text-decoration:none } a:hover { text-decoration:underline }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px } .tile { border:1px solid var(--rule); border-radius:8px; padding:10px 12px; background:var(--surface) } .tile .k { font:11px "IBM Plex Mono", monospace; letter-spacing:.06em; text-transform:uppercase; color:var(--muted) } .tile .v { font-size:24px; font-weight:600; margin:2px 0; font-variant-numeric:tabular-nums } .tile .d { font-size:12px; color:var(--muted) }
+  .tile.live .v { color:var(--warn) } .tile.bad .v { color:var(--fail) } .tile.ok .v { color:var(--pass) }
+  .two { display:grid; grid-template-columns:1.4fr 1fr; gap:16px } @media (max-width:1100px) { .two { grid-template-columns:1fr } }
+  .btn { display:inline-block; padding:7px 14px; border-radius:6px; border:1px solid var(--rule); background:var(--surface); color:var(--ink); font-weight:500; font-size:13px; cursor:pointer } .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff } .btn[disabled] { opacity:.5; cursor:not-allowed }
+  .tl { border-left:2px solid var(--rule); margin:6px 0 6px 6px; padding-left:14px } .tl div { position:relative; font-size:12.5px; padding:2px 0 } .tl div::before { content:""; position:absolute; left:-19px; top:9px; width:8px; height:8px; border-radius:4px; background:var(--rule) }
+  .tl .L4::before, .tl .L1::before, .tl .devin::before { background:var(--devin) } .tl .L0::before, .tl .L2::before, .tl .L3::before, .tl .L7::before, .tl .ticket::before, .tl .code::before { background:var(--pass) } .tl .L5::before, .tl .gate::before { background:var(--gate) } .tl .escalate::before, .tl .bad::before { background:var(--fail) } .tl .person::before { background:var(--human) }
+  .tl .t { font:11px "IBM Plex Mono", monospace; color:var(--muted); margin-right:8px } .tl .d { color:var(--muted) }
+  .chk { border:1px solid var(--rule); border-radius:6px; padding:10px 12px } .chk .k { font:11px "IBM Plex Mono", monospace; color:var(--muted) } .chk .v { font-weight:500; margin:2px 0 } .chk .c { font:11px "IBM Plex Mono", monospace; color:var(--pass) } .chk.missing .c { color:var(--fail) } .chk.skipped .c { color:var(--na) }
+  .grid3 { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px } @media (max-width:1000px) { .grid3 { grid-template-columns:1fr } }
+  .tk { border-left:4px solid var(--accent) } .tk.A { border-color:#2c5ba6 } .tk.B { border-color:#4f9a6b } .tk.C { border-color:#c48a3a } .tk.D { border-color:#8a5fb5 } .tk.E { border-color:#b4452e }
+  .empty { padding:14px; color:var(--muted) }
+  pre.sql, pre.code { background:#eef1f5; padding:8px 10px; font-size:11px; overflow-x:auto; border-radius:4px; margin:6px 0 0; white-space:pre-wrap }
+  details summary { cursor:pointer; color:var(--accent); font-size:12.5px }
+  .foot { font-size:12px; color:var(--muted) }
+</style>
+{% block head %}{% endblock %}
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="brand">swe-loop <small>{{ mode }}</small></div>
+    {% for key, label, href in nav %}<a class="{{ 'on' if active == key else '' }}" href="{{ href }}">{{ label }}</a>{% endfor %}
+    <hr>
+    <h4>Devin</h4>
+    {% for key, label, href, tag in nav_devin %}<a class="{{ 'on' if active == key else '' }} {{ 'next' if tag == 'next' else '' }}" href="{{ href }}"><span class="dot"></span>{{ label }}{% if tag %}<span class="tag">{{ tag }}</span>{% endif %}</a>{% endfor %}
+  </aside>
+  <div class="main">
+    <div class="top">
+      <h1>{% block heading %}{{ self.title() }}{% endblock %}</h1>
+      <span class="mode"><b class="{{ 'live' if mode == 'live' else '' }}">{{ mode | upper }}</b> · {{ target }} · {{ branch }} · {{ spent }}{% if cap %} / {{ cap | int }}{% endif %} ACU</span>
+      <a class="gear" href="/settings" title="Settings">⚙</a>
+    </div>
+    <div class="page">{% block content %}{% endblock %}</div>
+  </div>
+</div>
+</body>
+</html>

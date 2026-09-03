@@ -1,0 +1,33 @@
+{% extends "shell.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<p class="lede">Our side of the connection: which repository, what a session may never touch, how much it may spend. The Devin org's side is under <a href="/devin/integrations">Integrations</a>.</p>
+<div class="card"><h3>Connected <span class="who code">{{ 'all checks pass' if s.all_ok else 'checked live, see each call' }}</span></h3>
+  <div class="grid3">
+    {% for c in s.checks %}<div class="chk {{ c.status }}"><div class="k">{{ c.label }}</div><div class="v {{ 'mono' if c.key in ('branch','seam') else '' }}">{{ c.value }}</div><div class="c">{{ '✓' if c.ok else ('·' if c.status == 'skipped' else '✕') }} {{ c.call }}</div></div>{% endfor %}
+  </div>
+  <p class="foot" style="margin-top:12px">Add another repository: <span class="pill p-na">next</span> · one seam file per repository; the pipeline reads nothing else about the target.</p>
+</div>
+<div class="two">
+  <div class="card"><h3>The seam <span class="who code">{{ s.seam.path }}</span></h3>
+    <table>
+      <tr><th>repository</th><td class="mono">{{ s.seam.repo }} <span style="color:var(--muted)">fork of {{ s.seam.upstream }}</span></td></tr>
+      <tr><th>branch under repair</th><td class="mono">{{ s.seam.base_branch }}</td></tr>
+      <tr><th>trigger</th><td class="mono">{{ s.seam.trigger.source }}:{{ s.seam.trigger.event }} · {{ s.seam.trigger.match }} · issue label {{ s.seam.trigger.issue_label }}</td></tr>
+      <tr><th>a session never edits</th><td class="mono">{{ s.seam.forbidden | join(' · ') }}</td></tr>
+      <tr><th>100% coverage dirs</th><td class="mono">{{ s.seam.coverage | join(' · ') }}</td></tr>
+      <tr><th>human-only classes</th><td class="mono">{{ s.seam.human_only | join(' · ') }}</td></tr>
+      <tr><th>shard caps</th><td>{{ s.seam.caps.files }} files · {{ s.seam.caps.sites }} sites per session</td></tr>
+      <tr><th>version range</th><td class="mono">{{ s.seam.version_range }} <span style="color:var(--muted)">the lower bound does not move</span></td></tr>
+    </table>
+  </div>
+  <div class="card"><h3>Budget <span class="who code">enforced by the poller</span></h3>
+    <form method="post" action="/settings/budget" style="display:flex; gap:10px; align-items:end; flex-wrap:wrap">
+      <label style="font-size:12px;color:var(--muted)">ACU cap<br><input name="acu_cap" type="number" step="1" min="1" value="{{ s.budget.cap | int if s.budget.cap else 300 }}" style="padding:6px 8px;border:1px solid var(--rule);border-radius:4px;width:120px"></label>
+      <label style="font-size:12px;color:var(--muted)">per session<br><input name="per_session_cap" type="number" step="1" min="1" value="{{ s.budget.per_session_cap | int if s.budget.per_session_cap else s.seam.caps.acu }}" style="padding:6px 8px;border:1px solid var(--rule);border-radius:4px;width:120px"></label>
+      <button class="btn" type="submit">Save</button>
+      <span class="foot">spent so far {{ s.budget.spent }} ACU · at the cap every live session is terminated and archived</span>
+    </form>
+  </div>
+</div>
+{% endblock %}

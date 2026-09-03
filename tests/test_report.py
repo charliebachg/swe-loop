@@ -136,7 +136,7 @@ def test_ops_page_lists_sessions_and_the_feed(tmp_path, monkeypatch):
     assert {"L2 route", "L4 dispatch", "L4 poll", "L5 gate", "L7 reduce", "escalate"} <= layers
     app = build_app(Settings.from_env(), st, seed_replay=False)
     with TestClient(app) as c:
-        html = c.get("/").text
+        html = c.get("/board").text
         assert "Devin sessions" in html and "Live feed" in html and "fake-001" in html
         assert "1. The answer" in c.get("/report").text
         sid = o["sessions"][0]["id"]

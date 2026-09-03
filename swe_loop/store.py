@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS timeline (
   id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, ticket_id TEXT, session_id TEXT,
   layer TEXT NOT NULL, event TEXT NOT NULL, detail TEXT
 );
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS ix_timeline_session ON timeline(session_id);
 CREATE INDEX IF NOT EXISTS ix_tickets_status ON tickets(status);
 CREATE INDEX IF NOT EXISTS ix_sessions_wo ON sessions(work_order_id);
@@ -536,6 +537,17 @@ class Store:
         )
         self.log("L7 reduce", f"human {kind}", ticket_id=ticket_id)
         return hid
+
+    def get_setting(self, key: str, default: str | None = None) -> str | None:
+        row = self._one("SELECT value FROM settings WHERE key=?", key)
+        return row["value"] if row else default
+
+    def set_setting(self, key: str, value: str) -> None:
+        self.conn.execute(
+            "INSERT INTO settings (key, value, updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+            (key, value, now()),
+        )
 
     def set_budget(self, acu_cap: float, per_session_cap: float) -> None:
         self.conn.execute(

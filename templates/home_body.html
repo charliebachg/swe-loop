@@ -1,0 +1,25 @@
+<div class="card"><h3>Now <span class="who code">live</span></h3>
+  <div class="tiles">
+    <div class="tile live"><div class="k">sessions running</div><div class="v">{{ h.counts.running }}</div><div class="d"><a href="/devin/sessions">sessions</a></div></div>
+    <div class="tile"><div class="k">waiting on a person</div><div class="v">{{ h.counts.needs_human }}</div><div class="d"><a href="/tracker">tracker</a></div></div>
+    <div class="tile"><div class="k">at the gate</div><div class="v">{{ h.counts.gated }}</div><div class="d">claim recorded, verifying</div></div>
+    <div class="tile ok"><div class="k">passed the gate</div><div class="v">{{ h.counts.passed }}</div><div class="d">verified by code</div></div>
+    <div class="tile bad"><div class="k">failed or escalated</div><div class="v">{{ h.counts.failed }}</div><div class="d">with reasons below</div></div>
+    <div class="tile"><div class="k">merged by a person</div><div class="v">{{ h.counts.merged }}</div><div class="d">never automatic</div></div>
+    <div class="tile"><div class="k">ACU spent</div><div class="v">{{ h.counts.acus }}<span style="font-size:12px;color:var(--muted)"> / {{ h.counts.cap | int if h.counts.cap else "no cap" }}</span></div><div class="d"><a href="/devin/insights">insights</a></div></div>
+  </div>
+</div>
+<div class="two">
+  <div class="card"><h3>Needs you <span class="who person">a person</span></h3>
+    <table>
+      {% for n in h.needs %}<tr><td><span class="pill {{ 'p-ok' if n.kind == 'ready to merge' else 'p-bad' }}">{{ n.kind }}</span></td><td class="mono"><a href="{{ n.link }}">{{ n.ticket_id }}</a></td><td class="wrap">{{ n.reason }}</td><td class="mono" style="color:var(--muted)">{{ n.action }}</td></tr>
+      {% else %}<tr><td class="empty">Nothing waiting on a person.</td></tr>{% endfor %}
+    </table>
+  </div>
+  <div class="card"><h3>Recent <span class="who code">timeline</span></h3>
+    <table>
+      {% for e in h.recent %}<tr><td class="mono" style="color:var(--muted)">{{ e.at[11:19] }}</td><td><span class="pill p-na">{{ e.layer }}</span></td><td class="wrap"><a href="{{ e.link }}"><b>{{ e.event }}</b></a>{% if e.ticket_id %} <span class="mono" style="color:var(--muted)">{{ e.ticket_id }}</span>{% endif %}{% if e.detail %}<br><span style="color:var(--muted)">{{ e.detail[:120] }}</span>{% endif %}</td></tr>
+      {% else %}<tr><td class="empty">Nothing has happened yet.</td></tr>{% endfor %}
+    </table>
+  </div>
+</div>

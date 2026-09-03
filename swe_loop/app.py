@@ -6,14 +6,16 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from swe_loop import ops, replay, report
+from swe_loop import connect, ops, pages, replay, report
 from swe_loop import reduce as reduce_mod
 from swe_loop.config import Settings, TargetConfig
+from swe_loop.devin import DevinClient
 from swe_loop.intake import NormalizedEvent, normalize, ticket_id_for, verify_github_signature
 from swe_loop.store import Store
 
@@ -33,6 +35,7 @@ def build_app(
         app.state.settings = settings
         app.state.cfg = cfg
         app.state.store = store or Store(settings.db_path)
+        app.state.client = DevinClient.from_settings(settings)
         if not settings.live and seed_replay:
             replay.seed(
                 app.state.store,
@@ -93,8 +96,48 @@ def build_app(
         t["work_orders"] = st.work_orders_for(ticket_id)
         return t
 
+    def _render(request: Request, template: str, active: str, **ctx: Any) -> HTMLResponse:
+        st: Store = request.app.state.store
+        return TEMPLATES.TemplateResponse(
+            request, template, {**pages.shell(settings, cfg, st, active), **ctx}
+        )
+
     @app.get("/", response_class=HTMLResponse)
-    def ops_page(request: Request) -> HTMLResponse:
+    def home(request: Request) -> HTMLResponse:
+        return _render(request, "home.html", "home", h=pages.home(request.app.state.store))
+
+    @app.get("/partials/home", response_class=HTMLResponse)
+    def home_partial(request: Request) -> HTMLResponse:
+        return TEMPLATES.TemplateResponse(
+            request, "home_body.html", {"h": pages.home(request.app.state.store)}
+        )
+
+    @app.get("/settings", response_class=HTMLResponse)
+    def settings_page(request: Request) -> HTMLResponse:
+        st: Store = request.app.state.store
+        return _render(
+            request,
+            "settings.html",
+            "settings",
+            s=pages.settings_page(settings, cfg, st, request.app.state.client),
+        )
+
+    @app.post("/settings/budget")
+    async def settings_budget(request: Request) -> RedirectResponse:
+        form = parse_qs((await request.body()).decode())
+        try:
+            cap = float(form.get("acu_cap", ["0"])[0])
+            per = float(form.get("per_session_cap", ["0"])[0])
+        except ValueError as ex:
+            raise HTTPException(status_code=400, detail="numbers only") from ex
+        if cap <= 0 or per <= 0:
+            raise HTTPException(status_code=400, detail="caps must be positive")
+        request.app.state.store.set_budget(cap, per)
+        connect.clear_cache()
+        return RedirectResponse("/settings", status_code=303)
+
+    @app.get("/board", response_class=HTMLResponse)
+    def board_page(request: Request) -> HTMLResponse:
         o = ops.build(request.app.state.store)
         return TEMPLATES.TemplateResponse(
             request, "ops.html", {"o": o, "mode": settings.mode, "target": cfg.name}

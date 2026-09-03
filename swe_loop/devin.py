@@ -132,6 +132,9 @@ class Transport(Protocol):
     def send_message(self, session_id: str, text: str) -> dict[str, Any]: ...
     def terminate(self, session_id: str, archive: bool = True) -> dict[str, Any]: ...
     def list_insights(self, session_ids: list[str] | None = None) -> list[dict[str, Any]]: ...
+    def list_automations(self) -> list[dict[str, Any]]: ...
+    def list_playbooks(self) -> list[dict[str, Any]]: ...
+    def list_secrets(self) -> list[dict[str, Any]]: ...
     def create_pr_review(self, pr_url: str) -> dict[str, Any]: ...
     def create_playbook(self, payload: dict[str, Any]) -> dict[str, Any]: ...
     def create_knowledge_note(self, payload: dict[str, Any]) -> dict[str, Any]: ...
@@ -229,6 +232,15 @@ class HttpTransport:
     def list_insights(self, session_ids: list[str] | None = None) -> list[dict[str, Any]]:
         params: dict[str, Any] = {"session_ids": list(session_ids)} if session_ids else {}
         return self._paged("/sessions/insights", params)
+
+    def list_automations(self) -> list[dict[str, Any]]:
+        return self._paged("/automations", {})
+
+    def list_playbooks(self) -> list[dict[str, Any]]:
+        return self._paged("/playbooks", {})
+
+    def list_secrets(self) -> list[dict[str, Any]]:
+        return self._paged("/secrets", {})
 
     def create_pr_review(self, pr_url: str) -> dict[str, Any]:
         return self._req("POST", "/pr-reviews", json={"pr_url": pr_url})
@@ -381,6 +393,18 @@ class FakeTransport:
                 }
             )
         return out
+
+    def list_automations(self) -> list[dict[str, Any]]:
+        self.calls.append(("list_automations", None))
+        return []
+
+    def list_playbooks(self) -> list[dict[str, Any]]:
+        self.calls.append(("list_playbooks", None))
+        return []
+
+    def list_secrets(self) -> list[dict[str, Any]]:
+        self.calls.append(("list_secrets", None))
+        return []
 
     def create_pr_review(self, pr_url: str) -> dict[str, Any]:
         self.calls.append(("create_pr_review", pr_url))
