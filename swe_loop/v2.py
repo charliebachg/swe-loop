@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-from swe_loop import cost, ops, pages
+from swe_loop import charts, cost, ops, pages, rates
 from swe_loop import reduce as reduce_mod
 from swe_loop import report as report_mod
 from swe_loop.config import Settings, TargetConfig
@@ -1934,9 +1934,9 @@ def _run_line(res: dict[str, Any]) -> str:
     if "dispatched" in res:
         parts.append(f"{res['dispatched']} repair session(s)")
     if "gated" in res:
-        parts.append(f"{res['gated']} checked by the gate")
+        parts.append(f"{res['gated']} checked")
     if res.get("escalated"):
-        parts.append(f"{res['escalated']} to a person")
+        parts.append(f"{res['escalated']} handed to your team")
     return " · ".join(parts) or "nothing to do"
 
 
@@ -2241,336 +2241,253 @@ def playbooks(
 
 
 # ---------------------------------------------------------------------------- report
-def report(
-    store: Store, cfg: TargetConfig, inventory_dir: Any, q: dict[str, str]
-) -> dict[str, Any]:
-    rep = report_mod.build(store, inventory_dir)
-    h = rep["headline"]
-    sql_q = q.get("sql") or ""
-    all_keys = ["verified", "acu", "claims", "budget"]
-    open_keys = (
-        set(all_keys) if sql_q in ("1", "all") else (set(sql_q.split(",")) if sql_q else set())
-    )
-    all_open = all(k in open_keys for k in all_keys)
-    acu = h["acu"]
-    sp = cost.spend(store)
-    mins_by_sid = {
-        r["id"]: cost.repair_active_seconds(store, r) / 60.0
-        for r in store._all("SELECT * FROM sessions")
-    }
-    sid_by_devin = {
-        r["devin_session_id"]: r["id"]
-        for r in store._all("SELECT id, devin_session_id FROM sessions")
-    }
-    rate0 = cost.observed_rate(store)
-    usd_by_sid = {
-        r["id"]: cost.session_usd(store, r, "rep", rate0)
-        for r in store._all("SELECT * FROM sessions")
-    }
-    pass_usd = sorted(
-        usd_by_sid[x["id"]][0]
-        for x in store._all("SELECT * FROM sessions")
-        if (store.latest_verdict(x["id"]) or {}).get("gate_result") == "pass"
-        and usd_by_sid[x["id"]][0] is not None
-    )
-    pass_mins = sorted(
-        mins_by_sid[s["id"]]
-        for s in store._all("SELECT * FROM sessions")
-        if (store.latest_verdict(s["id"]) or {}).get("gate_result") == "pass"
-    )
+def _bound(passed: int, total: int) -> str:
+    """What a clean record does and does not allow you to say. With no failures seen, the honest
+    ceiling on the failure rate is about three over the number of tries."""
+    if not total:
+        return "no change has been checked yet"
+    base = "we re-ran the project's own tests on a clean copy of every change"
+    if passed == total:
+        n = "None" if total > 1 else "It"
+        return f"{base}. {n} failed. {total} changes is too few to state a rate"
+    return f"{base}. {total - passed} of {total} failed and never reached a person"
 
-    def _receipt_cost(r: dict[str, Any]) -> str:
-        if sp["metered"]:
-            return _fmt_acu(r.get("acus"))
-        sid = sid_by_devin.get(r.get("devin_id"))
-        u, _src = usd_by_sid.get(sid, (None, ""))
-        if u is not None:
-            return f"${u:.2f}"
-        return f"{mins_by_sid.get(sid, 0.0):.1f}m"
 
-    tiles = [
-        (
-            "verified",
-            "Verified changes",
-            str(h["verified"]["n"]),
-            f"of {h['verified']['of']}",
-            "gate passed and a person merged · denominator: tickets the router decided",
-            h["verified"]["sql"],
-        ),
-        (
-            (
-                "acu",
-                "ACU per verified change",
-                str(acu["median"]) if acu["median"] is not None else "n/a",
-                "median",
-                f"p95 {acu['p95'] if acu['p95'] is not None else 'n/a'} · n={acu['n']}",
-                acu["sql"],
-            )
-            if sp["metered"]
-            else (
-                (
-                    "acu",
-                    "Cost per verified change",
-                    f"${_median(pass_usd):.2f}",
-                    "median, console figures",
-                    f"p95 ${_p95(pass_usd):.2f} · n={len(pass_usd)} · {_median(pass_mins):.1f} min of AI work at the median"
-                    + (
-                        ""
-                        if sp["source"] == "console"
-                        else " · some sessions estimated at the observed rate"
-                    ),
-                    "dollars per session: the console's figure where a person entered it, otherwise minutes of AI work at the rate for that kind of session",
-                )
-                if pass_usd
-                else (
-                    "acu",
-                    "AI working time per verified change",
-                    (f"{_median(pass_mins):.1f}" if pass_mins else "n/a"),
-                    "min, median",
-                    f"p95 {_p95(pass_mins):.1f} min · n={len(pass_mins)} · this plan is billed in credits; enter the console's figures in Settings to see dollars",
-                    "active minutes: gaps between our polls while the session reported working, each gap capped at 60 s; see swe_loop/cost.py",
-                )
-            )
-        ),
-        (
-            "claims",
-            "Self-reported vs verified",
-            f"{h['claims']['said_done']} · {h['claims']['passed_gate']}",
-            "said done · passed the gate",
-            f"gap {h['claims']['gap']} · the session's claim is recorded; the gate's result counts",
-            h["claims"]["sql"],
-        ),
-        (
-            "budget",
-            "Budget",
-            _fmt_acu(h["budget"]["spent"])
-            if sp["metered"]
-            else (usd_label(sp) or f"{sp['active_min']:.0f} min"),
-            (
-                f"/ {h['budget']['cap'] if h['budget'].get('cap') else 'no cap'} ACU"
-                if sp["metered"]
-                else (f"/ ${_usd_cap(store):.0f} cap" if _usd_cap(store) else "/ no cap set")
-            ),
-            f"Devin's limit {h['budget'].get('per_session_cap') or 'n/a'} ACU per session",
-            h["budget"]["sql"],
-        ),
-    ]
-    answer = []
-    for key, k, v, unit, dsc, sql in tiles:
-        is_open = key in open_keys
-        others = (open_keys - {key}) if is_open else (open_keys | {key})
-        answer.append(
-            {
-                "k": k,
-                "v": v,
-                "unit": unit,
-                "d": dsc,
-                "open": is_open,
-                "sqlLabel": "hide SQL" if is_open else "SQL",
-                "toggle": url("/report", sql=",".join(sorted(others))),
-                "sql": sql,
-            }
-        )
-    board = []
-    for t in rep["board"]:
-        issue = t["external_ref"].rsplit("#", 1)[-1] if t.get("external_ref") else ""
-        board.append(
-            {
-                **dot(store, t["id"], t["status"] == "merged"),
-                "issue": f"#{issue}" if issue else "",
-                "classes": (t.get("class") or "").replace(",", ", "),
-                "route": t.get("router_decision") or "",
-                "status": t["status"],
-                "stColor": PL["ok"][0]
-                if t["status"] == "merged"
-                else (PL["bad"][0] if t["status"] in ("escalated", "refused") else INK),
-            }
-        )
-    funnel = [
-        {
-            "label": ("↳ " if kind == "drop" else "") + name,
-            "n": str(n),
-            "pad": "30px" if kind == "drop" else "16px",
-            "color": PL["bad"][0] if kind == "drop" else INK,
-        }
-        for name, n, kind in rep["funnel"]
-    ]
-    bd = rep["burndown"]
-    prod = bd.get("product") or 1
-    bd_vm = {
-        **bd,
-        "fixedPct": f"{100 * bd.get('fixed', 0) / prod:.1f}",
-        "remainingPct": f"{100 * bd.get('remaining', 0) / prod:.1f}",
+def _plain_funnel(rows: list[tuple[str, int, Any]]) -> list[tuple[str, int, int]]:
+    """The funnel in words a newcomer reads, with each drop folded under the step it left."""
+    names = {
+        "tickets decided": "jobs taken on",
+        "routed to Devin": "given to the AI",
+        "refused or human-only": "handed to your team",
+        "sessions created": "the AI started work",
+        "sessions terminal": "the AI finished",
+        "gate passed": "passed our checks",
+        "gate failed at least once (retried or escalated)": "failed our checks",
+        "human-merged": "merged by your team",
     }
-    evidence_rows = []
-    for r in rep["receipts"]:
-        t0 = r.get("t0")
-        evidence_rows.append(
-            {
-                "tk": r["ticket"],
-                "L": r["shard"],
-                "color": tk_color(r["ticket"]),
-                "session": (r.get("devin_id") or "")[:12],
-                "sessionUrl": r.get("session_url") or "#",
-                "pr": f"#{r['pr_url'].rsplit('/', 1)[-1]}" if r.get("pr_url") else "none",
-                "prUrl": r.get("pr_url") or "#",
-                "t0": "not run" if t0 is None else ("clean" if t0 else "touched"),
-                "t0Bg": PL["na"][1] if t0 is None else (PL["ok"][1] if t0 else PL["bad"][1]),
-                "t0Fg": PL["na"][0] if t0 is None else (PL["ok"][0] if t0 else PL["bad"][0]),
-                "t1": r.get("t1") or "not run",
-                "gate": r.get("gate") or "pending",
-                "gateBg": PL["ok"][1]
-                if r.get("gate") == "pass"
-                else (PL["bad"][1] if r.get("gate") else PL["na"][1]),
-                "gateFg": PL["ok"][0]
-                if r.get("gate") == "pass"
-                else (PL["bad"][0] if r.get("gate") else PL["na"][0]),
-                "review": r.get("review") or "",
-                "retries": str(r.get("retries") or 0),
-                "acu": _receipt_cost(r),
-                "size": (r.get("size") or "·").upper(),
-                "mergedBy": r.get("merged_by") or "no",
-            }
-        )
-    size_line = "session_size " + " · ".join(
-        f"{k} {n}" + (" unhealthy" if bad and n else "") for k, n, bad in rep["size_hist"]
-    )
-    tripwires = [
-        {
-            "name": w["name"],
-            "value": w["value"],
-            "threshold": w["threshold"],
-            "status": w["status"],
-            **pill("ok" if w["status"] == "PASS" else ("bad" if w["status"] == "FAIL" else "na")),
-        }
-        for w in rep["tripwires"]
-    ]
-    routing = [
-        {
-            "cls": c["class"],
-            "att": str(c["attempted"]),
-            "ver": str(c["verified"]),
-            "med": str(c["median"]) if c["median"] is not None else "·",
-            "p95": str(c["p95"]) if c["p95"] is not None else "·",
-            "verdict": c["verdict"],
-            "color": FAINT if not c["attempted"] else INK,
-        }
-        for c in rep["routing"]
-    ]
-    escalations = [
-        {
-            "ticket": e["ticket_id"],
-            "color": tk_color(e["ticket_id"]),
-            "kind": e["kind"],
-            "reason": e["reason"],
-            "resolved": "yes" if e.get("resolved_at") else "not yet",
-        }
-        for e in rep["escalations"]
-    ]
-    from swe_loop import charts
-
-    fun_rows: list[tuple[str, int, int | None]] = []
-    for name, n, kind in rep["funnel"]:
-        if kind == "drop":
-            if fun_rows:
-                fun_rows[-1] = (fun_rows[-1][0], fun_rows[-1][1], n)
+    out: list[tuple[str, int, int]] = []
+    for label, n, drop in rows:
+        name = names.get(label, label)
+        if drop and out:
+            prev = out[-1]
+            out[-1] = (prev[0], prev[1], n)
             continue
-        fun_rows.append((name, n, None))
-    cap = h["budget"].get("per_session_cap")
+        if label in ("sessions created", "sessions terminal"):
+            continue  # two rows saying the same thing to anyone outside this codebase
+        out.append((name, n, 0))
+    return out
 
-    def _pv(r: dict[str, Any]) -> float:
-        if sp["metered"]:
-            return float(r.get("acus") or 0)
-        sid = sid_by_devin.get(r.get("devin_id"))
-        if pass_usd:
-            return usd_by_sid.get(sid, (None, ""))[0] or 0.0
-        return mins_by_sid.get(sid, 0.0)
 
-    points = [(r["shard"], _pv(r), tk_color(r["ticket"])) for r in rep["receipts"]]
+def report(
+    store: Store, cfg: TargetConfig, inventory_dir: Path, q: dict[str, Any]
+) -> dict[str, Any]:
+    """The page an engineering leader reads to answer: how would I know this is working.
 
-    verd = store._all(
-        "SELECT v.gate_result, v.decision, w.shard_id FROM verdicts v JOIN sessions s ON s.id = v.session_id "
-        "JOIN work_orders w ON w.id = s.work_order_id ORDER BY v.created_at, v.rowid"
-    )
-    sq = [
-        (
-            v["shard_id"],
-            f"{v['gate_result']} -> {v['decision']}",
-            PL["ok"][0]
-            if v["gate_result"] == "pass"
-            else (PL["run"][0] if v["decision"] == "retry" else PL["bad"][0]),
-        )
-        for v in verd
-    ]
-    bd0 = rep["burndown"]
-    # sites, not sessions: the inventory's site count per shard, for shards that passed and wait
-    sites_by_shard: dict[str, int] = {}
-    try:
-        inv = json.loads((Path(inventory_dir) / "tickets.json").read_text())
-        sites_by_shard = {sh["id"]: len(sh.get("sites") or []) for sh in inv.get("shards", [])}
-    except (OSError, ValueError, TypeError):
-        pass
-    verified_unmerged = sum(
-        sites_by_shard.get(r["shard"], 0)
-        for r in rep["receipts"]
-        if r.get("gate") == "pass" and r.get("merged_by") in (None, "no")
-    )
-    stack = [
-        ("fixed and merged", bd0.get("fixed", 0), PL["ok"][0]),
-        ("verified, unmerged", verified_unmerged, PL["gate"][0]),
-        ("to a person", bd0.get("human", 0), PL["person"][0]),
-        (
-            "remaining",
-            max(
-                0,
-                bd0.get("total", 0) - bd0.get("fixed", 0) - bd0.get("human", 0) - verified_unmerged,
+    Three rates, each a count over a stated denominator, the checks we ran ourselves, what the
+    work cost, and the log. Nothing here is a percentile and nothing is a percentage without the
+    number it came from: the run is small, and the page says so."""
+    rep = report_mod.build(store, inventory_dir)
+    sp = cost.spend(store)
+    ver = rates.verification(store)
+    inter = rates.intervention(store)
+    acc = rates.acceptance(store)
+    live = rates.liveness(store)
+    checks_open = q.get("checks") == "1"
+    log_open = q.get("log") == "1"
+    log_ticket = q.get("lt") or ""
+
+    def card(
+        key: str,
+        title: str,
+        n: int,
+        of: int,
+        unit: str,
+        rows: list[dict[str, Any]],
+        note: str,
+        colour: str,
+    ) -> dict[str, Any]:
+        return {
+            "key": key,
+            "title": title,
+            "n": str(n),
+            "of": f"of {of}" if of else "",
+            "unit": unit,
+            "color": colour if of and n == of else (INK if of else FAINT),
+            "rows": [
+                {
+                    "label": r["label"],
+                    "n": str(r["n"]),
+                    "color": INK if r["n"] else FAINT,
+                    "pct": _pct(r["n"], r.get("of", of)) if r.get("of", of) else "0",
+                }
+                for r in rows
+            ],
+            "note": note,
+        }
+
+    cards = [
+        card(
+            "verified",
+            "Checks passed",
+            ver["changes_passed"],
+            ver["changes"],
+            "changes the AI wrote",
+            ver["kinds"],
+            _bound(ver["changes_passed"], ver["changes"]),
+            PL["ok"][0],
+        ),
+        card(
+            "hands-off",
+            "Ran without you",
+            inter["untouched"],
+            inter["tickets"],
+            "jobs taken on",
+            inter["rows"],
+            "merging is yours by design and is not counted as stepping in",
+            PL["gate"][0],
+        ),
+        card(
+            "accepted",
+            "Merged by your team",
+            acc["merged"],
+            acc["offered"],
+            "changes offered",
+            acc["rows"],
+            "read from the pull requests themselves, so one you close shows up here. "
+            + (
+                f"{acc['mergers']} person merged them"
+                + (
+                    f", in {acc['merge_events']} sittings."
+                    if acc["merge_events"] > 1
+                    else ", in one sitting."
+                )
+                if acc["merged"]
+                else "nothing merged yet."
             ),
-            "#c9c5bb",
+            PL["devin"][0],
         ),
     ]
-    chart_svgs = {
-        "funnel": charts.funnel(fun_rows),
-        "acu": charts.dot_strip(
-            points,
-            cap if sp["metered"] else None,
-            acu["median"]
-            if sp["metered"]
-            else (_median(pass_usd) if pass_usd else (_median(pass_mins) if pass_mins else None)),
-            unit="ACU" if sp["metered"] else ("$" if pass_usd else "min"),
-        ),
-        "gate": charts.squares(sq),
-        "burndown": charts.stacked_bar(stack),
-        "size": charts.histogram([(k, n, bad) for k, n, bad in rep["size_hist"]]),
-    }
-    chart_notes = {
-        "funnel": f"{rep['funnel'][0][1]} decided · drops in red",
-        "acu": (
-            f"n={len(points)} · Devin's limit {cap:g} ACU per session"
-            if (cap and sp["metered"])
-            else (
-                f"n={len(points)} · dollars per session from the console"
-                if pass_usd
-                else f"n={len(points)} · active minutes per session; the plan reports no ACU"
-            )
-        ),
-        "gate": f"{len(sq)} verdict(s), oldest first",
-        "burndown": f"{bd0.get('total', 0)} sites measured",
-        "size": "L and XL unhealthy",
-    }
-    tripwires = [t for t in tripwires if sp["metered"] or "ACU" not in t.get("name", "")]
+
+    receipts = rates.claim_vs_check(store)
+    by_change: dict[str, list[dict[str, Any]]] = {}
+    for r in receipts:
+        by_change.setdefault(r["ticket_id"], []).append(r)
+    check_groups = []
+    for tid, rows in by_change.items():
+        t = store.get_ticket(tid) or {}
+        check_groups.append(
+            {
+                "ref": ref(t.get("number")),
+                "color": tk_color(tid),
+                "session": rows[0]["session"],
+                "url": rows[0]["url"],
+                "go": url("/tickets-page", open=tid),
+                "rows": [
+                    {
+                        **r,
+                        "state": "passed" if r["passed"] else f"exit {r['exit']}",
+                        **pill("ok" if r["passed"] else "bad"),
+                    }
+                    for r in rows
+                ],
+            }
+        )
+
+    events = [ev(e) for e in reversed(store.timeline(ticket_id=log_ticket or None, limit=400))]
+    if not log_open:
+        events = events[:12]
+    log_tickets = [
+        {"ref": ref(t.get("number")), "id": t["id"], "on": t["id"] == log_ticket}
+        for t in store.list_tickets()
+    ]
+
+    bd = rep["burndown"]
+    fun = _plain_funnel(rep["funnel"])
+    usd = usd_label(sp) or f"{sp['active_min']:.0f} min"
+    per_change = (
+        f"${sp['usd'] / ver['changes_passed']:.2f}"
+        if sp.get("usd") and ver["changes_passed"]
+        else "n/a"
+    )
     return {
-        "unitLabel": "ACU" if sp["metered"] else "$",
-        "charts": chart_svgs,
-        "chartNotes": chart_notes,
-        "answer": answer,
-        "toggleAllSql": url("/report", sql=None if all_open else ",".join(all_keys)),
-        "sqlAllLabel": "hide the queries" if all_open else "show the queries",
-        "boardRows": board,
-        "funnel": funnel,
-        "bd": bd_vm,
-        "evidenceRows": evidence_rows,
-        "sizeLine": size_line,
-        "tripwires": tripwires,
-        "routing": routing,
-        "escalations": escalations,
+        "window": rates.window(store),
+        "live": {
+            **live,
+            "runningLabel": f"{live['running']} session{'s' if live['running'] != 1 else ''} working now"
+            if live["running"]
+            else "nothing running",
+            "lastRun": (live["last_run_at"] or "")[:16].replace("T", " ") or "never",
+            "lastLine": _run_line(live["last_run_result"]),
+            "watching": " · ".join(live["watching"]) or "nothing enabled",
+            "failure": (live["last_failure"] or {}).get("event") or "none recorded",
+            "dot": PL["run"][0] if live["running"] else PL["ok"][0],
+        },
+        "cards": cards,
+        "checksLine": f"{sum(1 for r in receipts if r['passed'])} of {len(receipts)} checks passed, "
+        f"each re-run by this app on a clean copy of the change",
+        "checksOpen": checks_open,
+        "checksToggle": url(
+            "/report", checks=None if checks_open else "1", log="1" if log_open else None
+        ),
+        "checksToggleLabel": "hide the checks" if checks_open else "show every check we ran",
+        "checkGroups": check_groups,
+        "checksNote": "Each command ran in a fresh copy of the repository that the AI session could "
+        "not write to. The tree is the exact code it ran on; a result recorded against any other "
+        "tree is ignored.",
+        "funnel": charts.funnel([(n, c, d or None) for n, c, d in fun]),
+        "funnelNote": f"{fun[0][1] if fun else 0} jobs · what left the line, in red",
+        "burndown": charts.stacked_bar(
+            [
+                ("fixed and merged", bd["fixed"], PL["ok"][0]),
+                ("to your team", bd["human"], PL["person"][0]),
+                ("left", max(bd["total"] - bd["fixed"] - bd["human"], 0), "#c9c5bb"),
+            ]
+        ),
+        "burndownNote": f"{bd['total']} places in the code, counted before the run",
+        "cost": {
+            "total": usd,
+            "perChange": per_change,
+            "n": f"{sp['n_console']} of {sp['n_sessions']} priced from the console, the rest at our own rate",
+            "minutes": f"{sp['active_min']:.0f} min of AI work",
+        },
+        "log": events,
+        "logOpen": log_open,
+        "logToggle": url(
+            "/report", log=None if log_open else "1", checks="1" if checks_open else None
+        ),
+        "logToggleLabel": "show less" if log_open else "show the whole log",
+        "logTickets": log_tickets,
+        "logAll": url(
+            "/report", log="1" if log_open else None, checks="1" if checks_open else None
+        ),
+        "logFilter": [
+            {
+                "label": t["ref"],
+                "on": t["on"],
+                "set": url(
+                    "/report",
+                    lt=None if t["on"] else t["id"],
+                    log="1" if log_open else None,
+                    checks="1" if checks_open else None,
+                ),
+            }
+            for t in log_tickets
+        ],
+        "notMeasured": [
+            ("does the fix still hold after 30 days", "the window has not passed"),
+            ("minutes your engineers spent reviewing", "not instrumented in this run"),
+            ("security findings", "no scanner runs in this loop"),
+            ("continuous integration results", "the fork runs none"),
+        ],
+        "refused": [
+            ("lines of code", "volume is not value"),
+            ("pull requests opened", "opening one is free; merging one is not"),
+            ("acceptance rate of suggestions", "rubber-stamping inflates it"),
+            ("share of code written by AI", "not a measure of anything working"),
+            ("tokens", "an input, not a result"),
+            (
+                "time saved, self-reported",
+                "the best trial found self-reports wrong by about 40 points",
+            ),
+        ],
     }

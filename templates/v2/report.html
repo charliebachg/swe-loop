@@ -1,73 +1,99 @@
 {% extends "shell.html" %}{% block title %}Report{% endblock %}{% block content %}{% include "v2/_refresh.html" %}
-<div style="display:flex;align-items:baseline;gap:12px;margin:0 0 10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Headline</span><span style="font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ modeSentence }} {{ modeNote }}</span><a href="{{ toggleAllSql }}" style="margin-left:auto;font-size:12.5px">{{ sqlAllLabel }}</a></div>
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px">
-          {% for t in answer %}
-            <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:16px 18px 14px">
-              <div style="font:500 10.5px/1.5 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f97a3">{{ t.k }}</div>
-              <div style="font:600 32px/1.05 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.015em;margin-top:8px;display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">{{ t.v }}<span style="font:400 13px/1.3 'Instrument Sans',system-ui,sans-serif;color:#8f97a3">{{ t.unit }}</span></div>
-              <div style="font-size:12px;color:#626b78;margin-top:8px;text-wrap:pretty">{{ t.d }}</div>
-              <button hx-get="{{ t.toggle }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="border:0;background:none;padding:0;margin-top:8px;color:#2457a8;font:11px/1.4 'JetBrains Mono',monospace;cursor:pointer">{{ t.sqlLabel }}</button>
-              {% if t.open %}<pre style="background:#f3f1ec;padding:7px 10px;font:11px/1.5 'JetBrains Mono',monospace;border-radius:5px;margin:6px 0 0;color:#626b78;white-space:pre-wrap">{{ t.sql }}</pre>{% endif %}
+{% set CARD = "background:#fff;border:1px solid #e2dfd8;border-radius:10px" %}
+{% set LBL = "font:500 10.5px/1.5 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f97a3" %}
+{% set MONO = "font:12px/1.5 'JetBrains Mono',monospace" %}
+        <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:9px 14px;margin:0 0 20px;{{ CARD }}">
+          <span style="display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600"><span style="width:8px;height:8px;border-radius:4px;background:{{ live.dot }}"></span>{{ live.runningLabel }}</span>
+          <span style="font-size:12.5px;color:#626b78">last run {{ live.lastRun }} · {{ live.lastLine }}</span>
+          <span style="font-size:12.5px;color:#626b78">watching {{ live.watching }}</span>
+          <span style="margin-left:auto;{{ MONO }};color:#8f97a3">{{ window }}</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px">
+          {% for c in cards %}
+          <div style="{{ CARD }};padding:16px 18px 14px">
+            <div style="{{ LBL }}">{{ c.title }}</div>
+            <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px">
+              <span style="font:600 34px/1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ c.color }}">{{ c.n }}</span>
+              <span style="font-size:14px;color:#626b78">{{ c.of }}</span>
             </div>
-          {% endfor %}
-        </div>
-
-<div style="display:grid;grid-template-columns:1.15fr 1fr;gap:16px;margin-bottom:16px;align-items:start">
-  <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:14px 16px 12px;min-width:0">
-  <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Funnel</span><span style="margin-left:auto;font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ chartNotes.funnel }}</span></div>
-  <div style="overflow-x:auto">{{ charts.funnel | safe }}</div>
-</div>
-  <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
-    <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:14px 16px 12px;min-width:0">
-  <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Cost per session</span><span style="margin-left:auto;font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ chartNotes.acu }}</span></div>
-  <div style="overflow-x:auto">{{ charts.acu | safe }}</div>
-</div>
-    <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:14px 16px 12px;min-width:0">
-  <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Gate outcomes</span><span style="margin-left:auto;font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ chartNotes.gate }}</span></div>
-  <div style="overflow-x:auto">{{ charts.gate | safe }}</div>
-</div>
-  </div>
-</div>
-<div style="display:grid;grid-template-columns:1.15fr .6fr 1fr;gap:16px;margin-bottom:28px;align-items:start">
-  <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:14px 16px 12px;min-width:0">
-  <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Inventory burn-down</span><span style="margin-left:auto;font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ chartNotes.burndown }}</span></div>
-  <div style="overflow-x:auto">{{ charts.burndown | safe }}</div>
-</div>
-  <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:14px 16px 12px;min-width:0">
-  <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Session size</span><span style="margin-left:auto;font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ chartNotes.size }}</span></div>
-  <div style="overflow-x:auto">{{ charts.size | safe }}</div>
-</div>
-  <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:14px 16px 12px;min-width:0">
-    <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Tripwires</span><span style="margin-left:auto;font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">pre-registered</span></div>
-    {% for w in tripwires %}<div style="display:grid;grid-template-columns:10px 1fr auto;gap:10px;align-items:baseline;padding:5px 0;border-bottom:1px solid #f1efe9;font-size:12.5px"><span style="width:10px;height:10px;border-radius:5px;background:{{ w.fg }};display:inline-block;position:relative;top:1px"></span><span style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="{{ w.name }} · threshold: {{ w.threshold }}">{{ w.name }}</span><span style="font:11.5px/1.5 'JetBrains Mono',monospace;color:#14181f;white-space:nowrap">{{ w.value }}</span></div>{% endfor %}
-  </div>
-</div>
-<div style="display:flex;align-items:baseline;gap:12px;margin:0 0 10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Receipts</span><span style="font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">the session's claim beside the gate's result, per shard</span></div>
-<div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden;margin-bottom:28px">
-          <div style="display:grid;grid-template-columns:70px 50px 130px 50px 70px 100px 60px 170px 60px 50px 40px 1fr;gap:10px;padding:9px 16px;border-bottom:1px solid #e2dfd8;font:500 10.5px/1.4 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#8f97a3"><span>ticket</span><span>shard</span><span>session</span><span>PR</span><span>T0 oracle</span><span>T1 acceptance</span><span>gate</span><span>review</span><span style="text-align:right">retries</span><span style="text-align:right">{{ unitLabel }}</span><span>size</span><span>merged by</span></div>
-          {% for e in evidenceRows %}
-            <div style="display:grid;grid-template-columns:70px 50px 130px 50px 70px 100px 60px 170px 60px 50px 40px 1fr;gap:10px;padding:8px 16px;border-bottom:1px solid #f1efe9;font-size:12.5px;align-items:center" data-hover="background:#faf9f6"><span style="font:600 12px/1.4 'JetBrains Mono',monospace;color:{{ e.color }}">{{ e.tk }}</span><span>{{ e.L }}</span><a href="{{ e.sessionUrl }}" target="_blank" style="font:12px/1.4 'JetBrains Mono',monospace">{{ e.session }}</a><a href="{{ e.prUrl }}" target="_blank" style="font:12px/1.4 'JetBrains Mono',monospace">{{ e.pr }}</a><span><span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ e.t0Bg }};color:{{ e.t0Fg }}">{{ e.t0 }}</span></span><span style="font-variant-numeric:tabular-nums">{{ e.t1 }}</span><span><span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ e.gateBg }};color:{{ e.gateFg }}">{{ e.gate }}</span></span><span style="font:12px/1.4 'JetBrains Mono',monospace;color:#626b78">{{ e.review }}</span><span style="text-align:right;font-variant-numeric:tabular-nums">{{ e.retries }}</span><span style="text-align:right;font-variant-numeric:tabular-nums">{{ e.acu }}</span><span>{{ e.size }}</span><span>{{ e.mergedBy }}</span></div>
-          {% endfor %}
-          <div style="padding:10px 16px;font:12px/1.5 'JetBrains Mono',monospace;color:#626b78">{{ sizeLine }}</div>
-        </div>
-
-<div style="display:grid;grid-template-columns:1.2fr 1fr;gap:16px;align-items:start">
-  <div>
-    <div style="display:flex;align-items:baseline;gap:12px;margin:0 0 10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Routing by class</span><span style="font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">attempted · verified · {{ unitLabel }}</span></div>
-    <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
-              <div style="display:grid;grid-template-columns:1.3fr 34px 34px 44px 34px 1.3fr;gap:10px;padding:8px 16px;border-bottom:1px solid #e2dfd8;font:500 10px/1.4 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#8f97a3"><span>class</span><span style="text-align:right">att.</span><span style="text-align:right">ver.</span><span style="text-align:right">median</span><span style="text-align:right">p95</span><span>verdict</span></div>
-              {% for c in routing %}
-                <div style="display:grid;grid-template-columns:1.3fr 34px 34px 44px 34px 1.3fr;gap:10px;padding:5px 16px;border-bottom:1px solid #f1efe9;font-size:12px;align-items:baseline;color:{{ c.color }}"><span style="font:11.5px/1.4 'JetBrains Mono',monospace;color:#14181f;overflow-wrap:anywhere">{{ c.cls }}</span><span style="text-align:right;font-variant-numeric:tabular-nums">{{ c.att }}</span><span style="text-align:right;font-variant-numeric:tabular-nums">{{ c.ver }}</span><span style="text-align:right;font-variant-numeric:tabular-nums">{{ c.med }}</span><span style="text-align:right;font-variant-numeric:tabular-nums">{{ c.p95 }}</span><span style="text-wrap:pretty">{{ c.verdict }}</span></div>
+            <div style="font-size:12px;color:#8f97a3;margin-top:2px">{{ c.unit }}</div>
+            <div style="margin-top:12px;display:flex;flex-direction:column;gap:5px">
+              {% for r in c.rows %}
+              <div style="display:grid;grid-template-columns:1fr 34px;gap:8px;align-items:center;font-size:12.5px">
+                <span style="min-width:0;color:#626b78;text-wrap:pretty">{{ r.label }}</span>
+                <span style="text-align:right;{{ MONO }};color:{{ r.color }};font-variant-numeric:tabular-nums">{{ r.n }}</span>
+              </div>
               {% endfor %}
             </div>
+            <div style="font-size:11.5px;color:#8f97a3;margin-top:10px;text-wrap:pretty">{{ c.note }}</div>
+          </div>
+          {% endfor %}
+        </div>
 
-  </div>
-  <div>
-    <div style="display:flex;align-items:baseline;gap:12px;margin:0 0 10px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Escalations</span><span style="font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3">{{ escalations | length }}</span></div>
-    <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
-      {% for x in escalations %}<div style="display:grid;grid-template-columns:60px 100px 1fr 60px;gap:12px;padding:8px 16px;font-size:12.5px;align-items:baseline;border-bottom:1px solid #f1efe9"><span style="font:600 12px/1.4 'JetBrains Mono',monospace;color:{{ x.color }}">{{ x.ticket }}</span><span style="font:12px/1.4 'JetBrains Mono',monospace">{{ x.kind }}</span><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="{{ x.reason }}">{{ x.reason }}</span><span style="color:#8f97a3">{{ x.resolved }}</span></div>{% else %}<div style="padding:9px 16px;font-size:13px;color:#8f97a3">none</div>{% endfor %}
-    </div>
-  </div>
-</div>
-<p style="font:11px/1.5 'JetBrains Mono',monospace;color:#8f97a3;margin:18px 0 0">every number is a query over the ticket store · N is small and says so · the system is measured, never a named engineer</p>
-{% endblock %}
+        <div style="{{ CARD }};padding:14px 18px;margin-bottom:20px">
+          <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+            <span style="{{ LBL }}">Checks we ran ourselves</span>
+            <span style="font-size:13px">{{ checksLine }}</span>
+            <button hx-get="{{ checksToggle }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="margin-left:auto;border:0;background:none;padding:0;color:#2457a8;font:12.5px/1.4 'Instrument Sans',system-ui,sans-serif;cursor:pointer">{{ checksToggleLabel }}</button>
+          </div>
+          {% if checksOpen %}
+          <p style="font-size:12.5px;color:#626b78;margin:10px 0 0;max-width:70ch;text-wrap:pretty">{{ checksNote }}</p>
+          {% for g in checkGroups %}
+          <div style="margin-top:14px">
+            <div style="display:flex;align-items:baseline;gap:10px">
+              <a href="{{ g.go }}" style="{{ MONO }};font-weight:600;color:{{ g.color }}">{{ g.ref }}</a>
+              <a href="{{ g.url }}" target="_blank" style="{{ MONO }}">session {{ g.session }} ↗</a>
+            </div>
+            <div style="border:1px solid #ecebe6;border-radius:7px;overflow:hidden;margin-top:6px">
+              <div style="display:grid;grid-template-columns:1fr 74px 74px 110px 110px 54px;gap:10px;padding:5px 10px;border-bottom:1px solid #ecebe6;{{ LBL }};font-size:10px"><span>check</span><span>AI said</span><span>we got</span><span>code it ran on</span><span>log fingerprint</span><span>log</span></div>
+              {% for r in g.rows %}
+              <div style="display:grid;grid-template-columns:1fr 74px 74px 110px 110px 54px;gap:10px;padding:5px 10px;border-bottom:1px solid #f1efe9;font-size:12px;align-items:center">
+                <span style="{{ MONO }};min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.name }}</span>
+                <span style="color:#8f97a3">{{ r.said or '·' }}</span>
+                <span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ r.bg }};color:{{ r.fg }};justify-self:start">{{ r.state }}</span>
+                <span style="{{ MONO }};color:#8f97a3">{{ r.tree }}</span>
+                <span style="{{ MONO }};color:#8f97a3">{{ r.digest }}</span>
+                <span>{% if r.log %}<a href="{{ r.log }}" target="_blank" style="font-size:12px">open</a>{% endif %}</span>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+          {% endif %}
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.1fr 1fr 0.8fr;gap:16px;margin-bottom:20px;align-items:start">
+          <div style="{{ CARD }};padding:14px 18px">
+            <div style="display:flex;align-items:baseline;gap:10px"><span style="{{ LBL }}">Where the work went</span><span style="margin-left:auto;font-size:11.5px;color:#8f97a3">{{ funnelNote }}</span></div>
+            <div style="margin-top:8px">{{ funnel | safe }}</div>
+          </div>
+          <div style="{{ CARD }};padding:14px 18px">
+            <div style="display:flex;align-items:baseline;gap:10px"><span style="{{ LBL }}">Progress against the list</span><span style="margin-left:auto;font-size:11.5px;color:#8f97a3">{{ burndownNote }}</span></div>
+            <div style="margin-top:8px">{{ burndown | safe }}</div>
+          </div>
+          <div style="{{ CARD }};padding:14px 18px">
+            <div style="{{ LBL }}">What it cost</div>
+            <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px"><span style="font:600 28px/1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums">{{ cost.total }}</span><span style="font-size:13px;color:#626b78">{{ cost.minutes }}</span></div>
+            <div style="margin-top:10px;font-size:13px"><span style="color:#626b78">per change that passed</span> <b>{{ cost.perChange }}</b></div>
+            <div style="font-size:11.5px;color:#8f97a3;margin-top:8px;text-wrap:pretty">{{ cost.n }}. Every session counts, including the ones that only read the ticket.</div>
+          </div>
+        </div>
+
+        <div style="{{ CARD }};padding:14px 18px;margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="{{ LBL }}">The log</span>
+            <span style="font-size:12px;color:#8f97a3">everything the system did, in order, as it happened</span>
+            <span style="display:flex;gap:4px;margin-left:auto">{% for f in logFilter %}<button hx-get="{{ f.set }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="padding:0 8px;border-radius:11px;border:1px solid {% if f.on %}#2457a8{% else %}#d6d2c9{% endif %};background:{% if f.on %}#2457a8{% else %}#fff{% endif %};color:{% if f.on %}#fff{% else %}#14181f{% endif %};{{ MONO }};line-height:20px;cursor:pointer">{{ f.label }}</button>{% endfor %}</span>
+            <button hx-get="{{ logToggle }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="border:0;background:none;padding:0;color:#2457a8;font:12.5px/1.4 'Instrument Sans',system-ui,sans-serif;cursor:pointer">{{ logToggleLabel }}</button>
+          </div>
+          <div style="margin-top:10px;display:flex;flex-direction:column;gap:2px;{% if logOpen %}max-height:520px;overflow-y:auto{% endif %}">
+            {% for e in log %}<div style="display:grid;grid-template-columns:58px 82px 1fr;gap:10px;font-size:12px;align-items:baseline;padding:2px 0 2px 10px;border-left:3px solid {{ e.fg }}"><span style="{{ MONO }};font-size:11px;color:#8f97a3">{{ e.time }}</span><span style="{{ MONO }};font-size:11px;color:{{ e.fg }}">{{ e.layer }}</span><span style="min-width:0"><span style="font-weight:500;color:{{ e.evColor }}">{{ e.event }}</span> <span style="{{ MONO }};font-size:11px;color:#626b78;word-break:break-all">{{ e.detail }}</span></span></div>{% endfor %}
+          </div>
+        </div>
+
+        <div style="display:flex;gap:26px;flex-wrap:wrap;font-size:11.5px;color:#8f97a3;padding:0 2px">
+          <span style="max-width:44ch;text-wrap:pretty"><b style="color:#626b78">This page cannot tell you:</b> {% for n, why in notMeasured %}<span title="{{ why }}">{{ n }}</span>{% if not loop.last %} · {% endif %}{% endfor %}.</span>
+          <span style="max-width:44ch;text-wrap:pretty"><b style="color:#626b78">Not shown, on purpose:</b> {% for n, why in refused %}<span title="{{ why }}">{{ n }}</span>{% if not loop.last %} · {% endif %}{% endfor %}. Hover for the reason.</span>
+        </div>
+      {% endblock %}

@@ -72,7 +72,7 @@ def funnel(rows: list[tuple[str, int, int | None]], w: int = 520) -> str:
                 f'<rect x="{lab}" y="{y + rh - 6}" width="{max(dw, 2):.1f}" height="6" rx="2" fill="{RED}"/>'
             )
             out.append(
-                f'<text x="{lab + max(bw, 1) + 6 + 24:.1f}" y="{y + 15}" font-size="11" fill="{RED}" style="{MONO}">-{drop}</text>'
+                f'<text x="{lab + max(bw, 1) + 6 + 26:.1f}" y="{y + 15}" font-size="11" fill="{RED}" style="{MONO}">{drop} left here</text>'
             )
     return _svg(w, h, "".join(out), "funnel")
 

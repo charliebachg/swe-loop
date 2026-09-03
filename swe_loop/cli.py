@@ -29,7 +29,7 @@ from swe_loop.gate import Gate, apply_result
 from swe_loop.gate import preflight as gate_preflight
 from swe_loop.knowledge import load_notes, load_playbook
 from swe_loop.poll import Poller
-from swe_loop.reduce import detect_conflicts, refresh_reviews, summary
+from swe_loop.reduce import detect_conflicts, refresh_pr_states, refresh_reviews, summary
 from swe_loop.replay import record, seed
 from swe_loop.router import route_all
 from swe_loop.store import Store, now
@@ -278,6 +278,7 @@ def run_once(
     detect_conflicts(store)
     if not fast:
         out["reviews"] = settle_reviews(settings, cfg, store, client, log=log)
+        refresh_pr_states(store, settings.github_token)
     store.set_setting("automation.repair.last_run", now())
     store.set_setting("automation.repair.last_result", json.dumps(out))
     log(json.dumps(summary(store)))

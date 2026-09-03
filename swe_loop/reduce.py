@@ -214,6 +214,35 @@ def _github_review_outcome(
     return f"{len(inline)} comment(s)"
 
 
+def refresh_pr_states(store: Store, github_token: str = "", fetch: Any = None) -> int:
+    """Read each pull request's own state so a change your team closed shows up as turned down."""
+    import httpx
+
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "swe-loop"}
+    if github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
+    get = fetch or (lambda url: httpx.get(url, headers=headers, timeout=15).json())
+    n = 0
+    for r in store._all(
+        "SELECT id, pull_request_url FROM sessions WHERE pull_request_url IS NOT NULL "
+        "AND (pr_state IS NULL OR pr_state = 'open')"
+    ):
+        api = r["pull_request_url"].replace("github.com/", "api.github.com/repos/", 1)
+        api = api.replace("/pull/", "/pulls/")
+        try:
+            d = get(api)
+        except Exception as ex:  # noqa: BLE001 - a state we cannot read stays unknown
+            store.log("review", "pull request state unreadable", detail=str(ex)[:120])
+            continue
+        if not isinstance(d, dict) or "state" not in d:
+            continue
+        state = "merged" if d.get("merged_at") else d["state"]
+        store.conn.execute("UPDATE sessions SET pr_state=? WHERE id=?", (state, r["id"]))
+        store.conn.commit()
+        n += 1
+    return n
+
+
 def refresh_reviews(store: Store, client: Any, github_token: str = "", fetch: Any = None) -> int:
     """Read back every requested Devin Review. The request happens at the gate; the result
     is read here so the Tracker and the Review page show it. Returns how many were updated."""

@@ -11,7 +11,7 @@ from typing import Any
 from urllib.parse import parse_qs
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from swe_loop import connect, cost, ops, pages, replay, rerun, runner, v2
@@ -588,6 +588,22 @@ def build_app(
     @app.get("/devin/next", response_class=HTMLResponse)
     def next_page(request: Request) -> HTMLResponse:
         return _render(request, "next.html", "next", nx=pages.next_page())
+
+    @app.get("/evidence/{eid}")
+    def evidence_log(eid: str) -> PlainTextResponse:
+        """The log of one check, exactly as it was written when the command ran."""
+        row = app.state.store._one("SELECT * FROM evidence WHERE id=?", eid)
+        if not row or not row["output_path"]:
+            raise HTTPException(status_code=404)
+        p = Path(row["output_path"]).resolve()
+        root = (ROOT / cfg.gate.get("evidence_dir", "data/live/evidence")).resolve()
+        if not p.is_relative_to(root) or not p.exists():
+            raise HTTPException(status_code=404, detail="the log is not on this machine")
+        head = (
+            f"# {row['command']}\n# exit {row['exit_code']} · tree {row['tree_hash']}\n"
+            f"# digest {row['output_digest']}\n\n"
+        )
+        return PlainTextResponse(head + p.read_text(errors="replace"))
 
     @app.get("/sessions/{sid}")
     def session(sid: str) -> dict[str, Any]:

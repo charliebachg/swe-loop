@@ -62,18 +62,21 @@ def test_dashboard_renders_and_shows_sql_on_request(tmp_path, monkeypatch):
         assert r.status_code == 200
         html = r.text
         for must in (
-            "Headline",
-            "Funnel",
-            "Receipts",
-            "Tripwires",
-            "Routing by class",
-            "Escalations",
-            "Replay mode",
+            "Checks passed",
+            "Ran without you",
+            "Merged by your team",
+            "Checks we ran ourselves",
+            "Where the work went",
+            "The log",
+            "This page cannot tell you",
             "<svg",
         ):
             assert must in html
-        assert "SELECT COUNT" not in html
-        assert "SELECT COUNT" in c.get("/report?sql=1").text
+        # the three rates read as counts over a denominator
+        assert "of 4" in html and "of 5" in html
+        # the checks are one click away, with the log behind each one
+        opened = c.get("/report?checks=1").text
+        assert "code it ran on" in opened and "log fingerprint" in opened
         # a person merges: the endpoint refuses an unready ticket and records a ready one
         assert c.post("/tickets/tkt_C/merge", json={"actor": "someone"}).status_code == 200
         assert c.post("/tickets/tkt_E/merge", json={"actor": "someone"}).status_code == 409
@@ -138,7 +141,7 @@ def test_ops_page_lists_sessions_and_the_feed(tmp_path, monkeypatch):
     with TestClient(app) as c:
         html = c.get("/devin/sessions").text
         assert "Sessions" in html and "time left" in html and "fake-" in html
-        assert "Headline" in c.get("/report").text
+        assert "Checks passed" in c.get("/report").text
         sid = o["sessions"][0]["id"]
         det = c.get(f"/sessions/{sid}").json()
         assert det["timeline"] and det["work_order"]["files"]
