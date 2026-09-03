@@ -4,7 +4,7 @@
   {% for f in tiles %}
   <div style="padding:0 18px;{% if not loop.first %}border-left:1px solid #e2dfd8{% endif %};min-width:0">
     <div style="display:flex;align-items:baseline;gap:6px"><span style="font:600 24px/1.05 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:{{ f.color }}">{{ f.n }}</span><span style="font:11px/1.3 'JetBrains Mono',monospace;color:#8f97a3">{{ f.of }}</span></div>
-    <div style="font-size:12px;color:#626b78;margin-top:2px">{{ f.label }}</div>
+    <div style="font-size:12px;color:#626b78;margin-top:2px"{% if f.help %} title="{{ f.help }}"{% endif %}>{{ f.label }}{% if f.help %} <span style="color:#8f97a3">ⓘ</span>{% endif %}</div>
     {% if f.pct is not none %}<div style="height:4px;background:#e9e7e1;border-radius:3px;overflow:hidden;margin-top:8px"><span style="display:block;height:100%;width:{{ f.pct }}%;background:#7a4fb5;min-width:2px"></span></div>{% endif %}
     {% if f.svg %}<div style="margin-top:8px;height:28px">{{ f.svg | replace('height="36"', 'height="28"') | safe }}</div>{% endif %}
     {% if f.note %}<div style="font:10px/1.3 'JetBrains Mono',monospace;color:#8f97a3;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.note }}</div>{% endif %}
@@ -17,7 +17,7 @@
 <div style="display:grid;grid-template-columns:{% if inbox and inflight %}1.25fr 1fr{% else %}1fr{% endif %};gap:20px;margin-bottom:20px;align-items:start">
   {% if inbox %}
   <section style="min-width:0">
-    <div style="display:flex;align-items:baseline;gap:10px;margin:0 0 8px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Needs you</span><span style="font-size:12px;color:#8f97a3">{{ inbox | length }}</span><span style="margin-left:auto;font:11px/18px 'JetBrains Mono',monospace;padding:0 7px;border-radius:4px;background:#fff3d6;color:#b8862a">a person</span></div>
+    <div style="display:flex;align-items:baseline;gap:10px;margin:0 0 8px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Needs you</span><span style="font-size:12px;color:#8f97a3">{{ inbox | length }}</span><span style="margin-left:auto;font:11px/18px 'JetBrains Mono',monospace;padding:0 7px;border-radius:4px;background:#fff3d6;color:#b8862a">your team</span></div>
     <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
       {% for n in inbox %}
       <div style="display:grid;grid-template-columns:22px 108px 1fr 44px auto;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid #ecebe6" title="{{ n.hover }}">
@@ -37,7 +37,7 @@
   {% endif %}
   {% if inflight %}
   <section style="min-width:0">
-    <div style="display:flex;align-items:baseline;gap:10px;margin:0 0 8px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">In flight</span><span style="font-size:12px;color:#8f97a3">{{ inflight | length }}</span><span style="margin-left:auto;font:11px/18px 'JetBrains Mono',monospace;padding:0 7px;border-radius:4px;background:#f1eafa;color:#7a4fb5">Devin</span></div>
+    <div style="display:flex;align-items:baseline;gap:10px;margin:0 0 8px"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Working now</span><span style="font-size:12px;color:#8f97a3">{{ inflight | length }}</span><span style="margin-left:auto;font:11px/18px 'JetBrains Mono',monospace;padding:0 7px;border-radius:4px;background:#f1eafa;color:#7a4fb5">AI engineer</span></div>
     <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
       {% for s in inflight %}
       <a href="{{ s.go }}" style="display:grid;grid-template-columns:22px 64px 60px 56px 92px 1fr;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid #ecebe6;color:inherit;font-size:12.5px" data-hover="background:#faf9f6;text-decoration:none">
@@ -54,21 +54,22 @@
   {% endif %}
 </div>
 {% endif %}
-{% if not inflight %}<div style="font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3;margin:-8px 0 16px">nothing running · next trigger: {{ nextTrigger }}</div>{% endif %}
+{% if not inflight %}<div style="font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3;margin:-8px 0 16px">the AI is idle · it starts again on {{ nextTrigger }}</div>{% endif %}
 
 {# ---- the loop: eight numbers and where every ticket is #}
 <div style="display:flex;align-items:baseline;gap:12px;margin:0 0 8px">
-  <span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">The loop</span><span style="font-size:12px;color:#8f97a3">{{ ticketWord }}</span>
+  <span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Where each issue is</span><span style="font-size:12px;color:#8f97a3">{{ ticketWord }} · hover a step or an issue for what it means</span>
   <a href="{{ goTracker }}" style="margin-left:auto;font-size:12.5px">Tracker →</a>
 </div>
 <div style="background:#fff;border:1px solid #e2dfd8;border-radius:12px;padding:0 6px 12px;display:grid;grid-template-columns:repeat(8,1fr);margin-bottom:20px">
   {% for st in loop %}
   <div style="padding:12px 14px 0;border-top:3px solid {{ st.color }};margin-top:-1px">
-    <div style="display:flex;align-items:baseline;gap:8px"><span style="font:500 11px/1.3 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#14181f">{{ st.name }}</span><span style="font:11px/1.3 'JetBrains Mono',monospace;color:{{ st.color }}">{{ st.actor }}</span></div>
+    <div style="font:600 12px/1.3 'Instrument Sans',system-ui,sans-serif;color:#14181f;min-height:32px" title="{{ st.meaning }} (internal name: {{ st.internal }})">{{ st.name }}</div>
+    <div style="font:11px/1.3 'JetBrains Mono',monospace;color:{{ st.color }};margin-top:2px">{{ st.actor }}</div>
     <div style="font:600 26px/1.05 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;margin-top:8px;color:{{ st.numColor }}">{{ st.count }}</div>
-    <div style="font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3;margin-top:2px;min-height:16px">{{ st.context }}</div>
+    <div style="font-size:11.5px;color:#626b78;margin-top:2px;min-height:32px;text-wrap:pretty">{{ st.context }}</div>
     <div style="display:flex;gap:6px;margin-top:8px;min-height:22px;flex-wrap:wrap">
-      {% for d in st.dots %}<a href="{{ d.go }}" title="{{ d.title }}" style="width:22px;height:22px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;font:600 10.5px/1 'JetBrains Mono',monospace;background:{{ d.bg }};color:{{ d.fg }};box-shadow:inset 0 0 0 2px {{ d.ring }}" data-hover="text-decoration:none">{{ d.L }}</a>{% endfor %}
+      {% for d in st.dots %}<a href="{{ d.go }}" title="{{ d.title }}" style="height:22px;padding:0 8px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;font:600 10.5px/1 'JetBrains Mono',monospace;background:{{ d.bg }};color:{{ d.fg }};box-shadow:inset 0 0 0 2px {{ d.ring }}" data-hover="text-decoration:none">{{ d.L }}</a>{% endfor %}
     </div>
   </div>
   {% endfor %}
@@ -76,16 +77,16 @@
 
 {# ---- the last eight events, folded #}
 <details style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:0">
-  <summary style="padding:9px 16px;cursor:pointer;display:flex;align-items:baseline;gap:10px;list-style:none"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Recent</span><span style="font-size:12px;color:#8f97a3">{{ countLabel }}</span><a href="{{ goTracker }}" style="margin-left:auto;font-size:12.5px">every event on the Tracker →</a></summary>
+  <summary style="padding:9px 16px;cursor:pointer;display:flex;align-items:baseline;gap:10px;list-style:none"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">What just happened</span><span style="font-size:12px;color:#8f97a3">{{ countLabel }}</span><a href="{{ goTracker }}" style="margin-left:auto;font-size:12.5px">every event on the Tracker →</a></summary>
   <div style="padding:2px 0 8px;border-top:1px solid #ecebe6">
     {% for e in recent8 %}
     <div style="display:grid;grid-template-columns:58px 84px 1fr;gap:12px;padding:5px 16px 5px 13px;font-size:13px;align-items:baseline;border-left:3px solid {{ e.fg }};margin:2px 0">
       <span style="font:11.5px/1.5 'JetBrains Mono',monospace;color:#8f97a3">{{ e.time }}</span>
-      <span style="font:11px/1.5 'JetBrains Mono',monospace;color:{{ e.fg }};white-space:nowrap">{{ e.layer }}</span>
+      <span style="font:11px/1.5 'JetBrains Mono',monospace;color:{{ e.fg }};white-space:nowrap" title="{{ e.layer }}">{{ e.plain }}</span>
       <span style="min-width:0"><a href="{{ e.link }}" style="font-weight:600;color:{{ e.evColor }}">{{ e.event }}</a> <span style="font:12px/1.5 'JetBrains Mono',monospace;color:#8f97a3">{{ e.ref }}</span>{% if e.hasDetail %}<span style="display:block;color:#626b78;font:11.5px/1.5 'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ e.detail }}</span>{% endif %}</span>
     </div>
     {% endfor %}
   </div>
 </details>
-<div style="display:flex;gap:12px;font:10.5px/18px 'JetBrains Mono',monospace;margin-top:8px;white-space:nowrap"><span style="color:#5b6f8a">▎code</span><span style="color:#7a4fb5">▎Devin</span><span style="color:#1f8a80">▎the gate</span><span style="color:#b8862a">▎a person</span><span style="color:#8f97a3;margin-left:auto">refreshes every 5s · rail colour is who did the work</span></div>
+<div style="display:flex;gap:14px;font:10.5px/18px 'JetBrains Mono',monospace;margin-top:8px;white-space:nowrap"><span style="color:#626b78">who does each step:</span><span style="color:#5b6f8a">▎automatic</span><span style="color:#7a4fb5">▎AI engineer (Devin)</span><span style="color:#1f8a80">▎independent checks</span><span style="color:#b8862a">▎your team</span><span style="color:#8f97a3;margin-left:auto">refreshes every 5s</span></div>
 {% endblock %}

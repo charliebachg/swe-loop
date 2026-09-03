@@ -97,5 +97,5 @@ def test_home_lists_the_mergers_notes(tmp_path, monkeypatch):
     app = build_app(Settings.from_env(), st, seed_replay=False)
     with TestClient(app) as c:
         html = c.get("/").text
-    assert "PR #7: 3 comment(s) · 1 note(s)" in html  # the inbox row
+    assert "PR #7: 3 reviewer remarks · 1 note(s)" in html  # the inbox row
     assert "boxplot.py:138: root cause outside the shard" in html  # in the row's hover text

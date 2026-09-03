@@ -31,9 +31,14 @@ def client(tmp_path, monkeypatch):
 def test_home_tiles_inbox_and_next_trigger(client):
     c, _st = client
     html = c.get("/").text
-    assert "finished without a question" in html and "decided" in html
-    assert "Needs you" in html and ">Merge<" in html and ">Dismiss<" in html
-    assert "nothing running · next trigger: github:pull_request on charliebachg/superset" in html
+    assert "fixes that needed no help" in html and "planned" in html
+    assert (
+        "Needs you" in html
+        and ">Merge<" in html
+        and ">Dismiss<" in html
+        and "ready to ship" in html
+    )
+    assert "the AI is idle · it starts again on a pull request on charliebachg/superset" in html
     assert html.count("<svg") == 3  # the trends live inside the tiles
     assert "—" not in html
 

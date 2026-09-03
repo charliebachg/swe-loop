@@ -65,6 +65,52 @@ PAGES = {
     "settings": ("Settings", "/settings"),
 }
 JOURNEY = ["home", "automations", "tickets", "tracker", "report"]
+
+# Plain words for a reader who has never used an AI engineer. The internal name stays in tooltips.
+ACTOR_PLAIN = {
+    "code": "automatic",
+    "devin": "AI engineer",
+    "gate": "independent checks",
+    "person": "your team",
+    "next": "later",
+}
+STAGE_PLAIN = [
+    ("issues received", "from the repository", "intake"),
+    ("scoped by the AI", "read, understood, a plan written", "triage"),
+    ("who fixes it", "decided automatically from the plan", "route"),
+    ("fix started", "an AI work session opened", "dispatch"),
+    ("fix written", "code changed, tests run by the AI", "session"),
+    ("re-tested independently", "the same tests, on a clean copy", "gate"),
+    ("reviewed by the AI reviewer", "a second reading of the change", "review"),
+    ("shipped by your team", "merged by a person, never automatic", "merge"),
+]
+KIND_PLAIN = {
+    "human_only": "needs your team",
+    "refuse": "not for the AI",
+    "waiting_for_user": "the AI has a question",
+    "review_blocked": "did not finish",
+    "usage_limit": "too big for one run",
+    "oracle_touched": "tests were edited",
+    "ready to merge": "ready to ship",
+}
+LAYER_PLAIN = {
+    "L0 intake": "received",
+    "L1 triage": "AI scoping",
+    "L2 route": "decision",
+    "L3 shard": "split",
+    "L4 dispatch": "AI started",
+    "L4 poll": "AI working",
+    "L4 manage": "AI steered",
+    "L5 gate": "checks",
+    "L6 review": "AI review",
+    "L7 reduce": "shipping",
+    "ticket": "status",
+    "escalate": "for your team",
+    "automation": "trigger",
+    "budget": "budget",
+    "playbook": "procedure",
+}
+ACU_HELP = "ACU, Agent Compute Unit: Devin's unit of work, about 15 minutes of an AI session"
 DEVIN_NAV = [
     ("sessions", 1, ""),
     ("playbooks", 1, ""),
@@ -274,7 +320,11 @@ def frame(settings: Settings, cfg: TargetConfig, store: Store, active: str) -> d
         "navDevin": nav_devin,
         "pageTitle": PAGES.get(active, (active.title(), ""))[0],
         "pageStep": step,
-        "modeLabel": "LIVE" if live else "REPLAY",
+        "modeLabel": "LIVE" if live else "RECORDED RUN",
+        "modeHelp": "connected to the Devin organisation; sessions are real"
+        if live
+        else "showing a recorded run of the real system; no AI session is started from this page",
+        "acuHelp": ACU_HELP,
         "modeBg": PL["ok"][1] if live else PL["run"][1],
         "modeFg": PL["ok"][0] if live else PL["run"][0],
         "modeSmall": "live" if live else "replay",
@@ -404,25 +454,28 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
     to_person = [t for t in decided if t["router_decision"] != "devin"]
     wos = [w for t in tickets for w in store.work_orders_for(t["id"])]
     sess = store._all("SELECT * FROM sessions")
-    tri_acu = sum((x["acus_consumed"] or 0) for x in store.list_triage_sessions())
+    sum((x["acus_consumed"] or 0) for x in store.list_triage_sessions())
     rep_acu = sum((s["acus_consumed"] or 0) for s in sess)
     passed = [s for s in sess if (store.latest_verdict(s["id"]) or {}).get("gate_result") == "pass"]
-    retried = [s for s in sess if s["retries"]]
+    [s for s in sess if s["retries"]]
     reviewed = [s for s in sess if (store.latest_verdict(s["id"]) or {}).get("review_severity")]
     merged = [t for t in tickets if t["status"] == "merged"]
     ready = h["summary"]["ready"]
     loop_counts = [
-        (len(tickets), "tickets"),
-        (len(verdicts), f"verdicts · {tri_acu:.1f} ACU"),
-        (len(decided), f"{len(to_devin)} Devin · {len(to_person)} person"),
+        (len(tickets), f"{len(tickets)} issue{'s' if len(tickets) != 1 else ''} filed"),
+        (len(verdicts), f"{len(verdicts)} plan{'s' if len(verdicts) != 1 else ''} written"),
+        (len(decided), f"{len(to_devin)} to the AI · {len(to_person)} to your team"),
         (
             len([w for w in wos if w["status"] in ("dispatched", "devin")]),
-            f"{len(to_person)} refused" if to_person else "all dispatched",
+            f"{len(to_person)} held for your team" if to_person else "all started",
         ),
-        (len(sess), f"sessions · {rep_acu:.1f} ACU"),
-        (len(passed), f"passed · {len(retried)} retried" if retried else "passed"),
-        (len(reviewed), "reviews"),
-        (len(merged), f"merged · {len(ready)} waiting"),
+        (len(sess), f"{len(sess)} fix{'es' if len(sess) != 1 else ''} · {rep_acu:.1f} ACU used"),
+        (
+            len(passed),
+            f"{len(passed)} passed · {sum(1 for x in sess if store.latest_verdict(x['id']) and store.latest_verdict(x['id'])['gate_result'] != 'pass')} failed",
+        ),
+        (len(reviewed), f"{len(reviewed)} reviewed"),
+        (len(merged), f"{len(merged)} shipped · {len(ready)} waiting for you"),
     ]
     loop = []
     for i, (name, actor) in enumerate(STG):
@@ -433,23 +486,34 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                 continue
             st = pat[i]
             d = dot(t["id"], st == "d")
-            title = f"{t['id']} · " + (
-                "done" if st == "d" else ("refused, a person decides" if st == "b" else "waiting")
+            issue = (
+                (t.get("external_ref") or "").rsplit("#", 1)[-1]
+                if t.get("external_ref") and "#" in t["external_ref"]
+                else letter(t["id"])
+            )
+            state = (
+                "done here"
+                if st == "d"
+                else ("held for your team" if st == "b" else "waiting here")
             )
             dots.append(
                 {
                     **d,
+                    "L": f"#{issue}" if issue.isdigit() else issue,
                     "bg": d["dotBg"],
                     "fg": d["dotFg"],
                     "ring": d["color"],
-                    "title": title,
+                    "title": f"#{issue} {t.get('title', '')[:70]} · {state}",
                     "go": url("/tracker", open=t["id"]),
                 }
             )
+        plain, meaning, internal = STAGE_PLAIN[i]
         loop.append(
             {
-                "name": name,
-                "actor": ACT[actor][2],
+                "name": plain,
+                "meaning": meaning,
+                "internal": internal,
+                "actor": ACTOR_PLAIN[actor],
                 "color": ACT[actor][0],
                 "count": str(loop_counts[i][0]),
                 "context": loop_counts[i][1],
@@ -484,29 +548,30 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
     five = [
         {
             "n": str(counts["running"]),
-            "of": f"of {conc}",
-            "label": "sessions running",
+            "of": f"of {conc} at once",
+            "label": "AI sessions working now",
             "color": PL["run"][0] if counts["running"] else FAINT,
             "pct": None,
         },
         {
             "n": str(counts["needs_human"] + len(blocking)),
             "of": "",
-            "label": "waiting on a person",
+            "label": "waiting for your team",
             "color": PL["bad"][0] if (counts["needs_human"] or blocking) else FAINT,
             "pct": None,
         },
         {
             "n": _fmt_acu(b.get("spent")),
             "of": f"of {b['cap']:.0f} ACU" if b.get("cap") else "no cap",
-            "label": "spent",
+            "label": "compute used",
             "color": INK,
+            "help": ACU_HELP,
             "pct": _pct(b.get("spent"), b.get("cap")),
         },
         {
             "n": str(verified),
-            "of": f"of {len(decided)} decided",
-            "label": "verified and merged",
+            "of": f"of {len(decided)} planned",
+            "label": "fixed, re-tested and shipped",
             "color": PL["ok"][0] if verified else FAINT,
             "pct": None,
         },
@@ -561,11 +626,13 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         {
             "n": f"{quiet} of {len(all_sessions)}" if all_sessions else "0 of 0",
             "of": "sessions",
-            "label": "finished without a question",
+            "label": "fixes that needed no help",
             "color": PL["ok"][0] if quiet else FAINT,
             "pct": None,
             "svg": "",
-            "note": f"{len(all_sessions) - quiet} asked a person" if all_sessions else "",
+            "note": f"{len(all_sessions) - quiet} asked your team a question"
+            if all_sessions
+            else "",
         },
     ]
     inbox = []
@@ -580,7 +647,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         inbox.append(
             {
                 **dot(e["ticket_id"], False),
-                "kind": e["kind"],
+                "kind": KIND_PLAIN.get(e["kind"], e["kind"]),
                 **pill("bad"),
                 "what": (t.get("title") or e["reason"])[:70],
                 "hover": e["reason"],
@@ -596,10 +663,12 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         inbox.append(
             {
                 **dot(tid, False),
-                "kind": "ready to merge",
+                "kind": KIND_PLAIN["ready to merge"],
                 **pill("ok"),
                 "what": (
                     " · ".join(mn["reviews"])
+                    .replace("comment(s)", "reviewer remarks")
+                    .replace("no issues", "reviewer found nothing")
                     + (f" · {len(mn['notes'])} note(s)" if mn["notes"] else "")
                 )
                 or "gate passed, reviewed",
@@ -636,7 +705,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                 {
                     **dot(x["ticket_id"], False),
                     "ticket": x["ticket_id"],
-                    "stage": "triage",
+                    "stage": "scoping",
                     "elapsed": ops._elapsed(x["created_at"], None),
                     "acu": _fmt_acu(x["acus_consumed"]),
                     "cap": f"{TRIAGE_ACU_CAP}",
@@ -653,7 +722,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         tid = wo.get("ticket_id", "")
         st_row = store.get_ticket(tid) or {}
         pat = _pattern(store, st_row) if st_row else "--------"
-        stage = STG[_pos(pat)][0]
+        stage = STAGE_PLAIN[_pos(pat)][0]
         inflight.append(
             {
                 **dot(tid, False),
@@ -671,9 +740,13 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         )
     enabled = [r for r in store.list_automations() if r["enabled"] and r["availability"] == "live"]
     next_trigger = (
-        f"{enabled[0]['trigger'].get('source', '')}:{enabled[0]['trigger'].get('event', '')} on {enabled[0]['target']}"
-        if enabled
-        else "no automation enabled"
+        f"a pull request on {enabled[0]['target']}"
+        if enabled and enabled[0]["trigger"].get("event") == "pull_request"
+        else (
+            f"{enabled[0]['trigger'].get('event', '')} on {enabled[0]['target']}"
+            if enabled
+            else "no automation is switched on"
+        )
     )
     return {
         "tiles": tiles,
@@ -683,9 +756,11 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         "five": five,
         "shortNeeds": short_needs,
         "spark": spark,
-        "recent8": events[:8],
+        "recent8": [{**e, "plain": LAYER_PLAIN.get(e["layer"], e["layer"])} for e in events[:8]],
         "now": _now(counts),
-        "ticketWord": f"{len(tickets)} tickets" if len(tickets) != 1 else "one ticket",
+        "ticketWord": f"{len(tickets)} issues, left to right from received to shipped"
+        if len(tickets) != 1
+        else "one issue, left to right from received to shipped",
         "loop": loop,
         "needs": needs,
         "events": events,
