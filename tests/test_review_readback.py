@@ -69,3 +69,36 @@ def test_refresh_reviews_counts_comments_and_survives_no_token(tmp_path):
     )
     assert refresh_reviews(st, DevinClient(FakeTransport()), "") == 1
     assert st.latest_verdict(sid)["review_severity"] == "completed:see the pull request"
+
+
+def test_home_lists_the_mergers_notes(tmp_path, monkeypatch):
+    import json
+
+    from fastapi.testclient import TestClient
+
+    from swe_loop.app import build_app
+    from swe_loop.config import Settings
+    from swe_loop.reduce import merge_notes
+
+    monkeypatch.delenv("DEVIN_API_KEY", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    st, sid = _seed(tmp_path)
+    st.set_budget(acu_cap=40, per_session_cap=6)
+    st.update_session(
+        sid,
+        structured_output_json=json.dumps(
+            {"needs_human": [{"site": "boxplot.py:138", "reason": "root cause outside the shard"}]}
+        ),
+    )
+    st.conn.execute("UPDATE verdicts SET review_severity='completed:3 comment(s)'")
+    st.conn.commit()
+    mn = merge_notes(st, "tkt_D")
+    assert mn["reviews"] == ["PR #7: 3 comment(s)"] and mn["notes"][0]["site"] == "boxplot.py:138"
+    app = build_app(Settings.from_env(), st, seed_replay=False)
+    with TestClient(app) as c:
+        html = c.get("/").text
+    assert (
+        "Devin Review PR #7: 3 comment(s)" in html
+        and "boxplot.py:138: root cause outside the shard" in html
+    )
+    assert "after reading the notes" in html

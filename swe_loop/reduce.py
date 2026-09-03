@@ -8,6 +8,7 @@ merge when a person clicks the button, with the actor hashed for audit and never
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
@@ -41,6 +42,32 @@ def _latest_pass(store: Store, work_order_id: str) -> dict[str, Any] | None:
         if v and v["gate_result"] == "pass":
             return {**s, "verdict": v}
     return None
+
+
+def merge_notes(store: Store, ticket_id: str) -> dict[str, Any]:
+    """What the merger should read before clicking: the review outcome per PR and the notes
+    the session itself left under needs_human. Both come from the latest passing session."""
+    reviews: list[str] = []
+    notes: list[dict[str, Any]] = []
+    for wo in store.work_orders_for(ticket_id):
+        p = _latest_pass(store, wo["id"])
+        if not p:
+            continue
+        sev = (p["verdict"].get("review_severity") or "").split(":", 1)
+        state = sev[1] if len(sev) == 2 else sev[0]
+        pr = (p.get("pull_request_url") or "").rsplit("/", 1)[-1]
+        reviews.append(f"PR #{pr}: {state}" if pr else state)
+        out = json.loads(p["structured_output_json"]) if p.get("structured_output_json") else {}
+        for h in out.get("needs_human") or []:
+            if isinstance(h, dict):
+                notes.append(
+                    {
+                        "shard": wo["shard_id"],
+                        "site": h.get("site", ""),
+                        "reason": h.get("reason", ""),
+                    }
+                )
+    return {"reviews": reviews, "notes": notes}
 
 
 def readiness(store: Store, ticket_id: str) -> TicketReadiness:

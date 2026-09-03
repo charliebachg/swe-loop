@@ -71,14 +71,25 @@ def home(store: Store) -> dict[str, Any]:
             }
         )
     for tid in summary["ready"]:
+        mn = reduce_mod.merge_notes(store, tid)
+        reason = "every shard passed the gate; no conflicts"
+        if mn["reviews"]:
+            reason += "; Devin Review " + ", ".join(mn["reviews"])
+        if mn["notes"]:
+            reason += (
+                f"; the session left {len(mn['notes'])} note(s) for the merger: "
+                + " | ".join(f"{n['site']}: {n['reason'][:90]}" for n in mn["notes"][:2])
+            )
         needs.append(
             {
                 "kind": "ready to merge",
                 "ticket_id": tid,
-                "reason": "every shard passed the gate and was reviewed; no conflicts",
+                "reason": reason,
                 "since": "",
                 "link": f"/tracker#{tid}",
-                "action": "a person merges",
+                "action": "a person merges, after reading the notes"
+                if mn["notes"] or any("comment" in r for r in mn["reviews"])
+                else "a person merges",
             }
         )
     recent = [{**e, "link": _owner_link(e)} for e in reversed(store.timeline(limit=25))]
