@@ -20,7 +20,7 @@ GREEN, RED, AMBER, PURPLE, TEAL, BLUE = (
 
 def _svg(w: int, h: int, body: str, title: str = "") -> str:
     t = f"<title>{escape(title)}</title>" if title else ""
-    return f'<svg viewBox="0 0 {w} {h}" width="100%" height="{h}" preserveAspectRatio="none" role="img" style="display:block;overflow:visible">{t}{body}</svg>'
+    return f'<svg viewBox="0 0 {w} {h}" width="100%" height="{h}" role="img" style="display:block;overflow:visible">{t}{body}</svg>'
 
 
 def sparkline(values: list[float], color: str, w: int = 220, h: int = 36, title: str = "") -> str:

@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS events (
   payload_json TEXT NOT NULL, ticket_id TEXT
 );
 CREATE TABLE IF NOT EXISTS tickets (
-  id TEXT PRIMARY KEY, source TEXT NOT NULL, external_ref TEXT, parent_ref TEXT,
+  id TEXT PRIMARY KEY, number INTEGER, source TEXT NOT NULL, external_ref TEXT, parent_ref TEXT,
   class TEXT, title TEXT NOT NULL, status TEXT NOT NULL,
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
   triage_verdict_json TEXT, router_decision TEXT, router_reason TEXT
@@ -170,6 +170,22 @@ class Store:
             cols = {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if "cost_usd" not in cols:
                 self.conn.execute(f"ALTER TABLE {table} ADD COLUMN cost_usd REAL")
+        for table, col, decl in (
+            ("tickets", "number", "INTEGER"),
+            ("sessions", "pr_state", "TEXT"),
+        ):
+            cols = {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            if col not in cols:
+                self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+        # a store written before ticket numbers existed: number them in the order they arrived
+        for i, r in enumerate(
+            self.conn.execute(
+                "SELECT id FROM tickets WHERE number IS NULL ORDER BY created_at, rowid"
+            ).fetchall(),
+            start=(self.conn.execute("SELECT COALESCE(MAX(number), 0) FROM tickets").fetchone()[0])
+            + 1,
+        ):
+            self.conn.execute("UPDATE tickets SET number=? WHERE id=?", (i, r[0]))
         for old, new in STEP_RENAMES.items():
             self.conn.execute("UPDATE timeline SET layer=? WHERE layer=?", (new, old))
         self.conn.commit()
@@ -278,10 +294,13 @@ class Store:
         if router_decision is not None:
             assert router_decision in ROUTES, router_decision
         ts = now()
+        number = (self.get_ticket(id) or {}).get("number") or (
+            self.conn.execute("SELECT COALESCE(MAX(number), 0) + 1 FROM tickets").fetchone()[0]
+        )
         self.conn.execute(
-            """INSERT INTO tickets (id, source, external_ref, parent_ref, class, title, status,
+            """INSERT INTO tickets (id, number, source, external_ref, parent_ref, class, title, status,
                  created_at, updated_at, triage_verdict_json, router_decision, router_reason)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(id) DO UPDATE SET title=excluded.title, status=excluded.status,
                  external_ref=COALESCE(excluded.external_ref, tickets.external_ref),
                  class=COALESCE(excluded.class, tickets.class), updated_at=excluded.updated_at,
@@ -290,6 +309,7 @@ class Store:
                  router_reason=COALESCE(excluded.router_reason, tickets.router_reason)""",
             (
                 id,
+                number,
                 source,
                 external_ref,
                 parent_ref,

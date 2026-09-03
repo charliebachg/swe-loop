@@ -96,7 +96,7 @@ def test_tickets_page_groups_by_source(client):
     assert html.count("/tickets-page?open=tkt_") >= 5
     assert "Merged by a person." in html  # the one-line summary per ticket
     pipe = c.get("/tickets-page?view=pipeline").text
-    assert "right now" in pipe and 'title="intake' in pipe
+    assert "right now" in pipe and 'title="Scoped:' in pipe
 
 
 def test_tracker_rows_stages_and_merge(client):
@@ -109,7 +109,7 @@ def test_tracker_rows_stages_and_merge(client):
     assert "Routed to a person" in html  # E
     # the strip: A has every stage done including merge
     a = html.split('id="tkt_A"')[1].split("</summary>")[0]
-    assert a.count("done") >= 7
+    assert a.count("done") >= 3  # four steps, and the last is the merge
     # record a merge through the form
     r = c.post(
         "/tickets/tkt_D/merge-form",

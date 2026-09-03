@@ -151,10 +151,9 @@ def _ticket_row(store: Store, t: dict[str, Any]) -> dict[str, Any]:
     sites = len(verdict.get("sites", [])) or sum(len(w["files"]) for w in wos)
     n_sessions = sum(len(store.sessions_for(w["id"])) for w in wos)
     num, url = _issue(t)
-    letter = t["id"].removeprefix("tkt_")[:1] if t["id"].startswith("tkt_") else ""
     return {
         "id": t["id"],
-        "letter": letter if letter in "ABCDE" else "",
+        "number": t.get("number"),
         "issue": num,
         "issue_url": url,
         "title": t["title"],

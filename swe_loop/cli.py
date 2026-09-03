@@ -75,6 +75,19 @@ def cmd_seed(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_automation(args: argparse.Namespace) -> int:
+    """The Run button, from a terminal: the same chain, the same code."""
+    from swe_loop import pages, runner
+
+    settings, cfg, store, client = _ctx()
+    pages.seed_automations(store, cfg)
+    pages.seed_playbooks(store, cfg)
+    if not settings.live:
+        print("mode=replay: sessions are simulated and the gate is skipped", file=sys.stderr)
+    print(json.dumps(runner.run_automation(settings, cfg, store, client, args.id, log=print)))
+    return 0
+
+
 def cmd_reset_shard(args: argparse.Namespace) -> int:
     from swe_loop.rerun import reset_shard
 
@@ -484,6 +497,9 @@ def main(argv: list[str] | None = None) -> int:
         help="<devin session id or prefix>=<usd from the console>; repeatable",
     )
     co.set_defaults(fn=cmd_cost)
+    au = sub.add_parser("automation")
+    au.add_argument("--id", default="auto_repair", help="which automation to run")
+    au.set_defaults(fn=cmd_automation)
     rs = sub.add_parser("reset-shard")
     rs.add_argument("--shard", required=True, help="the shard letter, e.g. D")
     rs.add_argument("--no-push", action="store_true", help="restore in the local clone only")

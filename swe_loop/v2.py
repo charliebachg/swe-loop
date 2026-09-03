@@ -52,6 +52,32 @@ STG = [
     ("review", "devin"),
     ("merge", "person"),
 ]
+# What a reader sees: four steps, each folding the internal ones behind it.
+STG4 = [
+    ("Scoped", "devin", (0, 1, 2), "read, understood, and a plan written"),
+    ("Fixed", "devin", (3, 4), "code changed and a pull request opened"),
+    ("Verified", "gate", (5, 6), "the same tests re-run on a clean copy, then reviewed"),
+    ("Merged", "person", (7,), "merged by a person, never automatically"),
+]
+
+
+def fold4(pat: str) -> str:
+    """The eight internal states become the four a person reads. A blocked step wins, then all
+    done, then anything in progress."""
+    out = []
+    for _name, _actor, idx, _note in STG4:
+        chars = [pat[i] for i in idx if i < len(pat)]
+        if "b" in chars:
+            out.append("b")
+        elif chars and all(c == "d" for c in chars):
+            out.append("d")
+        elif "n" in chars:
+            out.append("n")
+        else:
+            out.append("-")
+    return "".join(out)
+
+
 PAGES = {
     "home": ("Home", "/"),
     "automations": ("Automations", "/automations"),
@@ -152,21 +178,24 @@ def url(path: str, **q: Any) -> str:
     return path + ("?" + urlencode(q) if q else "")
 
 
-def letter(ticket_id: str) -> str:
-    return ticket_id.removeprefix("tkt_")[:2]
+def ref(number: Any) -> str:
+    """How a ticket is named on screen: a number a person can read out."""
+    try:
+        return f"#{int(number):05d}"
+    except (TypeError, ValueError):
+        return "#-----"
 
 
 def tk_color(ticket_id: str) -> str:
-    L = letter(ticket_id)
-    if L in TK:
-        return TK[L]
-    return _TK_MORE[sum(map(ord, L)) % len(_TK_MORE)]
+    """A stable colour per ticket, from the id itself, so any source works."""
+    return _TK_MORE[sum(map(ord, ticket_id)) % len(_TK_MORE)]
 
 
-def dot(ticket_id: str, done: bool) -> dict[str, Any]:
+def dot(store: Store, ticket_id: str, done: bool) -> dict[str, Any]:
     c = tk_color(ticket_id)
+    t = store.get_ticket(ticket_id) or {}
     return {
-        "L": letter(ticket_id),
+        "ref": ref(t.get("number")),
         "color": c,
         "dotBg": c if done else "#fff",
         "dotFg": "#fff" if done else c,
@@ -702,11 +731,11 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
             if pos not in covers:
                 continue
             st = pat[pos]
-            d = dot(t["id"], st == "d")
+            d = dot(store, t["id"], st == "d")
             issue = (
                 (t.get("external_ref") or "").rsplit("#", 1)[-1]
                 if t.get("external_ref") and "#" in t["external_ref"]
-                else letter(t["id"])
+                else ""
             )
             state = (
                 "done here"
@@ -716,11 +745,12 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
             dots.append(
                 {
                     **d,
-                    "L": f"#{issue}" if issue.isdigit() else issue,
+                    "L": d["ref"],
                     "bg": d["dotBg"],
                     "fg": d["dotFg"],
                     "ring": d["color"],
-                    "title": f"#{issue} {t.get('title', '')[:70]} · {state}",
+                    "title": f"{d['ref']} {t.get('title', '')[:70]} · {state}"
+                    + (f" · issue #{issue}" if issue else ""),
                     "go": url("/tickets-page", open=t["id"]),
                 }
             )
@@ -742,7 +772,8 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         kind = "ok" if n["kind"] == "ready to merge" else "bad"
         needs.append(
             {
-                **dot(n["ticket_id"], False),
+                **dot(store, n["ticket_id"], False),
+                "ticket": n["ticket_id"],
                 "kind": n["kind"],
                 **pill(kind),
                 "reason": n["reason"],
@@ -824,7 +855,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
     ]
     short_needs = []
     for n in needs:
-        tid = n["L"] if n["L"].startswith("tkt_") else f"tkt_{n['L']}"
+        tid = n["ticket"]
         t = store.get_ticket(tid) or {}
         what = (t.get("title") or "")[:64]
         if n["kind"] == "ready to merge":
@@ -893,7 +924,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         )
         inbox.append(
             {
-                **dot(e["ticket_id"], False),
+                **dot(store, e["ticket_id"], False),
                 "kind": KIND_PLAIN.get(e["kind"], e["kind"]),
                 **pill("bad"),
                 "what": (t.get("title") or e["reason"])[:70],
@@ -909,7 +940,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         mn = reduce_mod.merge_notes(store, tid)
         inbox.append(
             {
-                **dot(tid, False),
+                **dot(store, tid, False),
                 "kind": KIND_PLAIN["ready to merge"],
                 **pill("ok"),
                 "what": (
@@ -950,7 +981,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         if x["devin_session_id"] and not x["terminal_at"]:
             inflight.append(
                 {
-                    **dot(x["ticket_id"], False),
+                    **dot(store, x["ticket_id"], False),
                     "ticket": x["ticket_id"],
                     "stage": "scoping",
                     "elapsed": ops._elapsed(x["created_at"], None),
@@ -974,7 +1005,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         stage = STAGE_PLAIN[_pos(pat)][0]
         inflight.append(
             {
-                **dot(tid, False),
+                **dot(store, tid, False),
                 "ticket": tid,
                 "stage": stage,
                 "elapsed": ops._elapsed(x["created_at"], None),
@@ -1062,7 +1093,7 @@ def _age(iso: str | None) -> str:
 
 
 def _sparklines(store: Store, rng: str = "run") -> list[dict[str, Any]]:
-    """Three small series over the run's own span in 24 equal bins: sessions started, ACU,
+    """Three small series over the run's own span in 24 equal bins: sessions started, spend,
     gate passes (fails in the title). The span is the run's own, so replay draws what live drew."""
     from datetime import timedelta
 
@@ -1103,7 +1134,7 @@ def _sparklines(store: Store, rng: str = "run") -> list[dict[str, Any]]:
         empty = charts.sparkline([], PURPLE)
         return [
             {"label": k, "svg": empty, "span": "no sessions yet", "last": "0"}
-            for k in ("sessions started", "ACU", "gate passes")
+            for k in ("sessions started", "ACU" if metered else "AI minutes", "checks passed")
         ]
     now_ = datetime.now(UTC)
     if rng == "24h":
@@ -1150,10 +1181,10 @@ def _sparklines(store: Store, rng: str = "run") -> list[dict[str, Any]]:
             "last": f"{sum(a_bins):.1f}",
         },
         {
-            "label": "gate passes",
+            "label": "checks passed",
             "svg": charts.bars(g_bins, labels, TEAL, unit="passes"),
             "span": span,
-            "last": f"{int(sum(g_bins))} pass · {fails} fail",
+            "last": f"{int(sum(g_bins))} passed · {fails} failed",
         },
     ]
 
@@ -1290,7 +1321,7 @@ def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
         el = (sd or {}).get("elapsed") or ""
         since = f", {el} so far" if el else ""
         return f"The AI is working on the fix{since}. Open the session to watch."
-    if st == "gated":
+    if st in ("gated", "reviewed"):
         if verdict and verdict.get("gate_result") != "pass":
             return "Checks failed: " + (verdict.get("reason") or "see the receipts")[:150]
         if row.get("ready"):
@@ -1533,32 +1564,45 @@ def tracker(
         verdict = sd["verdict"] if sd and sd.get("verdict") else None
         claim = sd["claim"] if sd and isinstance(sd.get("claim"), dict) else {}
         passed_t1 = [e for e in (sd["evidence"] if sd else []) if e["tier"] == "T1"]
+        checks = (
+            f"{sum(1 for e in passed_t1 if e['passed'])} of {len(passed_t1)}" if passed_t1 else ""
+        )
+        review = (
+            _review_short(verdict["review_severity"])
+            if verdict and verdict.get("review_severity")
+            else ""
+        )
+        p4 = fold4(pat)
+        sites = (
+            len((json.loads(t["triage_verdict_json"]) or {}).get("sites") or [])
+            if t.get("triage_verdict_json")
+            else 0
+        )
         labels = [
-            "wo",
-            "verdict" if t.get("triage_verdict_json") else ("waiting" if pat[1] == "b" else ""),
-            ("devin" if r["route"] == "devin" else ("person" if r["route"] else "")),
-            ("refused" if pat[3] == "b" else ("reserved" if sd else "")),
-            _spent(sd)[0],
             (
-                f"{sum(1 for e in passed_t1 if e['passed'])}/{len(passed_t1)}"
-                + (f" r{sd['retries']}" if sd and sd["retries"] else "")
-                if passed_t1
-                else ""
+                "your team"
+                if p4[0] == "b"
+                else (f"{sites} place{'s' if sites != 1 else ''}" if sites else "")
             ),
             (
-                _review_short(verdict["review_severity"])
-                if verdict and verdict.get("review_severity")
-                else ""
+                "no fix"
+                if p4[1] == "b"
+                else (
+                    "PR #" + (sd["pr_url"] or "").rsplit("/", 1)[-1]
+                    if sd and sd.get("pr_url")
+                    else ""
+                )
             ),
-            ("person" if r["merged"] else ("waiting" if r["ready"] else "")),
+            (checks + (f" · {review}" if checks and review else review)),
+            ("you" if r["merged"] else ("ready" if r["ready"] else "")),
         ]
         cells = []
-        for i, (name, actor) in enumerate(STG):
-            st = pat[i]
+        for i, (name, actor, _idx, note) in enumerate(STG4):
+            st = p4[i]
             col = ACT[actor][0]
             cells.append(
                 {
-                    "title": f"{name} · {ACT[actor][2]} · {STATE_NAME[st]}"
+                    "title": f"{name}: {note} · {STATE_NAME[st]}"
                     + (f" · {labels[i]}" if labels[i] else ""),
                     "h": "22px",
                     "label": labels[i],
@@ -1586,7 +1630,7 @@ def tracker(
         state_kind = _status_kind(sd["status"], sd["status_detail"], True) if sd else "na"
         rows.append(
             {
-                **dot(r["id"], r["merged"]),
+                **dot(store, r["id"], r["merged"]),
                 "id": r["id"],
                 "issue": f"#{r['issue']}" if r.get("issue") else "",
                 "issueUrl": r.get("issue_url") or "#",
@@ -1657,7 +1701,11 @@ def tracker(
         )
     return {
         "fifty": False,
-        "stageHead": [{"name": n, "actor": ACT[a][2], "color": ACT[a][0]} for n, a in STG],
+        "stageHead": [
+            {"name": n, "actor": ACT[a][2], "color": ACT[a][0], "note": note}
+            for n, a, _i, note in STG4
+        ],
+        "legend": [{"label": ACT[k][2], "color": ACT[k][0]} for k in ("devin", "gate", "person")],
         "trackerCount": str(len(rows)),
         "trackerRows": rows,
     }
@@ -1698,7 +1746,7 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
         gate = s.get("gate")
         rows.append(
             {
-                **dot(s["ticket"], False),
+                **dot(store, s["ticket"], False),
                 "id": (s.get("devin_id") or s["id"])[:12],
                 "url": s.get("url") or "#",
                 "tk": s["ticket"],
@@ -2328,7 +2376,7 @@ def report(
         issue = t["external_ref"].rsplit("#", 1)[-1] if t.get("external_ref") else ""
         board.append(
             {
-                **dot(t["id"], t["status"] == "merged"),
+                **dot(store, t["id"], t["status"] == "merged"),
                 "issue": f"#{issue}" if issue else "",
                 "classes": (t.get("class") or "").replace(",", ", "),
                 "route": t.get("router_decision") or "",

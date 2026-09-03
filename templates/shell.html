@@ -16,7 +16,7 @@ document.addEventListener("mouseover", function (e) {
 });
 </script>
 
-<style>.bar{transition:opacity .12s}.bar:hover{opacity:.7}</style>
+<style>svg rect,svg circle{transition:opacity .12s}svg rect:hover,svg circle:hover{opacity:.7;cursor:default}</style>
 <style>/* legacy page styles */
 
   :root { --ink:#1a222d; --muted:#5a6574; --rule:#dfe3e9; --ground:#f4f5f7; --surface:#fff; --accent:#2c5ba6; --accent-soft:#e7eef9;
@@ -56,7 +56,7 @@ document.addEventListener("mouseover", function (e) {
   .tl .t { font:11px "IBM Plex Mono", monospace; color:var(--muted); margin-right:8px } .tl .d { color:var(--muted) }
   .chk { border:1px solid var(--rule); border-radius:6px; padding:10px 12px } .chk .k { font:11px "IBM Plex Mono", monospace; color:var(--muted) } .chk .v { font-weight:500; margin:2px 0 } .chk .c { font:11px "IBM Plex Mono", monospace; color:var(--pass) } .chk.missing .c { color:var(--fail) } .chk.skipped .c { color:var(--na) }
   .grid3 { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px } @media (max-width:1000px) { .grid3 { grid-template-columns:1fr } }
-  .tk { border-left:4px solid var(--accent) } .tk.A { border-color:#2c5ba6 } .tk.B { border-color:#4f9a6b } .tk.C { border-color:#c48a3a } .tk.D { border-color:#8a5fb5 } .tk.E { border-color:#b4452e }
+  .tk { border-left:4px solid var(--accent) }
   .empty { padding:14px; color:var(--muted) }
   pre.sql, pre.code { background:#eef1f5; padding:8px 10px; font-size:11px; overflow-x:auto; border-radius:4px; margin:6px 0 0; white-space:pre-wrap }
   details summary { cursor:pointer; color:var(--accent); font-size:12.5px }
