@@ -95,9 +95,9 @@ def test_dispatch_reserves_before_start_and_is_idempotent(tmp_path):
     assert s["devin_session_id"].startswith("fake-") and s["status"] == "new"
     assert st.get_ticket("tkt_D")["status"] == "dispatched"
     assert st.get_work_order(wo["id"])["status"] == "dispatched"
-    # the row was created before the API call: reserve is call 0 in our store, create_session is the transport's first call
-    assert client.t.calls[0][0] == "create_session"
-    sent = client.t.calls[0][1]
+    # order on the wire: the tag pre-check, then the create. The store row already existed before either.
+    assert [k for k, _ in client.t.calls][:2] == ["list_sessions", "create_session"]
+    sent = client.t.calls[1][1]
     assert sent["max_acu_limit"] == 6 and sent["repos"] == ["charliebachg/superset"]
     # dispatching again while the session is live returns the same row
     assert dispatch(st, client, wo, CFG) == sid

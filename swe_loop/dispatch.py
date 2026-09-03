@@ -158,7 +158,9 @@ def dispatch(
     sid = store.reserve_session(
         work_order_id=wo["id"], playbook_id=playbook_id, tags=list(spec.tags), attempt=attempt
     )
-    state = client.start(spec)
+    # v3 has no idempotency flag: if a live session already carries this shard's tags, adopt it
+    live = client.find_live([spec.tags[0], f"shard:{wo['shard_id']}"])
+    state = live if live else client.start(spec)
     store.bind_devin_session(
         sid, devin_session_id=state.session_id, url=state.url, status=state.status or "new"
     )

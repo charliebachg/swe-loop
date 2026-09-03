@@ -113,6 +113,7 @@ class SessionState:
 class Transport(Protocol):
     def create_session(self, payload: dict[str, Any]) -> dict[str, Any]: ...
     def get_session(self, session_id: str) -> dict[str, Any]: ...
+    def list_sessions(self, tags: list[str] | None = None) -> list[dict[str, Any]]: ...
     def send_message(self, session_id: str, text: str) -> dict[str, Any]: ...
     def terminate(self, session_id: str, archive: bool = True) -> dict[str, Any]: ...
     def list_insights(self, session_ids: list[str] | None = None) -> list[dict[str, Any]]: ...
@@ -165,6 +166,22 @@ class HttpTransport:
 
     def get_session(self, session_id: str) -> dict[str, Any]:
         return self._req("GET", f"/sessions/{session_id}")
+
+    def list_sessions(self, tags: list[str] | None = None) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        cursor = None
+        while True:
+            params: dict[str, Any] = {"limit": 100}
+            if tags:
+                params["tags"] = ",".join(tags)
+            if cursor:
+                params["cursor"] = cursor
+            page = self._req("GET", "/sessions", params=params)
+            items += page.get("items", [])
+            if not page.get("has_next_page"):
+                break
+            cursor = page.get("end_cursor")
+        return items
 
     def send_message(self, session_id: str, text: str) -> dict[str, Any]:
         return self._req("POST", f"/sessions/{session_id}/messages", json={"message": text})
@@ -291,6 +308,21 @@ class FakeTransport:
             state = {**state, "status": "exit", "status_detail": "finished"}
         return {"session_id": session_id, "url": s["fixture"]["url"], **state}
 
+    def list_sessions(self, tags: list[str] | None = None) -> list[dict[str, Any]]:
+        self.calls.append(("list_sessions", tags))
+        out = []
+        want = set(tags or [])
+        for sid, s in self._sessions.items():
+            have = set(s["created"].get("tags", []))
+            if want and not want <= have:
+                continue
+            tl = s["fixture"]["timeline"]
+            state = tl[min(max(s["i"] - 1, 0), len(tl) - 1)]
+            out.append(
+                {"session_id": sid, "url": s["fixture"]["url"], "tags": sorted(have), **state}
+            )
+        return out
+
     def send_message(self, session_id: str, text: str) -> dict[str, Any]:
         self.calls.append(("send_message", (session_id, text)))
         self._sessions[session_id]["messages"].append(text)
@@ -350,6 +382,14 @@ class DevinClient:
 
     def status(self, session_id: str) -> SessionState:
         return SessionState.from_raw(self.t.get_session(session_id))
+
+    def find_live(self, tags: list[str]) -> SessionState | None:
+        """Live-mode idempotency: v3 dropped `idempotent`, so pre-check by tags."""
+        for raw in self.t.list_sessions(tags):
+            st = SessionState.from_raw(raw)
+            if not st.terminal:
+                return st
+        return None
 
     def message(self, session_id: str, text: str) -> None:
         self.t.send_message(session_id, text)
