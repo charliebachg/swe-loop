@@ -101,6 +101,88 @@ def cmd_record(args: argparse.Namespace) -> int:
     return 0
 
 
+def _pending_reviews(store: Store) -> int:
+    row = store._one(
+        "SELECT COUNT(*) AS n FROM verdicts v JOIN sessions s ON s.id = v.session_id "
+        "WHERE v.review_severity LIKE 'requested%' AND s.pull_request_url IS NOT NULL"
+    )
+    return int(row["n"]) if row else 0
+
+
+def _tickets_with_remarks(store: Store) -> list[tuple[str, str]]:
+    """(ticket, verdict id) for every unmerged ticket whose latest verdict is a completed review
+    that left remarks and has not been followed up yet."""
+    rows = store._all(
+        "SELECT w.ticket_id, v.id AS vid, v.review_severity FROM verdicts v "
+        "JOIN sessions s ON s.id = v.session_id JOIN work_orders w ON w.id = s.work_order_id "
+        "JOIN tickets t ON t.id = w.ticket_id "
+        "WHERE t.status != 'merged' AND v.id IN (SELECT id FROM verdicts v2 "
+        "WHERE v2.session_id = v.session_id ORDER BY v2.created_at DESC LIMIT 1)"
+    )
+    out: list[tuple[str, str]] = []
+    for r in rows:
+        sev = r["review_severity"] or ""
+        remarks = sev.startswith("completed:") and "no issues" not in sev and "comment" in sev
+        done = store.get_setting(f"followup.done.{r['vid']}")
+        if remarks and not done and r["ticket_id"] not in [t for t, _ in out]:
+            out.append((r["ticket_id"], r["vid"]))
+    return out
+
+
+def settle_reviews(
+    settings: Settings,
+    cfg: TargetConfig,
+    store: Store,
+    client: DevinClient,
+    *,
+    log=print,
+    sleep=time.sleep,
+    clock=time.monotonic,
+) -> dict:
+    """Wait for every requested Devin Review to finish and read it back, so a ticket reaches
+    "ready for you" in the run that produced its PR. When the seam says followup: auto and a
+    review left remarks, send them back to the session that opened the PR, re-gate the revised
+    PR and wait for its review, up to max_rounds times. Bounded by review.wait_s per round."""
+    rv = cfg.review or {}
+    wait_s = float(rv.get("wait_s", 900))
+    auto = str(rv.get("followup", "manual")) == "auto"
+    max_rounds = int(rv.get("max_rounds", 1))
+    out = {"read_back": 0, "followups": 0, "timed_out": False}
+    rounds = 0
+    deadline = clock() + wait_s
+    while True:
+        if _pending_reviews(store):
+            out["read_back"] += refresh_reviews(store, client, settings.github_token)
+            if _pending_reviews(store):
+                if clock() > deadline:
+                    out["timed_out"] = True
+                    store.log(
+                        "review",
+                        "still running; read back on the next run",
+                        detail=f"waited {wait_s:.0f} s",
+                    )
+                    break
+                sleep(30)
+                continue
+        if not auto or rounds >= max_rounds:
+            break
+        todo = _tickets_with_remarks(store)
+        if not todo:
+            break
+        from swe_loop.followup import review_followup
+
+        for tid, vid in todo:
+            store.set_setting(f"followup.done.{vid}", "1")
+            res = review_followup(
+                store, client, cfg, tid, settings.github_token, log=lambda m: None
+            )
+            log(f"{tid}: review follow-up {res.get('kind')}")
+            out["followups"] += 1
+        rounds += 1
+        deadline = clock() + wait_s
+    return out
+
+
 def run_once(
     settings: Settings,
     cfg: TargetConfig,
@@ -162,9 +244,7 @@ def run_once(
             poller.enforce_budget()
     detect_conflicts(store)
     if not fast:
-        n_rev = refresh_reviews(store, client, settings.github_token)
-        if n_rev:
-            log(f"{n_rev} Devin Review result(s) read back")
+        out["reviews"] = settle_reviews(settings, cfg, store, client, log=log)
     store.set_setting("automation.repair.last_run", now())
     store.set_setting("automation.repair.last_result", json.dumps(out))
     log(json.dumps(summary(store)))

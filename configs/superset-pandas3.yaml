@@ -51,6 +51,15 @@ triage:
   # what the triage session reads besides the ticket: the measured inventory, published with this repository
   inventory_url: https://raw.githubusercontent.com/charliebachg/swe-loop/main/data/inventory/2026-09-03/inventory.json
 
+review:
+  # After the gate passes a PR, Devin Review is requested. One run waits this long for it to finish
+  # and reads the result back, so the ticket reaches "ready for you" in the same run.
+  wait_s: 900
+  # auto: the review's remarks go back to the session that opened the PR, and the revised PR is
+  # gated and reviewed again, once. manual: a person runs `review-followup` when they choose.
+  followup: auto
+  max_rounds: 1
+
 rerun:
   # Reset a shard for a live rerun: its files go back to this commit (the base branch before any fix
   # landed), the old repair branch is deleted, and the store forgets the ticket. The issue stays open.
