@@ -1,0 +1,17 @@
+<div class="drawer">
+  <h3 style="margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Session {{ d.session.devin_session_id or d.session.id }} <span class="mono" style="text-transform:none;letter-spacing:0">{{ d.ticket.id if d.ticket else '' }} · shard {{ d.work_order.shard_id if d.work_order else '' }}</span></h3>
+  <div class="grid2">
+    <div>
+      <b>Timeline</b>
+      <div class="tl">{% for e in d.timeline %}<div class="{{ e.layer.split(' ')[0] }}"><span class="t">{{ e.at[11:19] }}</span><b>{{ e.layer }}</b> {{ e.event }}{% if e.detail %} <span class="d">{{ e.detail[:140] }}</span>{% endif %}</div>{% else %}<div>nothing yet</div>{% endfor %}</div>
+    </div>
+    <div>
+      <b>Structured output</b> <span class="foot">the session's own claim, recorded next to the gate's result</span>
+      <pre class="code">{{ d.structured_output | tojson(indent=1) if d.structured_output else "none yet" }}</pre>
+      <b>Verdicts</b>
+      <table>{% for v in d.verdicts %}<tr><td class="mono">{{ v.created_at[11:19] }}</td><td><span class="pill {{ 'p-ok' if v.gate_result == 'pass' else 'p-bad' }}">{{ v.gate_result }}</span> → {{ v.decision }}</td><td class="wrap" style="color:var(--muted)">{{ v.reason[:140] }}</td></tr>{% else %}<tr><td class="empty">no verdict yet</td></tr>{% endfor %}</table>
+      <b>Evidence</b>
+      <table>{% for e in d.evidence %}<tr><td class="mono">{{ e.tier }}</td><td class="mono wrap">{{ e.command[:100] }}</td><td>{% if e.passed %}<span class="pill p-ok">0</span>{% else %}<span class="pill p-bad">{{ e.exit_code }}</span>{% endif %}</td><td class="mono" style="color:var(--muted)">{{ e.tree_hash[:10] }}</td></tr>{% else %}<tr><td class="empty">no evidence yet</td></tr>{% endfor %}</table>
+    </div>
+  </div>
+</div>

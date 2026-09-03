@@ -124,3 +124,26 @@ def test_tracker_rows_stages_and_merge(client):
     )
     assert st.get_ticket("tkt_E")["status"] == "escalated"
     assert c.get("/partials/tracker").status_code == 200
+
+
+def test_sessions_page_eta_parent_and_drawer(client):
+    c, st = client
+    html = c.get("/devin/sessions").text
+    assert "fake-001" in html and "Issues on the fork" in html
+    assert "not exercised in this run" in html  # Managed Devins, honestly
+    assert "single" in html and "done" in html
+    # a live session gets an estimate from the finished ones (give them a real elapsed time)
+    st.conn.execute(
+        "UPDATE sessions SET terminal_at = datetime(created_at, '+25 minutes') WHERE terminal_at IS NOT NULL"
+    )
+    wo = st.work_orders_for("tkt_D")[0]
+    sid = st.reserve_session(work_order_id=wo["id"], playbook_id=None, tags=["swe-loop"])
+    st.bind_devin_session(
+        sid, devin_session_id="devin-live", url="https://app.devin.ai/sessions/x", status="running"
+    )
+    html = c.get("/partials/sessions").text
+    assert "est." in html and "left" in html
+    first = st._all("SELECT id FROM sessions ORDER BY rowid LIMIT 1")[0]["id"]
+    d = c.get(f"/partials/session/{first}").text
+    assert "Timeline" in d and "Structured output" in d and "self_reported_done" in d
+    assert c.get("/partials/session/nope").status_code == 404

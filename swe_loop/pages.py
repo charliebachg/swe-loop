@@ -339,3 +339,95 @@ def tracker(store: Store) -> dict[str, Any]:
         )
         rows.append(row)
     return {"rows": rows, "stage_names": [n for n, _ in STAGES]}
+
+
+# ---------------------------------------------------------------------------- sessions
+def _seconds(start: str | None, end: str | None) -> float | None:
+    from datetime import UTC, datetime
+
+    if not start:
+        return None
+    try:
+        a = datetime.fromisoformat(start)
+        b = datetime.fromisoformat(end) if end else datetime.now(UTC)
+    except ValueError:
+        return None
+    a = a if a.tzinfo else a.replace(tzinfo=UTC)
+    b = b if b.tzinfo else b.replace(tzinfo=UTC)
+    return (b - a).total_seconds()
+
+
+def _fmt(secs: float | None) -> str:
+    if secs is None:
+        return ""
+    secs = int(secs)
+    if secs < 90:
+        return f"{secs}s"
+    if secs < 5400:
+        return f"{secs // 60}m"
+    return f"{secs // 3600}h {(secs % 3600) // 60:02d}m"
+
+
+def sessions(store: Store, cfg: TargetConfig) -> dict[str, Any]:
+    o = ops.build(store)
+    rows = store._all("SELECT * FROM sessions ORDER BY created_at DESC, rowid DESC")
+    by_id = {r["id"]: r for r in rows}
+    ticket_of: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        wo = store.get_work_order(r["work_order_id"])
+        ticket_of[r["id"]] = store.get_ticket(wo["ticket_id"]) if wo else {}
+    # ETA reference: median elapsed of finished sessions, by size then overall
+    finished = [
+        r
+        for r in rows
+        if r["terminal_at"] and r["status"] == "exit" and r["status_detail"] == "finished"
+    ]
+    by_size: dict[str, list[float]] = {}
+    for r in finished:
+        secs = _seconds(r["created_at"], r["terminal_at"])
+        if secs is not None:
+            by_size.setdefault((r["session_size"] or "").upper(), []).append(secs)
+            by_size.setdefault("*", []).append(secs)
+
+    def median(xs: list[float]) -> float | None:
+        xs = sorted(xs)
+        return xs[len(xs) // 2] if xs else None
+
+    devin_children: dict[str, list[str]] = {}
+    for r in rows:
+        if r["parent_session_id"]:
+            devin_children.setdefault(r["parent_session_id"], []).append(
+                r["devin_session_id"] or r["id"]
+            )
+    out = []
+    for s in o["sessions"]:
+        r = by_id[s["id"]]
+        t = ticket_of.get(s["id"], {})
+        live = r["devin_session_id"] and not r["terminal_at"]
+        ref = median(by_size.get((r["session_size"] or "").upper(), [])) or median(
+            by_size.get("*", [])
+        )
+        if live and ref is not None and ref >= 60:
+            elapsed = _seconds(r["created_at"], None)
+            eta = f"est. {_fmt(max(ref - (elapsed or 0), 0))} left"
+        elif live:
+            eta = f"cap {cfg.max_acu_limit} ACU · no completed session to estimate from"
+        else:
+            eta = "done"
+        out.append(
+            {
+                **s,
+                "source": SOURCE_LABELS.get(t.get("source", ""), (t.get("source", ""), ""))[0],
+                "parent": r["parent_session_id"],
+                "children": devin_children.get(r["devin_session_id"] or "", []),
+                "eta": eta,
+                "created": (r["created_at"] or "")[11:19],
+            }
+        )
+    managed = any(r["parent_session_id"] for r in rows)
+    return {
+        "sessions": out,
+        "counts": o["counts"],
+        "managed": managed,
+        "eta_basis": {k: _fmt(median(v)) for k, v in by_size.items()},
+    }

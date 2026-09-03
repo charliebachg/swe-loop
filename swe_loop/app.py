@@ -166,6 +166,25 @@ def build_app(
                 pass  # not ready: the re-rendered row says why
         return TEMPLATES.TemplateResponse(request, "tracker_body.html", {"tr": pages.tracker(st)})
 
+    @app.get("/devin/sessions", response_class=HTMLResponse)
+    def sessions_page(request: Request) -> HTMLResponse:
+        return _render(
+            request, "sessions.html", "sessions", ss=pages.sessions(request.app.state.store, cfg)
+        )
+
+    @app.get("/partials/sessions", response_class=HTMLResponse)
+    def sessions_partial(request: Request) -> HTMLResponse:
+        return TEMPLATES.TemplateResponse(
+            request, "sessions_body.html", {"ss": pages.sessions(request.app.state.store, cfg)}
+        )
+
+    @app.get("/partials/session/{sid}", response_class=HTMLResponse)
+    def session_drawer(sid: str, request: Request) -> HTMLResponse:
+        d = ops.session_detail(request.app.state.store, sid)
+        if not d:
+            raise HTTPException(status_code=404)
+        return TEMPLATES.TemplateResponse(request, "session_drawer.html", {"d": d})
+
     @app.get("/board", response_class=HTMLResponse)
     def board_page(request: Request) -> HTMLResponse:
         o = ops.build(request.app.state.store)

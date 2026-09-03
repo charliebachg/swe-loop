@@ -1,0 +1,12 @@
+{% extends "shell.html" %}
+{% block title %}Sessions{% endblock %}
+{% block head %}<style>
+  .drawer { border:1px solid var(--rule); border-radius:8px; background:var(--surface); padding:14px 16px; margin-top:10px }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px } @media (max-width:1000px) { .grid2 { grid-template-columns:1fr } }
+  tr.sel td { background:var(--accent-soft) }
+</style>{% endblock %}
+{% block content %}
+<p class="lede">Every Devin session as Devin sees it: status, ACU against the cap, size from Session Insights, parent and children when a coordinator delegated, an estimate of time left, and which ticket and source it came from. The pipeline view of the same work is the <a href="/tracker">Tracker</a>.</p>
+<div id="sessions-live" hx-get="/partials/sessions" hx-trigger="every 5s" hx-swap="innerHTML">{% include "sessions_body.html" %}</div>
+<div id="drawer"></div>
+{% endblock %}

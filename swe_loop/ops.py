@@ -4,7 +4,7 @@ just happened. Reads the ticket store and the timeline; nothing else."""
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from swe_loop.store import Store
@@ -54,9 +54,11 @@ def _elapsed(start: str | None, end: str | None) -> str:
         return ""
     try:
         a = datetime.fromisoformat(start)
-        b = datetime.fromisoformat(end) if end else datetime.now(a.tzinfo)
+        b = datetime.fromisoformat(end) if end else datetime.now(UTC)
     except ValueError:
         return ""
+    a = a if a.tzinfo else a.replace(tzinfo=UTC)
+    b = b if b.tzinfo else b.replace(tzinfo=UTC)
     secs = int((b - a).total_seconds())
     if secs < 90:
         return f"{secs}s"
