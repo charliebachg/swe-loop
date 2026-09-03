@@ -1,0 +1,42 @@
+# A second seam, to prove the pipeline has nothing target-specific in its code.
+# Hypothetical: a Python service where Dependabot opened a requests 3 bump.
+name: widgets-requests3
+repo: acme/widgets
+upstream: acme/widgets
+base_branch: dependabot/pip/requests-3.0.0
+default_branch: main
+language: python
+
+trigger:
+  source: github
+  event: pull_request
+  actions: [opened, synchronize]
+  match:
+    author: dependabot[bot]
+    head_ref_prefix: dependabot/pip/
+  issue_label: swe-loop
+
+detector:
+  kind: pytest-warnings
+  python: .venv/bin/python
+  env: {PYTHONHASHSEED: "0"}
+  args: [-q, -W, "error::DeprecationWarning"]
+  scope: [tests]
+
+acceptance:
+  command: ".venv/bin/python -m pytest -q -W error::DeprecationWarning {tests}"
+
+router:
+  max_files_per_shard: 2
+  max_call_sites_per_shard: 4
+  forbidden_paths: [tests/, .github/]
+  coverage_100_paths: []
+  human_only_classes: []
+  test_only_rows_to: human
+
+session:
+  max_acu_limit: 4
+  playbook: playbooks/repair-generic.md
+  tags_prefix: swe-loop
+  pr_title_prefix: "fix(deps)"
+  version_range: ">=2.31, <4"
