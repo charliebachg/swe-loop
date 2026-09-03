@@ -89,7 +89,9 @@ def test_playbooks_list_detail_and_add(client):
     html = c.get("/devin/playbooks").text
     names = [p["name"] for p in st.list_playbooks()]
     assert names[:2] == ["triage-pandas3", "repair-pandas3"] and len(names) == 3
-    assert "Add a playbook" in html and "Forbidden Actions" in html  # first playbook opens
+    assert "Add playbook" in html and "the instructions a session follows" in html
+    opened = c.get("/devin/playbooks?open=pb_repair").text
+    assert "Forbidden Actions" in opened and "the shape its answer must have" in opened
     d = c.get("/partials/playbook/pb_repair").text
     assert "Procedure" in d and "structured output schema" in d
     assert c.get("/partials/playbook/nope").status_code == 404
@@ -99,7 +101,7 @@ def test_playbooks_list_detail_and_add(client):
         "&schema=%7B%22type%22%3A%22object%22%2C%22properties%22%3A%7B%22ok%22%3A%7B%22type%22%3A%22boolean%22%7D%7D%7D"
     )
     r = c.post("/devin/playbooks", content=body, headers=FORM)
-    assert r.status_code == 200 and "QA in the running app" in r.text
+    assert r.status_code == 200 and "qa-in-app" in r.text
     added = next(p for p in st.list_playbooks() if p["name"] == "qa-in-app")
     assert added["source"] == "user" and added["schema"]["properties"] == {
         "ok": {"type": "boolean"}
@@ -111,7 +113,7 @@ def test_playbooks_list_detail_and_add(client):
         == 400
     )
     r = c.post("/devin/playbooks", content="name=&body=", headers=FORM)
-    assert r.status_code == 200 and "name is required; nothing was saved" in r.text
+    assert r.status_code == 200 and "a name and a body are required" in r.text
 
 
 def test_tickets_summary_filters_and_detail(client):

@@ -549,7 +549,7 @@ def frame(settings: Settings, cfg: TargetConfig, store: Store, active: str) -> d
         "spentLabel": (
             f"ACU spent · cap {per_label} per session"
             if sp["metered"]
-            else f"spent · Devin's limit {per_label} ACU per session"
+            else "spent, every session counted"
         ),
         "costHead": "ACU of cap" if sp["metered"] else "cost · AI minutes",
         "perSession": f"{b['per_session_cap']:.0f}"
@@ -1857,9 +1857,6 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
         if drawer_id
         else {"timeline": [], "evidence": [], "verdicts": []}
     )
-    basis = " · ".join(
-        f"{k if k != '*' else 'all'} {v}" for k, v in (ss.get("eta_basis") or {}).items()
-    )
     return {
         "now": _now(ss["counts"]),
         "perSession": f"{cap:.0f}",
@@ -2148,11 +2145,12 @@ def _sections(body: str) -> list[dict[str, Any]]:
         elif line.lstrip()[:1].isdigit() and ". " in line.lstrip()[:4]:
             cur["items"].append(line.lstrip().split(". ", 1)[1].strip())
             cur["ordered"] = True
+        elif raw[:1] in (" ", "\t") and cur["items"]:
+            cur["items"][-1] += " " + line.strip()  # a wrapped line of the item above
+        elif cur["paras"] and not cur["items"] and not cur["paras"][-1].endswith("."):
+            cur["paras"][-1] += " " + line.strip()
         else:
-            if cur["paras"] and not cur["items"] and not cur["paras"][-1].endswith("."):
-                cur["paras"][-1] += " " + line.strip()
-            else:
-                cur["paras"].append(line.strip())
+            cur["paras"].append(line.strip())
     for s in out:
         s["ordered"] = bool(s["ordered"] and s["items"])
         s["unordered"] = bool(not s["ordered"] and s["items"])
@@ -2167,104 +2165,92 @@ def playbooks(
     err: bool = False,
     name: str = "",
 ) -> dict[str, Any]:
+    """The instructions each kind of session follows, laid out like the automations that use
+    them: a list you add to, and a row that opens on what it says."""
     p = pages.playbooks(store, cfg, client)
-    sel = q.get("sel") or (p["rows"][0]["id"] if p["rows"] else None)
+    open_ids = {x for x in (q.get("open") or "").split(",") if x}
+    add_open = q.get("add") == "1" or err
+    schema_for, out_for = q.get("schema") or "", q.get("out") or ""
     rows = []
     for r in p["rows"]:
         is_next = r["availability"] == "next"
         actor = "next" if is_next else "devin"
+        is_open = r["id"] in open_ids
+        others = (open_ids - {r["id"]}) if is_open else (open_ids | {r["id"]})
+        d = pages.playbook_detail(store, r["id"]) or {}
+        fields = d.get("schema_fields") or []
+        keep = {"open": ",".join(sorted(others)) or None}
         rows.append(
             {
                 "id": r["id"],
                 "title": r["title"],
-                "chip": "next" if is_next else r["agent"],
+                "slug": r["name"],
+                "chip": "next version" if is_next else r["agent"],
                 "chipBg": ACT[actor][1],
                 "chipFg": ACT[actor][0],
-                "meta": f"{r['name']} · {len(r['sections'])} sections · schema: {len(r['schema_fields'])} fields · Devin's limit {int(r['max_acu']) if r.get('max_acu') else '·'} ACU · {r['source']}"
-                + (" · on the org" if r.get("org_id") else ""),
+                "meta": f"{len(r['sections'])} sections · used by {r['used_by']}"
+                + (
+                    f" · Devin's limit {int(r['max_acu'])} ACU per session"
+                    if r.get("max_acu")
+                    else ""
+                ),
                 "usedBy": r["used_by"],
                 "usedGo": r["used_by_link"],
                 "opacity": ".72" if is_next else "1",
-                "bg": "#eef2f9" if r["id"] == sel else "#fff",
-                "shadow": "inset 3px 0 0 #2457a8" if r["id"] == sel else "none",
-                "select": url("/devin/playbooks", sel=r["id"]),
+                "open": is_open,
+                "chev": "▲" if is_open else "▼",
+                "bg": "#faf9f6" if is_open else "#fff",
+                "toggle": url("/devin/playbooks", **keep),
+                "isNext": is_next,
+                "nextNote": (
+                    (
+                        d.get("body", "").split("## Overview", 1)[-1].split("##", 1)[0].strip()
+                        if "## Overview" in d.get("body", "")
+                        else d.get("body", "")[:400]
+                    )
+                    + " It runs when the Scan automation is switched on; nothing runs before that."
+                )
+                if is_next
+                else "",
+                "sections": _sections(d.get("body", "")) if not is_next else [],
+                "fields": " · ".join(fields),
+                "schemaOpen": schema_for == r["id"],
+                "schemaLabel": (
+                    "hide the shape" if schema_for == r["id"] else "the shape its answer must have"
+                )
+                + (f" · {len(fields)} fields" if fields else ""),
+                "toggleSchema": url(
+                    "/devin/playbooks",
+                    open=",".join(sorted(open_ids | {r["id"]})),
+                    schema=None if schema_for == r["id"] else r["id"],
+                    out=out_for or None,
+                ),
+                "schemaJson": json.dumps(d.get("schema"), indent=1)
+                if d.get("schema")
+                else "no shape recorded",
+                "outOpen": out_for == r["id"],
+                "outLabel": "hide the last answer"
+                if out_for == r["id"]
+                else "the last answer a session gave",
+                "toggleOut": url(
+                    "/devin/playbooks",
+                    open=",".join(sorted(open_ids | {r["id"]})),
+                    out=None if out_for == r["id"] else r["id"],
+                    schema=schema_for or None,
+                ),
+                "outJson": json.dumps(d.get("last_output"), indent=1)
+                if d.get("last_output")
+                else "no session has answered against this shape yet",
             }
         )
-    d = pages.playbook_detail(store, sel) if sel else None
-    pb: dict[str, Any] = {
-        "slug": "",
-        "title": "No playbook selected",
-        "chip": "",
-        "chipBg": PL["na"][1],
-        "chipFg": PL["na"][0],
-        "meta": "",
-        "hasBody": False,
-        "isNext": False,
-        "nextNote": "",
-        "sections": [],
-        "fields": "",
-        "schemaLabel": "",
-        "schemaOpen": False,
-        "toggleSchema": "/devin/playbooks",
-        "schemaJson": "",
-        "outLabel": "",
-        "outOpen": False,
-        "toggleOut": "/devin/playbooks",
-        "outJson": "",
-        "outNote": "",
-    }
-    if d:
-        is_next = d["availability"] == "next"
-        actor = "next" if is_next else "devin"
-        schema_open, out_open = q.get("schema") == "1", q.get("out") == "1"
-        fields = d.get("schema_fields") or []
-        pb = {
-            "slug": d["name"],
-            "title": d.get("title") or d["name"],
-            "chip": "next" if is_next else d["agent"],
-            "chipBg": ACT[actor][1],
-            "chipFg": ACT[actor][0],
-            "meta": f"Devin's limit {int(d['max_acu']) if d.get('max_acu') else '·'} ACU · source {d['source']} · updated {d['updated_at'][:16].replace('T', ' ')}",
-            "hasBody": not is_next,
-            "isNext": is_next,
-            "nextNote": (
-                d["body"].split("## Overview", 1)[-1].split("##", 1)[0].strip()
-                if "## Overview" in d["body"]
-                else d["body"][:400]
-            )
-            + " It runs when the Scan automation is enabled; nothing runs before that.",
-            "sections": _sections(d["body"]),
-            "fields": " · ".join(fields),
-            "schemaLabel": ("hide the schema" if schema_open else "structured output schema")
-            + (f" · {len(fields)} fields" if fields else ""),
-            "schemaOpen": schema_open,
-            "toggleSchema": url(
-                "/devin/playbooks",
-                sel=sel,
-                schema=None if schema_open else "1",
-                out="1" if out_open else None,
-            ),
-            "schemaJson": json.dumps(d.get("schema"), indent=1) if d.get("schema") else "no schema",
-            "outLabel": "hide the last output"
-            if out_open
-            else "last output received against this schema",
-            "outOpen": out_open,
-            "toggleOut": url(
-                "/devin/playbooks",
-                sel=sel,
-                out=None if out_open else "1",
-                schema="1" if schema_open else None,
-            ),
-            "outJson": json.dumps(d.get("last_output"), indent=1)
-            if d.get("last_output")
-            else "none yet",
-            "outNote": "the last output received against this schema"
-            if d.get("last_output")
-            else "no session has returned output against this schema yet",
-        }
     return {
         "pbRows": rows,
-        "pb": pb,
+        "addOpen": add_open,
+        "addUrl": url(
+            "/devin/playbooks",
+            add=None if add_open else "1",
+            open=",".join(sorted(open_ids)) or None,
+        ),
         "pbErr": err,
         "pbName": name,
         "pbNameBorder": PL["bad"][0] if err else "#d6d2c9",
