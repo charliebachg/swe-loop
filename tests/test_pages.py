@@ -32,7 +32,7 @@ def test_home_shows_now_needs_you_and_recent(client):
     assert "Needs you" in html and "What just happened" in html
     assert "tkt_E" in html and "needs your team" in html  # the escalation
     assert "ready to ship" in html  # C and D passed and were reviewed
-    assert "RECORDED RUN" in html and "charliebachg/superset" in html
+    assert "RECORDED RUN" not in html and "charliebachg/superset" in html and "Backstop" in html
     assert "\u2014" not in html  # no em dashes
     assert c.get("/partials/home").status_code == 200
 

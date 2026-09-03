@@ -38,8 +38,8 @@ def test_home_tiles_inbox_and_next_trigger(client):
         and ">Dismiss<" in html
         and "ready to ship" in html
     )
-    assert "the AI is idle · it starts again on a pull request on charliebachg/superset" in html
-    assert html.count("<svg") == 3  # the trends live inside the tiles
+    assert "the AI is idle" not in html and "scoped by the AI" in html and "verified" in html
+    assert html.count('class="bar"') >= 24  # the trends live inside the tiles as bars
     assert "—" not in html
 
 

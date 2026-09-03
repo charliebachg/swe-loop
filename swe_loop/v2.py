@@ -84,6 +84,28 @@ STAGE_PLAIN = [
     ("reviewed by the AI reviewer", "a second reading of the change", "review"),
     ("shipped by your team", "merged by a person, never automatic", "merge"),
 ]
+# The five steps a newcomer needs, and which of the eight internal stages each one covers.
+STAGE5 = [
+    ("issues received", "filed on the repository", (0,)),
+    ("scoped by the AI", "read, understood, a plan written; who fixes it decided", (1, 2, 3)),
+    ("fix written", "code changed, tests run by the AI, a pull request opened", (4,)),
+    (
+        "verified",
+        "the same tests re-run on a clean copy, then a second reading by the AI reviewer",
+        (5, 6),
+    ),
+    ("shipped by your team", "merged by a person, never automatic", (7,)),
+]
+STAGE5_ACTOR = ["code", "devin", "devin", "gate", "person"]
+BRAND = "Backstop"
+SIZE_HOURS = {"XS": 0.5, "S": 1.0, "M": 3.0, "L": 8.0, "XL": 20.0}
+HUMAN_HELP = (
+    "Engineer time for the same change, estimated from the triage verdict's size class per fix "
+    "(XS half an hour, S one hour, M three hours, L eight, XL twenty). Cognition measures AI output in "
+    "productive engineering hours, the time a human would need for the same result, and found raw model "
+    "estimates undercount by about 2x (h = 2.28 m^0.923); METR's time-horizon scale likewise rates tasks by "
+    "the time experts need. This figure is the raw size estimate, not adjusted."
+)
 KIND_PLAIN = {
     "human_only": "needs your team",
     "refuse": "not for the AI",
@@ -389,6 +411,7 @@ def frame(settings: Settings, cfg: TargetConfig, store: Store, active: str) -> d
         "navDevin": nav_devin,
         "pageTitle": PAGES.get(active, (active.title(), ""))[0],
         "pageStep": step,
+        "brand": BRAND,
         "modeLabel": "LIVE" if live else "RECORDED RUN",
         "modeHelp": "connected to the Devin organisation; sessions are real"
         if live
@@ -396,7 +419,7 @@ def frame(settings: Settings, cfg: TargetConfig, store: Store, active: str) -> d
         "acuHelp": ACU_HELP if sp["metered"] else _cost_help(sp),
         "modeBg": PL["ok"][1] if live else PL["run"][1],
         "modeFg": PL["ok"][0] if live else PL["run"][0],
-        "modeSmall": "live" if live else "replay",
+        "modeSmall": "",
         "modeSideFg": "#5fc08a" if live else "#e0b45a",
         "modeSentence": "Live mode:" if live else "Replay mode:",
         "modeNote": "every number below comes from sessions on the org"
@@ -543,7 +566,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
     reviewed = [s for s in sess if (store.latest_verdict(s["id"]) or {}).get("review_severity")]
     merged = [t for t in tickets if t["status"] == "merged"]
     ready = h["summary"]["ready"]
-    loop_counts = [
+    [
         (len(tickets), f"{len(tickets)} issue{'s' if len(tickets) != 1 else ''} filed"),
         (len(verdicts), f"{len(verdicts)} plan{'s' if len(verdicts) != 1 else ''} written"),
         (len(decided), f"{len(to_devin)} to the AI · {len(to_person)} to your team"),
@@ -559,14 +582,40 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         (len(reviewed), f"{len(reviewed)} reviewed"),
         (len(merged), f"{len(merged)} shipped · {len(ready)} waiting for you"),
     ]
+    fixed_sessions = [
+        x
+        for x in sess
+        if x["terminal_at"] and x["status_detail"] in ("finished", "waiting_for_user")
+    ]
+    verified_sessions = [
+        x for x in passed if (store.latest_verdict(x["id"]) or {}).get("review_severity")
+    ]
+    counts5 = [
+        (len(tickets), f"{len(tickets)} issue{'s' if len(tickets) != 1 else ''} filed"),
+        (
+            len(verdicts),
+            f"{len(verdicts)} plan{'s' if len(verdicts) != 1 else ''} · {len(to_devin)} to the AI · {len(to_person)} to your team",
+        ),
+        (
+            len(fixed_sessions),
+            f"{len(fixed_sessions)} pull request{'s' if len(fixed_sessions) != 1 else ''} opened",
+        ),
+        (
+            len(verified_sessions),
+            f"{len(passed)} passed the tests · {len(verified_sessions)} reviewed",
+        ),
+        (len(merged), f"{len(merged)} shipped · {len(ready)} waiting for you"),
+    ]
     loop = []
-    for i, (name, actor) in enumerate(STG):
+    for i, (name, meaning, covers) in enumerate(STAGE5):
+        actor = STAGE5_ACTOR[i]
         dots = []
         for t in tickets:
             pat = pats[t["id"]]
-            if _pos(pat) != i:
+            pos = _pos(pat)
+            if pos not in covers:
                 continue
-            st = pat[i]
+            st = pat[pos]
             d = dot(t["id"], st == "d")
             issue = (
                 (t.get("external_ref") or "").rsplit("#", 1)[-1]
@@ -589,17 +638,16 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                     "go": url("/tracker", open=t["id"]),
                 }
             )
-        plain, meaning, internal = STAGE_PLAIN[i]
         loop.append(
             {
-                "name": plain,
+                "name": name,
                 "meaning": meaning,
-                "internal": internal,
+                "internal": " · ".join(STAGE_PLAIN[k][2] for k in covers),
                 "actor": ACTOR_PLAIN[actor],
                 "color": ACT[actor][0],
-                "count": str(loop_counts[i][0]),
-                "context": loop_counts[i][1],
-                "numColor": PL["person"][0] if i == 7 else INK,
+                "count": str(counts5[i][0]),
+                "context": counts5[i][1],
+                "numColor": PL["person"][0] if i == 4 else INK,
                 "dots": dots,
             }
         )
@@ -623,6 +671,10 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
     on, off = ("#e2e9f6", "#2457a8"), ("transparent", "#8f97a3")
     b = store.budget_state()
     sp0 = cost.spend(store)
+    human_hours = 0.0
+    for x in passed:
+        wo = store.get_work_order(x["work_order_id"]) or {}
+        human_hours += SIZE_HOURS.get(str(wo.get("est_size") or "S").upper(), 1.0)
     conc = next((r["concurrency"] for r in store.list_automations() if r["kind"] == "repair"), 4)
     gate_n = len(passed)
     gate_total = sum(1 for x in sess if store.latest_verdict(x["id"]))
@@ -663,6 +715,9 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                 "label": "AI cost" if sp0["usd"] is not None else "AI working time",
                 "color": INK,
                 "help": _cost_help(sp0),
+                "human": human_hours,
+                "humanHelp": HUMAN_HELP
+                + f" Here: {len(passed)} fix(es) that passed the tests, {human_hours:g} h in total; the AI worked {sp0['active_min']:.0f} minutes for them.",
                 "pct": None,
             }
         ),
@@ -692,7 +747,8 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                 f" · {len(mn['notes'])} note(s)" if mn["notes"] else ""
             )
         short_needs.append({**n, "what": what or n["reason"][:64], "hover": n["reason"]})
-    spark = _sparklines(store)
+    rng = q.get("range", "run")
+    spark = _sparklines(store, rng)
     issue_no = {
         t["id"]: ("#" + t["external_ref"].rsplit("#", 1)[-1])
         for t in tickets
@@ -855,6 +911,12 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
     )
     return {
         "tiles": tiles,
+        "range": rng,
+        "ranges": [
+            ("run", "this run", url("/")),
+            ("24h", "24h", url("/", range="24h")),
+            ("7d", "7d", url("/", range="7d")),
+        ],
         "inbox": inbox,
         "inflight": inflight,
         "nextTrigger": next_trigger,
@@ -905,7 +967,7 @@ def _age(iso: str | None) -> str:
     return f"{secs // 86400}d"
 
 
-def _sparklines(store: Store) -> list[dict[str, Any]]:
+def _sparklines(store: Store, rng: str = "run") -> list[dict[str, Any]]:
     """Three small series over the run's own span in 24 equal bins: sessions started, ACU,
     gate passes (fails in the title). The span is the run's own, so replay draws what live drew."""
     from datetime import timedelta
@@ -949,44 +1011,53 @@ def _sparklines(store: Store) -> list[dict[str, Any]]:
             {"label": k, "svg": empty, "span": "no sessions yet", "last": "0"}
             for k in ("sessions started", "ACU", "gate passes")
         ]
-    lo, hi = min(times), max(times)
-    if (hi - lo).total_seconds() < 3600:
-        hi = lo + timedelta(hours=1)
-    bins = 24
+    now_ = datetime.now(UTC)
+    if rng == "24h":
+        lo, hi, bins = now_ - timedelta(hours=24), now_, 24
+    elif rng == "7d":
+        lo, hi, bins = now_ - timedelta(days=7), now_, 28
+    else:
+        lo, hi = min(times), max(times)
+        if (hi - lo).total_seconds() < 3600:
+            hi = lo + timedelta(hours=1)
+        bins = 24
     width = (hi - lo).total_seconds() / bins
 
     def bucket(t: datetime) -> int:
-        return min(bins - 1, int((t - lo).total_seconds() // width))
+        return max(0, min(bins - 1, int((t - lo).total_seconds() // width)))
+
+    labels = [(lo + timedelta(seconds=width * i)).strftime("%d %b %H:%M") for i in range(bins)]
 
     s_bins, a_bins, g_bins = [0.0] * bins, [0.0] * bins, [0.0] * bins
     fails = 0
     for t, acu in starts:
-        s_bins[bucket(t)] += 1
-        a_bins[bucket(t)] += acu
+        if lo <= t <= hi:
+            s_bins[bucket(t)] += 1
+            a_bins[bucket(t)] += acu
     for t, g in verdicts:
+        if not (lo <= t <= hi):
+            continue
         if g == "pass":
             g_bins[bucket(t)] += 1
         else:
             fails += 1
-    span = f"{lo.strftime('%H:%M')} to {hi.strftime('%H:%M')}"
+    span = f"{lo.strftime('%d %b %H:%M')} to {hi.strftime('%d %b %H:%M')}"
     return [
         {
             "label": "sessions started",
-            "svg": charts.sparkline(s_bins, PURPLE, title="sessions started per bin"),
+            "svg": charts.bars(s_bins, labels, PURPLE, unit="sessions"),
             "span": span,
             "last": str(int(sum(s_bins))),
         },
         {
             "label": "ACU" if metered else "active minutes",
-            "svg": charts.sparkline(
-                a_bins, INK, title="ACU per bin" if metered else "active minutes per bin"
-            ),
+            "svg": charts.bars(a_bins, labels, INK, unit="ACU" if metered else "min"),
             "span": span,
             "last": f"{sum(a_bins):.1f}",
         },
         {
             "label": "gate passes",
-            "svg": charts.sparkline(g_bins, TEAL, title=f"gate passes per bin; {fails} fail(s)"),
+            "svg": charts.bars(g_bins, labels, TEAL, unit="passes"),
             "span": span,
             "last": f"{int(sum(g_bins))} pass · {fails} fail",
         },

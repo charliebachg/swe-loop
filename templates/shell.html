@@ -16,6 +16,7 @@ document.addEventListener("mouseover", function (e) {
 });
 </script>
 
+<style>.bar{transition:opacity .12s}.bar:hover{opacity:.7}</style>
 <style>/* legacy page styles */
 
   :root { --ink:#1a222d; --muted:#5a6574; --rule:#dfe3e9; --ground:#f4f5f7; --surface:#fff; --accent:#2c5ba6; --accent-soft:#e7eef9;
@@ -65,19 +66,30 @@ document.addEventListener("mouseover", function (e) {
 {% block head %}{% endblock %}
 </head>
 <body hx-boost="false">
+{% macro icon(name, color) %}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{ color }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none">{% if name == 'Home' %}<path d="M3 11l9-8 9 8v9a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2z"/>{% endif %}{% if name == 'Automations' %}<path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z"/>{% endif %}{% if name == 'Tickets' %}<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>{% endif %}{% if name == 'Tracker' %}<path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>{% endif %}{% if name == 'Report' %}<path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/>{% endif %}{% if name == 'Sessions' %}<path d="M4 17l6-6-6-6"/><path d="M12 19h8"/>{% endif %}{% if name == 'Playbooks' %}<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>{% endif %}{% if name == 'Knowledge' %}<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>{% endif %}{% if name == 'Insights' %}<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>{% endif %}{% if name == 'Review' %}<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/>{% endif %}{% if name == 'Integrations' %}<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8H6v5a6 6 0 0 0 12 0V8z"/>{% endif %}{% if name == 'Next' %}<path d="M12 3l1.9 5.8L20 10.7l-4.6 3.6L16.9 21 12 17.6 7.1 21l1.5-6.7L4 10.7l6.1-1.9z"/>{% endif %}</svg>{% endmacro %}
 
 
 <div style="display:grid;grid-template-columns:232px 1fr;min-height:100vh;min-width:1200px;background:#f3f1ec">
   <aside style="background:#14181f;color:#c8ccd3;position:sticky;top:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column;padding:22px 0 18px">
-    <div style="padding:0 22px 20px;display:flex;align-items:baseline;gap:9px"><span style="font:700 17px/1 'Instrument Sans',system-ui,sans-serif;color:#fff;letter-spacing:-.01em">swe-loop</span><span style="font:11px/1 'JetBrains Mono',monospace;color:{{ modeSideFg }}">{{ modeSmall }}</span></div>
-    <div style="margin:0 22px 8px;font:500 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#6c7380">The journey</div>
+    <details style="margin:0 14px 14px;position:relative">
+      <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:7px 8px;border:1px solid #2a3340;border-radius:8px;color:#c8ccd3;font:12px/1.2 'JetBrains Mono',monospace" title="the repository this instance watches">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b93a0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ repo }}</span><span style="margin-left:auto;color:#6c7380">▾</span>
+      </summary>
+      <div style="position:absolute;left:0;right:0;top:38px;z-index:6;background:#1f2530;border:1px solid #2a3340;border-radius:8px;padding:8px;font-size:12px;color:#c8ccd3;box-shadow:0 8px 24px rgba(0,0,0,.35)">
+        <div style="font:500 10.5px/1.4 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6c7380;margin-bottom:6px">repositories</div>
+        <div style="padding:6px 8px;border-radius:6px;background:#242e3b;display:flex;align-items:center;gap:8px"><span style="width:7px;height:7px;border-radius:4px;background:#2e9a6a"></span>{{ repo }}<span style="margin-left:auto;font:10.5px/1 'JetBrains Mono',monospace;color:#8b93a0">{{ branch }}</span></div>
+        <div style="padding:8px 8px 2px;color:#8b93a0">Add a repository <span style="font:10px/1 'JetBrains Mono',monospace;color:#6c7380">later</span></div>
+      </div>
+    </details>
+    <div style="padding:0 22px 16px;display:flex;align-items:baseline;gap:9px"><span style="font:700 17px/1 'Instrument Sans',system-ui,sans-serif;color:#fff;letter-spacing:-.01em">{{ brand }}</span></div>
     {% for n in nav %}
-      <a href="{{ n.href }}" style="display:flex;align-items:center;gap:12px;padding:8px 22px;font-size:13.5px;color:{{ n.color }};background:{{ n.bg }};box-shadow:{{ n.shadow }}" data-hover="background:#1f2530;text-decoration:none"><span style="width:18px;height:18px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font:500 10px/1 'JetBrains Mono',monospace;flex:none;background:{{ n.numBg }};color:{{ n.numFg }};border:1px solid {{ n.numBorder }}">{{ n.num }}</span>{{ n.label }}</a>
+      <a href="{{ n.href }}" style="display:flex;align-items:center;gap:12px;padding:8px 22px;font-size:13.5px;color:{{ n.color }};background:{{ n.bg }};box-shadow:{{ n.shadow }}" data-hover="background:#1f2530;text-decoration:none">{{ icon(n.label, n.color) }}{{ n.label }}</a>
     {% endfor %}
     <div style="border-top:1px solid #242b36;margin:14px 22px"></div>
     <div style="margin:0 22px 8px;font:500 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#6c7380">Devin</div>
     {% for n in navDevin %}
-      <a href="{{ n.href }}" title="{{ n.title }}" style="display:flex;align-items:center;gap:12px;padding:7px 22px;font-size:13.5px;color:{{ n.color }};background:{{ n.bg }};box-shadow:{{ n.shadow }}" data-hover="background:#1f2530;text-decoration:none"><span style="width:18px;display:inline-flex;justify-content:center;flex:none"><span style="width:7px;height:7px;border-radius:4px;background:{{ n.dotBg }};border:{{ n.dotBorder }}"></span></span>{{ n.label }}<span style="margin-left:auto;font:10px/1 'JetBrains Mono',monospace;color:#6c7380">{{ n.tag }}</span></a>
+      <a href="{{ n.href }}" title="{{ n.title }}" style="display:flex;align-items:center;gap:12px;padding:7px 22px;font-size:13.5px;color:{{ n.color }};background:{{ n.bg }};box-shadow:{{ n.shadow }}" data-hover="background:#1f2530;text-decoration:none">{{ icon(n.label, n.color) }}{{ n.label }}<span style="margin-left:auto;font:10px/1 'JetBrains Mono',monospace;color:#6c7380">{{ n.tag }}</span></a>
     {% endfor %}
     <div style="flex:1"></div>
     <a href="/settings" style="display:flex;align-items:center;gap:12px;padding:8px 22px;font-size:13px;color:#8b93a0" data-hover="background:#1f2530;text-decoration:none;color:#c8ccd3"><span style="width:18px;display:inline-flex;justify-content:center;font-size:14px;line-height:1">⚙</span>Settings<span style="margin-left:auto;font:10px/1 'JetBrains Mono',monospace;color:#6c7380">our side</span></a>
@@ -88,8 +100,7 @@ document.addEventListener("mouseover", function (e) {
       <span style="font:500 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#8f97a3">{{ pageStep }}</span>
       <h1 style="font:600 19px/1 'Instrument Sans',system-ui,sans-serif;margin:0;letter-spacing:-.01em">{{ pageTitle }}</h1>
       <div style="margin-left:auto;display:flex;align-items:center;gap:14px;font:12px/1 'JetBrains Mono',monospace;color:#626b78;white-space:nowrap">
-        <span title="{{ modeHelp }}" style="padding:3px 8px;border-radius:5px;font-weight:600;letter-spacing:.06em;background:{{ modeBg }};color:{{ modeFg }}">{{ modeLabel }}</span>
-        <span>{{ repo }}</span><span style="color:#c9c5bb">/</span><span>{{ branch }}</span>
+        <span title="{{ modeHelp }}">{{ repo }}</span><span style="color:#c9c5bb">/</span><span>{{ branch }}</span>
         <span style="display:flex;align-items:center;gap:8px;padding-left:14px;border-left:1px solid #e2dfd8"><span style="width:96px;height:6px;background:#e2dfd8;border-radius:3px;overflow:hidden"><span style="display:block;height:100%;width:{{ acuPct }}%;background:#7a4fb5;min-width:3px"></span></span><span title="{{ acuHelp }}"><span style="color:#14181f;font-weight:600">{{ acuSpent }}</span> / {{ acuCap }} ACU ⓘ</span></span>
       </div>
     </div>

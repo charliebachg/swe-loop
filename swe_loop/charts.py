@@ -213,3 +213,36 @@ def stage_durations(
     rows: list[dict[str, Any]],
 ) -> str:  # pragma: no cover - reserved for the Tracker pass
     return ""
+
+
+def bars(
+    values: list[float], labels: list[str], color: str, w: int = 220, h: int = 44, unit: str = ""
+) -> str:
+    """Bars with a hover title per bin, the way a usage page draws them. Zero bins are drawn as a
+    faint dash so the axis stays legible."""
+    n = len(values)
+    if n == 0:
+        return _svg(w, h, f'<line x1="0" y1="{h - 2}" x2="{w}" y2="{h - 2}" stroke="{RULE}"/>')
+    top = max(values) or 1.0
+    gap = 2.0
+    bw = max((w - gap * (n - 1)) / n, 1.0)
+    out = []
+    for i, v in enumerate(values):
+        x = i * (bw + gap)
+        bh = (h - 6) * v / top
+        label = labels[i] if i < len(labels) else ""
+        shown = (
+            f"{v:.2f}"
+            if unit == "$"
+            else (f"{v:.1f}" if isinstance(v, float) and v != int(v) else f"{int(v)}")
+        )
+        if v > 0:
+            out.append(
+                f'<rect class="bar" x="{x:.1f}" y="{h - 2 - bh:.1f}" width="{bw:.1f}" height="{bh:.1f}" rx="1.5" fill="{color}">'
+                f"<title>{escape(label)}: {shown}{' ' + unit if unit and unit != '$' else ''}{'$' if unit == '$' else ''}</title></rect>"
+            )
+        else:
+            out.append(
+                f'<rect class="bar" x="{x:.1f}" y="{h - 4}" width="{bw:.1f}" height="2" rx="1" fill="{GREY}"><title>{escape(label)}: 0</title></rect>'
+            )
+    return _svg(w, h, "".join(out))

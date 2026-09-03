@@ -1,12 +1,14 @@
 {% extends "shell.html" %}{% block title %}Home{% endblock %}{% block content %}
 {# ---- five numbers, each against something, the trend inside #}
+<div style="display:flex;justify-content:flex-end;gap:2px;margin:-6px 0 4px;font:11px/18px 'JetBrains Mono',monospace">{% for key, label, href in ranges %}<a href="{{ href }}" hx-get="{{ href }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="padding:0 8px;border-radius:4px;color:{{ '#2457a8' if key == range else '#8f97a3' }};background:{{ '#e2e9f6' if key == range else 'transparent' }}">{{ label }}</a>{% endfor %}</div>
 <div style="display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid #e2dfd8;border-bottom:1px solid #e2dfd8;padding:12px 0;margin-bottom:20px">
   {% for f in tiles %}
   <div style="padding:0 18px;{% if not loop.first %}border-left:1px solid #e2dfd8{% endif %};min-width:0">
     <div style="display:flex;align-items:baseline;gap:6px"><span style="font:600 24px/1.05 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:{{ f.color }}">{{ f.n }}</span><span style="font:11px/1.3 'JetBrains Mono',monospace;color:#8f97a3">{{ f.of }}</span></div>
     <div style="font-size:12px;color:#626b78;margin-top:2px"{% if f.help %} title="{{ f.help }}"{% endif %}>{{ f.label }}{% if f.help %} <span style="color:#8f97a3">ⓘ</span>{% endif %}</div>
+    {% if f.human is defined and f.human %}<div style="font-size:12px;color:#14181f;margin-top:4px" title="{{ f.humanHelp }}">≈ <b>{{ '%g' | format(f.human) }} h</b> of engineer work <span style="color:#8f97a3">ⓘ</span></div>{% endif %}
     {% if f.pct is not none %}<div style="height:4px;background:#e9e7e1;border-radius:3px;overflow:hidden;margin-top:8px"><span style="display:block;height:100%;width:{{ f.pct }}%;background:#7a4fb5;min-width:2px"></span></div>{% endif %}
-    {% if f.svg %}<div style="margin-top:8px;height:28px">{{ f.svg | replace('height="36"', 'height="28"') | safe }}</div>{% endif %}
+    {% if f.svg %}<div style="margin-top:8px;height:44px">{{ f.svg | safe }}</div>{% endif %}
     {% if f.note %}<div style="font:10px/1.3 'JetBrains Mono',monospace;color:#8f97a3;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.note }}</div>{% endif %}
   </div>
   {% endfor %}
@@ -54,17 +56,16 @@
   {% endif %}
 </div>
 {% endif %}
-{% if not inflight %}<div style="font:11px/1.4 'JetBrains Mono',monospace;color:#8f97a3;margin:-8px 0 16px">the AI is idle · it starts again on {{ nextTrigger }}</div>{% endif %}
 
 {# ---- the loop: eight numbers and where every ticket is #}
 <div style="display:flex;align-items:baseline;gap:12px;margin:0 0 8px">
-  <span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Where each issue is</span><span style="font-size:12px;color:#8f97a3">{{ ticketWord }} · hover a step or an issue for what it means</span>
+  <span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">Where each issue is</span><span style="font-size:12px;color:#8f97a3">{{ ticketWord }}</span>
   <a href="{{ goTracker }}" style="margin-left:auto;font-size:12.5px">Tracker →</a>
 </div>
-<div style="background:#fff;border:1px solid #e2dfd8;border-radius:12px;padding:0 6px 12px;display:grid;grid-template-columns:repeat(8,1fr);margin-bottom:20px">
+<div style="background:#fff;border:1px solid #e2dfd8;border-radius:12px;padding:0 6px 12px;display:grid;grid-template-columns:repeat(5,1fr);margin-bottom:20px">
   {% for st in loop %}
   <div style="padding:12px 14px 0;border-top:3px solid {{ st.color }};margin-top:-1px">
-    <div style="font:600 12px/1.3 'Instrument Sans',system-ui,sans-serif;color:#14181f;min-height:32px" title="{{ st.meaning }} (internal name: {{ st.internal }})">{{ st.name }}</div>
+    <div style="font:600 13px/1.3 'Instrument Sans',system-ui,sans-serif;color:#14181f;min-height:18px" title="{{ st.meaning }} (internal: {{ st.internal }})">{{ st.name }}</div>
     <div style="font:11px/1.3 'JetBrains Mono',monospace;color:{{ st.color }};margin-top:2px">{{ st.actor }}</div>
     <div style="font:600 26px/1.05 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;margin-top:8px;color:{{ st.numColor }}">{{ st.count }}</div>
     <div style="font-size:11.5px;color:#626b78;margin-top:2px;min-height:32px;text-wrap:pretty">{{ st.context }}</div>
