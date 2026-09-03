@@ -26,7 +26,7 @@ from swe_loop.dispatch import dispatch
 from swe_loop.gate import Gate, apply_result
 from swe_loop.knowledge import load_notes, load_playbook
 from swe_loop.poll import Poller
-from swe_loop.reduce import detect_conflicts, summary
+from swe_loop.reduce import detect_conflicts, refresh_reviews, summary
 from swe_loop.replay import record, seed
 from swe_loop.router import route_all
 from swe_loop.store import Store, now
@@ -150,6 +150,10 @@ def run_once(
                 out["escalated"] += 1
             poller.enforce_budget()
     detect_conflicts(store)
+    if not fast:
+        n_rev = refresh_reviews(store, client, settings.github_token)
+        if n_rev:
+            log(f"{n_rev} Devin Review result(s) read back")
     store.set_setting("automation.repair.last_run", now())
     store.set_setting("automation.repair.last_result", json.dumps(out))
     log(json.dumps(summary(store)))

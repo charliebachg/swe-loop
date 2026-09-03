@@ -135,3 +135,67 @@ def summary(store: Store) -> dict[str, Any]:
         ],
         "conflicts": [c for t in tickets for c in t.conflicts],
     }
+
+
+# ---------------------------------------------------------------------------- Devin Review readback
+_REVIEW_BOT = "devin-ai-integration[bot]"
+
+
+def _github_review_outcome(pr_url: str, token: str, fetch: Any = None) -> str | None:
+    """What Devin Review posted on the pull request: 'no issues' or 'N comment(s)'. None when
+    it cannot be read (no token, network)."""
+    import httpx
+
+    if not token or "/pull/" not in pr_url:
+        return None
+    owner_repo, _, num = pr_url.split("github.com/", 1)[-1].partition("/pull/")
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+    get = fetch or (lambda url: httpx.get(url, headers=headers, timeout=15).json())
+    try:
+        reviews = get(f"https://api.github.com/repos/{owner_repo}/pulls/{num}/reviews")
+        comments = get(f"https://api.github.com/repos/{owner_repo}/pulls/{num}/comments")
+    except Exception:  # noqa: BLE001 - the review stays 'completed' without detail
+        return None
+    mine = [r for r in reviews if (r.get("user") or {}).get("login") == _REVIEW_BOT]
+    if not mine:
+        return None
+    body = mine[-1].get("body") or ""
+    inline = [c for c in comments if (c.get("user") or {}).get("login") == _REVIEW_BOT]
+    if "No Issues Found" in body and not inline:
+        return "no issues"
+    return f"{len(inline)} comment(s)"
+
+
+def refresh_reviews(store: Store, client: Any, github_token: str = "", fetch: Any = None) -> int:
+    """Read back every requested Devin Review. The request happens at the gate (L6); the result
+    is read here so the Tracker and the Review page show it. Returns how many were updated."""
+    rows = store._all(
+        "SELECT v.id, v.session_id, s.pull_request_url AS pr_url, s.work_order_id FROM verdicts v "
+        "JOIN sessions s ON s.id = v.session_id WHERE v.review_severity LIKE 'requested%' "
+        "AND s.pull_request_url IS NOT NULL"
+    )
+    n = 0
+    for r in rows:
+        try:
+            state = client.t.get_pr_review(r["pr_url"])
+        except Exception as ex:  # noqa: BLE001 - leave it requested; try again next pass
+            store.log(
+                "L6 review", "status read failed", session_id=r["session_id"], detail=str(ex)[:120]
+            )
+            continue
+        if state.get("status") != "completed":
+            continue
+        outcome = _github_review_outcome(r["pr_url"], github_token, fetch)
+        label = "completed:" + (outcome or "see the pull request")
+        store.conn.execute("UPDATE verdicts SET review_severity=? WHERE id=?", (label, r["id"]))
+        store.conn.commit()
+        wo = store.get_work_order(r["work_order_id"])
+        store.log(
+            "L6 review",
+            f"Devin Review completed: {outcome or 'see the pull request'}",
+            ticket_id=wo["ticket_id"] if wo else None,
+            session_id=r["session_id"],
+            detail=f"{r['pr_url']} commit {str(state.get('commit_sha', ''))[:10]}",
+        )
+        n += 1
+    return n

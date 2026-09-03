@@ -91,7 +91,7 @@ def _steps_for(
     if verdict:
         if verdict["gate_result"] == "pass":
             done.add("gate")
-            if (verdict.get("review_severity") or "").startswith("requested"):
+            if (verdict.get("review_severity") or "").startswith(("requested", "completed")):
                 done.add("review")
         else:
             bad = "gate"

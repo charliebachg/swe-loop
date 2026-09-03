@@ -147,6 +147,7 @@ class Transport(Protocol):
     def list_knowledge_notes(self) -> list[dict[str, Any]]: ...
     def list_secrets(self) -> list[dict[str, Any]]: ...
     def create_pr_review(self, pr_url: str) -> dict[str, Any]: ...
+    def get_pr_review(self, pr_url: str) -> dict[str, Any]: ...
     def create_playbook(self, payload: dict[str, Any]) -> dict[str, Any]: ...
     def create_knowledge_note(self, payload: dict[str, Any]) -> dict[str, Any]: ...
 
@@ -258,6 +259,11 @@ class HttpTransport:
 
     def create_pr_review(self, pr_url: str) -> dict[str, Any]:
         return self._req("POST", "/pr-reviews", json={"pr_url": pr_url})
+
+    def get_pr_review(self, pr_url: str) -> dict[str, Any]:
+        """Verified live 2026-09-03: status (running | completed), repo_path, pr_number,
+        commit_sha, created_at. The findings themselves land on the pull request."""
+        return self._req("GET", "/pr-reviews", params={"pr_url": pr_url})
 
     def create_playbook(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._req("POST", "/playbooks", json=payload)
@@ -458,6 +464,14 @@ class FakeTransport:
     def create_pr_review(self, pr_url: str) -> dict[str, Any]:
         self.calls.append(("create_pr_review", pr_url))
         return {"review_id": f"rev-{len(self.calls)}", "pr_url": pr_url, "status": "queued"}
+
+    def get_pr_review(self, pr_url: str) -> dict[str, Any]:
+        self.calls.append(("get_pr_review", pr_url))
+        return {
+            "status": "completed",
+            "pr_number": int(pr_url.rsplit("/", 1)[-1]),
+            "commit_sha": "0" * 40,
+        }
 
     def create_playbook(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.calls.append(("create_playbook", payload))

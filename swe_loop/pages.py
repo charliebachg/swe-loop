@@ -286,7 +286,10 @@ def _ticket_steps(
     verdicts = [v for v in verdicts if v]
     if any(v["gate_result"] == "pass" for v in verdicts):
         done.add("gate")
-        if any((v.get("review_severity") or "").startswith("requested") for v in verdicts):
+        if any(
+            (v.get("review_severity") or "").startswith(("requested", "completed"))
+            for v in verdicts
+        ):
             done.add("review")
     elif verdicts and not live:
         bad = "gate"
