@@ -4,6 +4,7 @@ the files on disk. Nothing here calls Devin except the read-only listings in liv
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 from swe_loop import connect, ops
@@ -811,78 +812,98 @@ def playbook_detail(store: Store, pid: str) -> dict[str, Any] | None:
     }
 
 
-def knowledge(store: Store, settings: Settings) -> dict[str, Any]:
+def knowledge(store: Store, settings: Settings, cfg: TargetConfig | None = None) -> dict[str, Any]:
+    """The notes a session is given when it works on this repository, and whether any session
+    has actually pulled each one."""
     from swe_loop.knowledge import load_notes
 
-    notes = load_notes()
-    groups = {"repair sessions": [], "triage session": []}
-    for n in notes:
-        groups["repair sessions"].append(
-            {"name": n.name, "trigger": n.trigger_description, "body": n.body}
+    used = {
+        t["detail"].split("note ", 1)[-1].strip()
+        for t in store.timeline(limit=5000)
+        if t["event"] == "knowledge used" and t["detail"]
+    }
+    notes = []
+    for n in load_notes():
+        first = next((ln.strip() for ln in n.body.splitlines() if ln.strip()), "")
+        notes.append(
+            {
+                "name": n.name,
+                "trigger": n.trigger_description,
+                "summary": first[:180],
+                "body": n.body,
+                "lines": len([ln for ln in n.body.splitlines() if ln.strip()]),
+                "used": n.name in used,
+                "file": Path(n.path).name if getattr(n, "path", None) else "",
+            }
         )
-    groups["triage session"] = [
-        {
-            "name": "(inherits the repository conventions above)",
-            "trigger": "any triage session on this repository",
-            "body": "Triage reads and reasons; it needs the same conventions to judge acceptance commands, and no notes of its own yet.",
-        }
-    ]
-    accessed = (
-        "Devin lists the notes a session retrieved under Accessed Knowledge on the session page. Confirmed after the first live run; until then the notes exist on disk and are created on the org by apply-config."
-        if not settings.live
-        else "Check the session page on app.devin.ai for Accessed Knowledge; recorded here once a live session has run."
-    )
     return {
-        "groups": [{"agent": k, "notes": v} for k, v in groups.items()],
-        "accessed_note": accessed,
+        "notes": notes,
+        "count": len(notes),
+        "repo": (cfg.repo if cfg else ""),
+        "live": settings.live,
     }
 
 
 def insights(store: Store) -> dict[str, Any]:
-    from swe_loop.report import pct
+    """What Devin reports back about each session, next to what it cost us.
 
+    Devin sizes a session from XS to XL; anything at L or above means the piece was cut too
+    large and should have been split. That size is real on every plan. What Devin reports as
+    compute is 0 on a plan billed in credits, so cost here is our own measure."""
+    from swe_loop import cost as cost_mod
+
+    metered = cost_mod.spend(store)["metered"]
+    kind_rates = cost_mod.rates(store)
     rows = []
     for s in store._all(
         "SELECT * FROM sessions WHERE devin_session_id IS NOT NULL ORDER BY created_at DESC, rowid DESC"
     ):
         wo = store.get_work_order(s["work_order_id"])
         v = store.latest_verdict(s["id"])
+        usd, src = cost_mod.session_usd(store, s, "rep", kind_rates)
         rows.append(
             {
                 "id": s["id"],
                 "devin_id": s["devin_session_id"],
                 "url": s["url"],
                 "ticket": wo["ticket_id"] if wo else "",
-                "acus": s["acus_consumed"],
-                "size": s["session_size"],
-                "messages": None,
+                "size": (s["session_size"] or "").upper(),
+                "big": (s["session_size"] or "").upper() in ("L", "XL"),
+                "minutes": cost_mod.repair_active_seconds(store, s) / 60.0,
+                "usd": usd,
+                "priced": src == "console",
                 "gate": v["gate_result"] if v else None,
-                "analysis": None,
             }
         )
-    sizes = {r["size"].upper() for r in rows if r["size"]}
-    hist = []
+    for t in store.list_triage_sessions():
+        usd, src = cost_mod.session_usd(store, t, "tri", kind_rates)
+        rows.append(
+            {
+                "id": t["id"],
+                "devin_id": t["devin_session_id"],
+                "url": t["url"],
+                "ticket": t["ticket_id"],
+                "size": "",
+                "big": False,
+                "minutes": cost_mod.triage_active_seconds(store, t) / 60.0,
+                "usd": usd,
+                "priced": src == "console",
+                "gate": None,
+            }
+        )
+    rows.sort(key=lambda r: r["minutes"], reverse=True)
     counts = {k: 0 for k in ("XS", "S", "M", "L", "XL")}
     for r in rows:
-        if r["size"] and r["size"].upper() in counts:
-            counts[r["size"].upper()] += 1
-    hist = [(k, n, k in ("L", "XL")) for k, n in counts.items()]
-    acus = sorted(r["acus"] for r in rows if r["acus"] is not None)
-    m = store.metrics()
+        if r["size"] in counts:
+            counts[r["size"]] += 1
     return {
         "rows": rows,
-        "hist": hist,
-        "max": max(counts.values() or [1]),
+        "hist": [(k, n, k in ("L", "XL")) for k, n in counts.items()],
         "sized": sum(counts.values()),
         "total": len(rows),
         "unhealthy": counts["L"] + counts["XL"],
-        "acu": {
-            "median": pct(acus, 0.5),
-            "p95": pct(acus, 0.95),
-            "total": round(sum(acus), 2),
-            "per_verified": m["acu_per_verified"]["median"],
-        },
-        "_sizes": sorted(sizes),
+        "metered": metered,
+        "priced": sum(1 for r in rows if r["priced"]),
     }
 
 

@@ -21,6 +21,9 @@
       <tr><th>version range</th><td class="mono">{{ s.seam.version_range }} <span style="color:var(--muted)">the lower bound does not move</span></td></tr>
     </table>
   </div>
+  <div class="card"><h3>More about the organisation <span class="who code">read only</span></h3>
+    <p class="foot">The reviews Devin ran are shown on each ticket. These three pages carry the rest of the organisation's own side: <a href="/devin/review">every review it ran</a>, <a href="/devin/integrations">how it is connected to the repository</a>, and <a href="/devin/next">what the next version would add</a>.</p>
+  </div>
   <div class="card" id="rerun"><h3>Rerun a shard <span class="who code">the repository and the store, together</span></h3>
     <p class="foot">Running the loop again on a shard that is already fixed would show nothing: the sessions would find the work done. A reset puts one shard back to its broken state. On the repository, its files return to the base branch as it was before any fix landed{% if rerun.baseline %} (commit <span class="mono">{{ rerun.baseline }}</span>){% endif %}, the change is committed and pushed to <span class="mono">{{ rerun.repo }}</span> <span class="mono">{{ rerun.base }}</span>, and the old repair branch is deleted. In the store, every row about the ticket is snapshotted to a file and forgotten. The issue stays open, so the next Run on Automations picks it up as new and does the whole loop again for real.</p>
     <form method="post" action="/settings/reset-shard" style="display:flex; gap:10px; align-items:end; flex-wrap:wrap">

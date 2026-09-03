@@ -1,16 +1,22 @@
-{% extends "shell.html" %}
-{% block title %}Knowledge{% endblock %}
-{% block content %}
-<p class="lede">Knowledge notes are Devin's feature for what a session should know about a repository, each retrieved by a natural-language trigger during the session. These carry Superset's real conventions, the ones that make a bot PR fail CI when they are missed. Grouped by the agent that relies on them.</p>
-{% for g in k.groups %}
-<div class="card">
-  <h3>{{ g.agent }} <span class="who devin">{{ g.notes | length }} notes</span></h3>
-  <table>
-    <tr><th>note</th><th class="wrap">retrieved when</th><th class="wrap">what it says</th></tr>
-    {% for n in g.notes %}<tr><td class="mono" style="min-width:180px">{{ n.name }}</td><td class="wrap" style="min-width:220px;color:var(--muted)">{{ n.trigger }}</td><td class="wrap">{{ n.body }}</td></tr>{% endfor %}
-  </table>
-</div>
-{% endfor %}
-<div class="card"><h3>Accessed Knowledge <span class="who code">confirmation</span></h3>
-  <p class="foot">{{ k.accessed_note }}</p></div>
-{% endblock %}
+{% extends "shell.html" %}{% block title %}Knowledge{% endblock %}{% block content %}
+{% set CARD = "background:#fff;border:1px solid #e2dfd8;border-radius:10px" %}
+{% set LBL = "font:500 10.5px/1.5 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f97a3" %}
+        <div style="display:flex;align-items:center;gap:10px;margin:0 0 14px">
+          <span style="{{ LBL }};letter-spacing:.1em;color:#626b78">Knowledge</span>
+          <span style="font-size:12px;color:#8f97a3">{{ k.count }} notes · what a session is told about {{ k.repo }} before it touches anything</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">
+          {% for n in k.notes %}
+          <div style="{{ CARD }};padding:14px 16px;display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:baseline;gap:8px">
+              <span style="font-weight:600;font-size:14px;text-wrap:pretty;min-width:0">{{ n.name }}</span>
+              <span style="margin-left:auto;display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{% if n.used %}#e3f2e8{% else %}#e9e7e1{% endif %};color:{% if n.used %}#2e7d4f{% else %}#8f97a3{% endif %};white-space:nowrap">{% if n.used %}used{% else %}not yet used{% endif %}</span>
+            </div>
+            <div><span style="{{ LBL }}">read when</span><div style="font-size:12.5px;color:#626b78;margin-top:2px;text-wrap:pretty">{{ n.trigger }}</div></div>
+            <div style="font-size:12.5px;text-wrap:pretty">{{ n.summary }}</div>
+            <details style="margin-top:auto"><summary style="cursor:pointer;font-size:12.5px;color:#2457a8">the whole note, {{ n.lines }} lines</summary><pre style="background:#f3f1ec;border-radius:6px;padding:10px 12px;margin:8px 0 0;font:11.5px/1.55 'JetBrains Mono',monospace;white-space:pre-wrap;word-break:break-word">{{ n.body }}</pre></details>
+          </div>
+          {% endfor %}
+        </div>
+        <p style="font-size:11.5px;color:#8f97a3;margin:14px 2px 0;max-width:80ch;text-wrap:pretty">A note is pulled in by its own description, not by us: the session decides it is relevant while it works. {% if not k.live %}This is a recorded run, so nothing new is being pulled right now.{% endif %}</p>
+      {% endblock %}

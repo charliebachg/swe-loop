@@ -161,14 +161,13 @@ LAYER_PLAIN = {
     "playbook": "procedure",
 }
 ACU_HELP = "ACU, Agent Compute Unit: Devin's unit of work, about 15 minutes of an AI session"
+# Four pages of their own. The review shows on every ticket, and the organisation's own settings
+# and the next version live under the gear, where a person looks for them.
 DEVIN_NAV = [
     ("sessions", 1, ""),
     ("playbooks", 1, ""),
     ("knowledge", 1, ""),
     ("insights", 1, ""),
-    ("review", 1, ""),
-    ("integrations", 1, ""),
-    ("next", 0, "next"),
 ]
 
 
@@ -408,6 +407,24 @@ def _usd_or_min(store: Store, row: dict[str, Any], kind: str, rates: dict[str, f
         else cost.repair_active_seconds(store, row)
     )
     return f"{secs / 60.0:.0f} min"
+
+
+def insights(store: Store) -> dict[str, Any]:
+    """The two charts and the table under them."""
+    i = pages.insights(store)
+    mins = [r["minutes"] for r in i["rows"]]
+    return {
+        **i,
+        "sizeChart": charts.histogram(i["hist"], w=300),
+        "minutesChart": charts.bars(
+            mins,
+            [f"{r['ticket']} {r['devin_id'][:8]}" for r in i["rows"]],
+            PURPLE,
+            w=420,
+            h=64,
+            unit="min",
+        ),
+    }
 
 
 def rerun_ctx(settings: Settings, cfg: TargetConfig, store: Store) -> dict[str, Any]:

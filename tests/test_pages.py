@@ -71,12 +71,13 @@ def test_sidebar_links_every_module(client):
         "/devin/playbooks",
         "/devin/knowledge",
         "/devin/insights",
-        "/devin/review",
-        "/devin/integrations",
-        "/devin/next",
         "/settings",
     ):
         assert f'href="{href}"' in html
+    # the three that left the sidebar are still reachable, from Settings
+    gear = c.get("/settings").text
+    for href in ("/devin/review", "/devin/integrations", "/devin/next"):
+        assert f'href="{href}"' in gear
 
 
 def test_settings_store_helpers(tmp_path):
@@ -190,9 +191,12 @@ def test_capability_pages_render_real_state(client):
     assert "<h4>Forbidden Actions</h4>" in repair and "self_reported_done" in repair
     assert "<h4>Forbidden Actions</h4>" in triage and "acceptance_cmd" in triage
     html = c.get("/devin/knowledge").text
-    assert html.count("<tr>") >= 7 and "ruff" in html and "oxlint" in html and "lower bound" in html
+    assert html.count("read when") == 7 and "ruff" in html and "oxlint" in html
+    assert "lower bound" in html and "not yet used" in html
     html = c.get("/devin/insights").text
-    assert "Session size" in html and "per verified change" in html
+    assert "How big the pieces were" in html and "Minutes the AI was working" in html
+    body = html.split('<main', 1)[-1]
+    assert "ACU per session" not in body and ">ACU<" not in body  # nothing this plan cannot report
     html = c.get("/devin/review").text
     assert "requested" in html and "devin-ai-integration[bot]" in html
     html = c.get("/devin/integrations").text

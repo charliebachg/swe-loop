@@ -1,25 +1,35 @@
-{% extends "shell.html" %}
-{% block title %}Insights{% endblock %}
-{% block head %}<style>.hist { display:flex; gap:10px; align-items:flex-end; height:120px; margin:10px 0 4px } .hist div { flex:1; background:var(--devin); border-radius:3px 3px 0 0; position:relative; min-width:50px } .hist div.bad { background:var(--fail) } .hist div span { position:absolute; top:-20px; left:0; right:0; text-align:center; font:11px "IBM Plex Mono", monospace } .hist div i { position:absolute; bottom:-18px; left:0; right:0; text-align:center; font:11px "IBM Plex Mono", monospace; color:var(--muted); font-style:normal }</style>{% endblock %}
-{% block content %}
-<p class="lede">Session Insights is Devin's per-session telemetry: size from XS to XL, ACU consumed, message counts, and an analysis. It is read from <span class="mono">/sessions/insights</span>, which is not Enterprise-gated. Their guidance calls L and XL unhealthy; a shard that lands there was sharded wrong, and the page says so.</p>
-<div class="two">
-  <div class="card"><h3>Session size <span class="who devin">from Session Insights</span></h3>
-    <div class="hist">{% for k, n, bad in i.hist %}<div class="{{ 'bad' if bad and n else '' }}" style="height:{{ (100 * n / (i.max or 1)) | round(0) | int }}%"><span>{{ n }}</span><i>{{ k }}</i></div>{% endfor %}</div>
-    <p class="foot" style="margin-top:24px">{{ i.sized }} of {{ i.total }} sessions have a size · L/XL: {{ i.unhealthy }}</p></div>
-  <div class="card"><h3>ACU per session <span class="who devin">acus_consumed</span></h3>
-    <div class="tiles">
-      <div class="tile"><div class="k">median</div><div class="v">{{ i.acu.median if i.acu.median is not none else "n/a" }}</div></div>
-      <div class="tile"><div class="k">p95</div><div class="v">{{ i.acu.p95 if i.acu.p95 is not none else "n/a" }}</div></div>
-      <div class="tile"><div class="k">total</div><div class="v">{{ i.acu.total }}</div></div>
-      <div class="tile"><div class="k">per verified change</div><div class="v">{{ i.acu.per_verified if i.acu.per_verified is not none else "n/a" }}</div><div class="d">gate passed and merged</div></div>
-    </div></div>
-</div>
-<div class="card"><h3>Per session <span class="who devin">insights</span></h3>
-  <table>
-    <tr><th>session</th><th>ticket</th><th class="num">ACU</th><th>size</th><th class="num">messages</th><th>gate</th><th class="wrap">analysis</th></tr>
-    {% for s in i.rows %}<tr><td class="mono">{% if s.url %}<a href="{{ s.url }}" target="_blank">{{ s.devin_id }}</a>{% else %}{{ s.id }}{% endif %}</td><td><a href="/tracker#{{ s.ticket }}">{{ s.ticket }}</a></td><td class="num">{{ s.acus if s.acus is not none else "" }}</td><td>{{ s.size or "" }}{% if s.size and s.size|lower in ("l","xl") %} <span class="pill p-bad">unhealthy</span>{% endif %}</td><td class="num">{{ s.messages or "" }}</td><td>{% if s.gate == "pass" %}<span class="pill p-ok">pass</span>{% elif s.gate %}<span class="pill p-bad">{{ s.gate }}</span>{% else %}<span class="pill p-na">not run</span>{% endif %}</td><td class="wrap" style="color:var(--muted)">{{ s.analysis or "no analysis recorded for this session" }}</td></tr>
-    {% else %}<tr><td colspan="7" class="empty">No sessions yet.</td></tr>{% endfor %}
-  </table>
-  <p class="foot">In the next version an evaluator session reads these insights and proposes playbook and Knowledge edits, each approved by a person. It grades on outcomes, never on transcripts.</p></div>
-{% endblock %}
+{% extends "shell.html" %}{% block title %}Insights{% endblock %}{% block content %}
+{% set CARD = "background:#fff;border:1px solid #e2dfd8;border-radius:10px" %}
+{% set LBL = "font:500 10.5px/1.5 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f97a3" %}
+{% set MONO = "font:12px/1.5 'JetBrains Mono',monospace" %}
+        <div style="display:flex;align-items:center;gap:10px;margin:0 0 14px">
+          <span style="{{ LBL }};letter-spacing:.1em;color:#626b78">Insights</span>
+          <span style="font-size:12px;color:#8f97a3">how big each piece of work turned out to be, and what it cost</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:16px;align-items:start;margin-bottom:18px">
+          <div style="{{ CARD }};padding:14px 18px">
+            <div style="display:flex;align-items:baseline;gap:10px"><span style="{{ LBL }}">How big the pieces were</span><span style="margin-left:auto;font-size:11.5px;color:#8f97a3">{{ i.sized }} of {{ i.total }} sized</span></div>
+            <div style="margin-top:10px">{{ i.sizeChart | safe }}</div>
+            <div style="font-size:11.5px;color:#8f97a3;margin-top:8px;text-wrap:pretty">Devin sizes each session itself. Anything at L or above means the piece was cut too large and should have been split. Here: {{ i.unhealthy }}.</div>
+          </div>
+          <div style="{{ CARD }};padding:14px 18px">
+            <div style="display:flex;align-items:baseline;gap:10px"><span style="{{ LBL }}">Minutes the AI was working, per session</span><span style="margin-left:auto;font-size:11.5px;color:#8f97a3">{{ i.total }} sessions</span></div>
+            <div style="margin-top:10px">{{ i.minutesChart | safe }}</div>
+            <div style="font-size:11.5px;color:#8f97a3;margin-top:8px;text-wrap:pretty">Measured from our own polls, counting only the gaps while the session reported working.</div>
+          </div>
+        </div>
+        <div style="{{ CARD }};overflow:hidden">
+          <div style="display:grid;grid-template-columns:130px 90px 60px 74px 74px 64px;gap:12px;padding:9px 16px;border-bottom:1px solid #e2dfd8;{{ LBL }};font-size:10px"><span>session</span><span>ticket</span><span>size</span><span>minutes</span><span>cost</span><span>checks</span></div>
+          {% for r in i.rows %}
+          <div style="display:grid;grid-template-columns:130px 90px 60px 74px 74px 64px;gap:12px;padding:8px 16px;border-bottom:1px solid #f1efe9;font-size:12.5px;align-items:center" data-hover="background:#faf9f6">
+            <a href="{{ r.url }}" target="_blank" style="{{ MONO }}">{{ r.devin_id[:12] }}</a>
+            <span style="{{ MONO }};color:#626b78">{{ r.ticket }}</span>
+            <span>{% if r.size %}<span style="display:inline-flex;width:22px;height:20px;border-radius:4px;align-items:center;justify-content:center;background:{% if r.big %}#f9e4df{% else %}#eaeef4{% endif %};color:{% if r.big %}#b4452e{% else %}#5b6f8a{% endif %};font:600 11px/1 'JetBrains Mono',monospace">{{ r.size }}</span>{% else %}<span style="color:#c9c5bb">·</span>{% endif %}</span>
+            <span style="{{ MONO }}">{{ '%.0f' | format(r.minutes) }}</span>
+            <span style="{{ MONO }}">{% if r.usd is not none %}${{ '%.2f' | format(r.usd) }}{% if not r.priced %}<span style="color:#c9c5bb"> est</span>{% endif %}{% else %}<span style="color:#c9c5bb">·</span>{% endif %}</span>
+            <span>{% if r.gate %}<span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{% if r.gate == 'pass' %}#e3f2e8{% else %}#f9e4df{% endif %};color:{% if r.gate == 'pass' %}#2e7d4f{% else %}#b4452e{% endif %}">{{ r.gate }}</span>{% else %}<span style="color:#c9c5bb">·</span>{% endif %}</span>
+          </div>
+          {% endfor %}
+          <div style="padding:10px 16px;font-size:11.5px;color:#8f97a3;text-wrap:pretty">{{ i.priced }} of {{ i.total }} priced from the console; the rest are our own figure at the rate the priced ones set. Devin reports no compute figure on a plan billed in credits, so none is shown.</div>
+        </div>
+      {% endblock %}

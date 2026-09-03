@@ -563,14 +563,12 @@ def build_app(
             request,
             "knowledge.html",
             "knowledge",
-            k=pages.knowledge(request.app.state.store, settings),
+            k=pages.knowledge(request.app.state.store, settings, cfg),
         )
 
     @app.get("/devin/insights", response_class=HTMLResponse)
     def insights_page(request: Request) -> HTMLResponse:
-        return _render(
-            request, "insights.html", "insights", i=pages.insights(request.app.state.store)
-        )
+        return _render(request, "insights.html", "insights", i=v2.insights(request.app.state.store))
 
     @app.get("/devin/review", response_class=HTMLResponse)
     def review_page(request: Request) -> HTMLResponse:
