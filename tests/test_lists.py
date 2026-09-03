@@ -117,7 +117,7 @@ def test_playbooks_list_detail_and_add(client):
 def test_tickets_summary_filters_and_detail(client):
     c, _st, _ = client
     html = c.get("/tickets-page").text
-    assert "awaiting triage" in html and "to Devin" in html and "General" in html
+    assert "not looked at yet" in html and "given to the AI" in html and "General" in html
     assert 'hx-get="/tickets-page?open=tkt_D"' in html
     assert "to a person" in c.get("/tickets-page?f=human").text
     d = c.get("/partials/ticket/tkt_D").text

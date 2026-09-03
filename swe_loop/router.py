@@ -102,7 +102,7 @@ def _needs_human_reason(needs_human: Any) -> str:
         why = str(first.get("reason") or "")[:140]
         more = f" (+{len(needs_human) - 1} more)" if len(needs_human) > 1 else ""
         return f"triage: {len(needs_human)} site(s) need a person{more}: {where}: {why}"
-    return "triage: sessions never edit tests or CI; the oracle is read-only"
+    return "the AI never edits tests or the build, so this one is your team's"
 
 
 def route_ticket(store: Store, ticket_id: str, cfg: TargetConfig) -> list[Decision]:

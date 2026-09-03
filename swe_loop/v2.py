@@ -1293,6 +1293,27 @@ SOURCE_GROUPS = [
 VIEWS = [("list", "List"), ("pipeline", "Pipeline")]
 
 
+PLAIN_PHRASES = [
+    ("the oracle is read-only", "the tests are not ours to change"),
+    ("oracle read-only to sessions", "the AI may not change tests"),
+    ("sessions never edit tests or CI", "the AI never edits tests or the build"),
+    ("triage: ", ""),
+    ("site(s)", "places"),
+    ("Devin Review left", "the AI reviewer left"),
+    ("Devin Review found no issues", "the AI reviewer found nothing"),
+    ("remark(s)", "comments"),
+    ("comment(s)", "comments"),
+    ("gate", "checks"),
+]
+
+
+def plain(text: str) -> str:
+    """Recorded reasons carry the vocabulary of the code that wrote them. Readers do not."""
+    for a, b in PLAIN_PHRASES:
+        text = text.replace(a, b)
+    return text
+
+
 def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
     """One sentence on what the ticket is doing right now, for someone who has not read the
     design."""
@@ -1310,9 +1331,11 @@ def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
     else:
         review_txt = "Devin Review " + review
     if st == "merged":
-        return f"Merged by a person. Checks passed on a clean checkout; {review_txt}."
+        return plain(f"Merged by your team. Every check passed on a clean copy; {review_txt}.")
     if st == "escalated" or (route and route != "devin"):
-        return "For your team to decide: " + (t.get("router_reason") or "a person decides")[:150]
+        return plain(
+            "For your team to decide: " + (t.get("router_reason") or "a person decides")[:150]
+        )
     if st == "new":
         return "Waiting for a triage session to read it."
     if st in ("triaged", "routed"):
@@ -1323,12 +1346,15 @@ def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
         return f"The AI is working on the fix{since}. Open the session to watch."
     if st in ("gated", "reviewed"):
         if verdict and verdict.get("gate_result") != "pass":
-            return "Checks failed: " + (verdict.get("reason") or "see the receipts")[:150]
+            return plain("Checks failed: " + (verdict.get("reason") or "see the log")[:150])
         if row.get("ready"):
-            return f"Ready for you: checks passed on a clean checkout, {review_txt}. Review the PR and merge."
+            return plain(
+                f"Ready for you: every check passed on a clean copy, {review_txt}. "
+                "Read the pull request and merge."
+            )
         if review == "requested":
-            return "Checks passed on a clean checkout. Devin Review is reading the PR."
-        return f"Checks passed on a clean checkout; {review_txt}. Waiting for the merge decision."
+            return "Every check passed on a clean copy. The AI reviewer is reading it now."
+        return plain(f"Every check passed on a clean copy; {review_txt}. Waiting on your decision.")
     return row.get("note") or ""
 
 
@@ -1427,6 +1453,7 @@ def tickets(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any
         "groups": groups,
         "trackerRows": rows,
         "stageHead": tr["stageHead"],
+        "legend": tr["legend"],
         "ticketCount": f"{len(rows)}"
         + ("" if len(rows) == len(tr["trackerRows"]) else f" of {len(tr['trackerRows'])}"),
         "noTickets": not rows,

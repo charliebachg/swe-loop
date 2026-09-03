@@ -91,10 +91,11 @@ def test_tickets_page_groups_by_source(client):
     c, _ = client
     html = c.get("/tickets-page").text
     assert "General" in html and "Scan Agent" in html and "Others" in html
-    assert "For your team to decide" in html and "sessions never edit tests" in html
+    assert "For your team to decide" in html and "never edits tests" in html
+    assert "oracle" not in html and "site(s)" not in html  # no internal vocabulary
     assert 'href="https://github.com/charliebachg/superset/issues/4"' in html
     assert html.count("/tickets-page?open=tkt_") >= 5
-    assert "Merged by a person." in html  # the one-line summary per ticket
+    assert "Merged by your team." in html  # the one-line summary per ticket
     pipe = c.get("/tickets-page?view=pipeline").text
     assert "right now" in pipe and 'title="Scoped:' in pipe
 
