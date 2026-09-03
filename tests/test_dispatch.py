@@ -166,3 +166,10 @@ def test_absolutize_command_runs_our_tooling_with_the_gate_interpreter():
     assert absolutize_command(".venv-p3/bin/python -m pytest x", Path("/repo")).startswith(
         "/repo/.venv-p3/bin/python"
     )
+    both = absolutize_command(
+        ".venv-p2/bin/ruff check a.py && .venv-p2/bin/ruff format --check a.py", Path("/repo")
+    )
+    assert (
+        both == "/repo/.venv-p2/bin/ruff check a.py && /repo/.venv-p2/bin/ruff format --check a.py"
+    )
+    assert absolutize_command("REPO_ROOT=$PWD true", Path("/repo")) == "REPO_ROOT=$PWD true"

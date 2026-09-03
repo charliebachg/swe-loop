@@ -133,7 +133,21 @@ def absolutize_command(cmd: str, repo_root: Path) -> str:
     if "swe_loop" in cmd:
         # this repository's own tooling: run it with the interpreter that runs the gate
         parts = [sys.executable if p in ("python", "python3") else p for p in parts]
-    return shlex.join(parts)
+    return " ".join(_shell_token(p) for p in parts)
+
+
+_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+_OPERATORS = {"&&", "||", "|", ";"}
+
+
+def _shell_token(tok: str) -> str:
+    """Quote only what needs it: operators, env assignments and plain words stay as written so
+    `a && b` and `VAR=$PWD cmd` still mean what the ticket meant."""
+    if tok in _OPERATORS or _ASSIGN.match(tok):
+        return tok
+    if any(ch.isspace() or ch in "'\"" for ch in tok):
+        return shlex.quote(tok)
+    return tok
 
 
 class Gate:
