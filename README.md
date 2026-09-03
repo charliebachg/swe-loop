@@ -85,17 +85,17 @@ Without `DEVIN_API_KEY` the mode is forced to replay. No key, no sessions.
 ```
 event (GitHub webhook: a dependency bot's PR, a labelled issue, a failed check)
   │
-  ▼ L0  normalise            code      any event becomes one ticket; one adapter per source
-  ▼ L1  triage session       Devin     reads the ticket, decides one session or several, or asks
-  ▼     ticket store         SQLite    the row exists before any session does
-  ▼ L2  route                code      policy from configs/*.yaml: refuse, human-only, or Devin, with the reason
-  ▼ L3  shard                code      one file in one shard; caps by files and call sites
-  ▼ L4  repair sessions      Devin     parallel, bounded by max_acu_limit, typed by structured_output_schema
-  ▼ L5  gate                 code      T0: the tests were not touched, the change is in scope
-                                        T1: every acceptance command re-run from a clean checkout, by this process
-  ▼ L6  Devin Review         Devin     requested only on work the gate passed; remarks go back to the session
-  ▼ L7  reduce               code      cross-shard conflicts; a person records the merge
-  ▼ L9  report               code      the app: every number is a query
+  ▼ intake            code      any event becomes one ticket; one adapter per source
+  ▼ triage session    Devin     reads the ticket, decides one session or several, or asks
+  ▼ ticket store      SQLite    the row exists before any session does
+  ▼ route             code      policy from configs/*.yaml: refuse, human-only, or Devin, with the reason
+  ▼ shard             code      one file in one shard; caps by files and call sites
+  ▼ repair sessions   Devin     parallel, bounded by max_acu_limit, typed by structured_output_schema
+  ▼ gate              code      T0: the tests were not touched, the change is in scope
+                                 T1: every acceptance command re-run from a clean checkout, by this process
+  ▼ Devin Review      Devin     requested only on work the gate passed; remarks go back to the session
+  ▼ merge             code      cross-shard conflicts; a person records the merge
+  ▼ report            code      the app: every number is a query
 ```
 
 The gate never trusts a session's own report. It checks out the PR head into a detached

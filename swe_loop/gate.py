@@ -1,4 +1,4 @@
-"""L5: the gate. Deliberately not a session. No step verifies the work it produced.
+"""The gate. Deliberately not a session. No step verifies the work it produced.
 
 Given a session whose claim the poller recorded, the gate checks out the PR head into a clean
 worktree and produces evidence bound to that tree's hash:
@@ -233,7 +233,7 @@ class Gate:
             tree = self.ws.tree_hash(path)
             res.tree_hash = tree
             self.store.log(
-                "L5 gate",
+                "gate",
                 "clean checkout",
                 session_id=sid,
                 detail=f"{pr.head_ref} tree {tree[:12]}",

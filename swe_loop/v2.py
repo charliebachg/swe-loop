@@ -116,16 +116,16 @@ KIND_PLAIN = {
     "ready to merge": "ready to ship",
 }
 LAYER_PLAIN = {
-    "L0 intake": "received",
-    "L1 triage": "AI scoping",
-    "L2 route": "decision",
-    "L3 shard": "split",
-    "L4 dispatch": "AI started",
-    "L4 poll": "AI working",
-    "L4 manage": "AI steered",
-    "L5 gate": "checks",
-    "L6 review": "AI review",
-    "L7 reduce": "shipping",
+    "intake": "received",
+    "triage": "AI scoping",
+    "route": "decision",
+    "shard": "split",
+    "dispatch": "AI started",
+    "poll": "AI working",
+    "steer": "AI steered",
+    "gate": "checks",
+    "review": "AI review",
+    "merge": "shipping",
     "ticket": "status",
     "escalate": "for your team",
     "automation": "trigger",
@@ -191,11 +191,11 @@ def _pill_kind(css: str) -> str:
 
 def _actor_for_layer(layer: str, event: str = "") -> str:
     lay = layer.lower()
-    if lay.startswith(("l1", "l6")) or "review" in lay:
+    if lay in ("triage", "review") or "review" in lay:
         return "devin"
-    if lay.startswith("l5") or "gate" in lay:
+    if "gate" in lay:
         return "gate"
-    if lay.startswith("l7") or "human" in lay or "merge" in lay or lay == "escalate":
+    if "human" in lay or "merge" in lay or lay == "escalate":
         return "person"
     if lay == "ticket":
         e = event.lower()
@@ -1073,11 +1073,11 @@ def _group_events(
     while i < len(events):
         e = events[i]
         run = [e]
-        if e["layer"].startswith("L5"):
+        if e["layer"] == "gate":
             j = i + 1
             while (
                 j < len(events)
-                and events[j]["layer"].startswith("L5")
+                and events[j]["layer"] == "gate"
                 and events[j].get("session_id") == e.get("session_id")
             ):
                 run.append(events[j])

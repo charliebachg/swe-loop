@@ -1,4 +1,4 @@
-"""L9: report. Every number on the dashboard is a query over the ticket store, and every tile
+"""Report. Every number on the dashboard is a query over the ticket store, and every tile
 carries the SQL that produced it. Nothing is narrated.
 
 Six rows, in the order an engineering leader reads: the answer, the three things the brief asks

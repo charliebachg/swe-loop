@@ -93,9 +93,7 @@ class Poller:
             except DevinError as ex:
                 note = f" (terminate call failed: {ex.status} {ex.detail[:80]})"
         self.store.mark_terminal(sid, status="exit", status_detail="terminated")
-        self.store.log(
-            "L4 manage", "terminated (archive=true)", session_id=sid, detail=reason + note
-        )
+        self.store.log("steer", "terminated (archive=true)", session_id=sid, detail=reason + note)
         wo = self.store.get_work_order(row["work_order_id"])
         self._escalate(wo["ticket_id"], sid, kind, reason + note)
 
@@ -138,7 +136,7 @@ class Poller:
         wo = self.store.get_work_order(row["work_order_id"])
         ticket = self.store.get_ticket(wo["ticket_id"])
         self.store.log(
-            "L4 poll",
+            "poll",
             f"{state.status}/{state.status_detail or '-'}",
             ticket_id=ticket["id"],
             session_id=sid,
@@ -245,7 +243,7 @@ class Poller:
         if prior == 0:
             self.client.message(row["devin_session_id"], work_order_answer(wo, self.cfg))
             self.store.log(
-                "L4 manage",
+                "steer",
                 "answered waiting_for_user from the work order",
                 ticket_id=ticket["id"],
                 session_id=sid,
@@ -310,7 +308,7 @@ class Poller:
             (rejected, sid),
         )
         self.store.log(
-            "L4 manage",
+            "steer",
             "retry with the exact failure text",
             session_id=sid,
             detail=failure_text[:200],

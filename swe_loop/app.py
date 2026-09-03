@@ -83,7 +83,7 @@ def build_app(
         tid = ingest(st, ev)
         st.conn.execute("UPDATE events SET ticket_id=? WHERE id=?", (tid, eid))
         st.log(
-            "L0 intake",
+            "intake",
             f"{source}:{ev.kind} {ev.action or ''}",
             ticket_id=tid,
             detail=ev.external_ref,
@@ -279,7 +279,7 @@ def build_app(
                 )
             except Exception as ex:  # noqa: BLE001 - surfaced on the page
                 st.log(
-                    "L1 triage",
+                    "triage",
                     "answer failed",
                     ticket_id=ticket_id,
                     detail=f"{type(ex).__name__}: {ex}"[:200],

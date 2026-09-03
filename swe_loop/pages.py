@@ -247,10 +247,7 @@ def tickets(store: Store) -> dict[str, Any]:
 # ---------------------------------------------------------------------------- tracker
 STAGES = ops.STEPS
 ACTOR = {
-    "L0": "code",
-    "L1": "devin",
-    "L2": "code",
-    "L4": "code",
+    "code": "code",
     "devin": "devin",
     "gate": "gate",
     "human": "person",

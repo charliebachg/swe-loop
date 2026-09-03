@@ -1,4 +1,4 @@
-"""L4: dispatch a repair session for one routed work order.
+"""Dispatch a repair session for one routed work order.
 
 Order of operations is the point: the durable row is written first (`reserve_session`), then the
 org is checked for a session already carrying this work order's tag, then the API is called, then
@@ -238,7 +238,7 @@ def dispatch(
         work_order_id=wo["id"], playbook_id=playbook_id, tags=list(spec.tags), attempt=attempt
     )
     store.log(
-        "L4 dispatch",
+        "dispatch",
         "reserved",
         ticket_id=wo["ticket_id"],
         session_id=sid,
@@ -247,7 +247,7 @@ def dispatch(
     live = client.find_live(identity_tags(cfg, wo), exclude=store.bound_devin_ids())
     state = live if live else client.start(spec)
     store.log(
-        "L4 dispatch",
+        "dispatch",
         "adopted live session" if live else "POST /sessions",
         ticket_id=wo["ticket_id"],
         session_id=sid,

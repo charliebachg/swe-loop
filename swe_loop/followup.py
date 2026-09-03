@@ -112,7 +112,7 @@ def review_followup(
     text = compose_message(sess["pull_request_url"], branch, remarks)
     client.message(sess["devin_session_id"], text)
     store.log(
-        "L6 review",
+        "review",
         f"{len(remarks)} review remark(s) sent back to the session",
         ticket_id=ticket_id,
         session_id=sess["id"],
@@ -151,7 +151,7 @@ def review_followup(
     repo_root = (ROOT / cfg.gate.get("repo_root", "../superset-fork")).resolve()
     if fast or not repo_root.exists():
         store.log(
-            "L5 gate",
+            "gate",
             "skipped",
             ticket_id=ticket_id,
             session_id=sess["id"],

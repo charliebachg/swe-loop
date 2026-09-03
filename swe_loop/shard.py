@@ -1,4 +1,4 @@
-"""L3: shard. Deterministic, no model. Splits a work order into units small enough for one
+"""Shard. Deterministic, no model. Splits a work order into units small enough for one
 session, keeping every file in exactly one shard. Files with no signal never reach a session,
 because they never reach a work order in the first place."""
 

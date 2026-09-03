@@ -1,4 +1,4 @@
-"""L1: the triage session. Builds the session spec from a ticket and validates the verdict.
+"""The triage step. Builds the session spec from a ticket and validates the verdict.
 
 The session reads and reasons; it does not patch. Its output is a verdict that satisfies
 schemas/triage_verdict.schema.json, which encodes the three questions Devin's own guidance says
@@ -104,7 +104,7 @@ def build_triage_spec(
 def apply_verdict(store: Store, ticket_id: str, verdict: dict[str, Any]) -> list[str]:
     """Record the verdict and create work orders. Returns the work order ids.
 
-    Routing is the router's job (L2); this only turns shards into rows. If the verdict says the
+    Routing is the router's job; this only turns shards into rows. If the verdict says the
     whole ticket needs a person, no work order is created and the router will see needs_human.
     """
     problems = validate_verdict(verdict)
@@ -220,9 +220,9 @@ def run_triage(
         )
     if answer:
         client.message(state.session_id, answer)
-        store.log("L1 triage", "answered by a person", ticket_id=ticket_id, detail=answer[:200])
+        store.log("triage", "answered by a person", ticket_id=ticket_id, detail=answer[:200])
     store.log(
-        "L1 triage",
+        "triage",
         "adopted live session" if live else "POST /sessions",
         ticket_id=ticket_id,
         detail=f"{state.session_id} cap {spec.max_acu_limit} ACU",
@@ -238,7 +238,7 @@ def run_triage(
             acus_consumed=state.acus_consumed,
         )
         store.log(
-            "L1 triage",
+            "triage",
             f"{state.status}/{state.status_detail or '-'}",
             ticket_id=ticket_id,
             detail=f"acus={state.acus_consumed}",
@@ -250,7 +250,7 @@ def run_triage(
                 client.terminate(state.session_id)
             except Exception as ex:  # noqa: BLE001 - best effort; the row is closed regardless
                 store.log(
-                    "L1 triage", "terminate call failed", ticket_id=ticket_id, detail=str(ex)[:120]
+                    "triage", "terminate call failed", ticket_id=ticket_id, detail=str(ex)[:120]
                 )
             store.update_triage_session(
                 tid, terminal_at=now(), status="exit", status_detail="terminated", outcome="timeout"
@@ -314,7 +314,7 @@ def run_triage(
     )
     store.conn.commit()
     store.log(
-        "L1 triage",
+        "triage",
         "verdict accepted",
         ticket_id=ticket_id,
         detail=f"split {out['split']} · {len(out.get('sites', []))} site(s) · {len(ids)} work order(s) · needs_human {len(out.get('needs_human', []))}",

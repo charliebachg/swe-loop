@@ -38,7 +38,7 @@ def test_record_covers_triage_and_redacts_local_paths(tmp_path):
         passed=True,
     )
     st.log(
-        "L1 triage",
+        "triage",
         "answered by a person",
         ticket_id="tkt_D",
         detail=f"see {os.path.expanduser('~')}/notes",

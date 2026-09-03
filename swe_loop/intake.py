@@ -1,4 +1,4 @@
-"""L0: normalise. Any event becomes one NormalizedEvent, or nothing.
+"""Intake. Any event becomes one NormalizedEvent, or nothing.
 
 One adapter per source. The pipeline downstream never sees a raw payload. Adding a source
 (Slack, a scheduler, a scan) means adding an adapter here and nothing else.

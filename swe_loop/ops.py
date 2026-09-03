@@ -10,10 +10,10 @@ from typing import Any
 from swe_loop.store import Store
 
 STEPS = [
-    ("intake", "L0"),
-    ("triage", "L1"),
-    ("route", "L2"),
-    ("dispatch", "L4"),
+    ("intake", "code"),
+    ("triage", "devin"),
+    ("route", "code"),
+    ("dispatch", "code"),
     ("session", "devin"),
     ("gate", "gate"),
     ("review", "devin"),

@@ -133,7 +133,7 @@ def test_ops_page_lists_sessions_and_the_feed(tmp_path, monkeypatch):
     assert "merge" in [s["name"] for s in d["tkt_A"]["steps"] if "done" in s["cls"]]
     assert o["feed"] and o["feed"][0]["at"] >= o["feed"][-1]["at"]
     layers = {e["layer"] for e in st.timeline(limit=500)}
-    assert {"L2 route", "L4 dispatch", "L4 poll", "L5 gate", "L7 reduce", "escalate"} <= layers
+    assert {"route", "dispatch", "poll", "gate", "merge", "escalate"} <= layers
     app = build_app(Settings.from_env(), st, seed_replay=False)
     with TestClient(app) as c:
         html = c.get("/devin/sessions").text

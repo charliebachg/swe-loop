@@ -40,7 +40,7 @@ def test_refresh_reviews_records_no_issues(tmp_path):
     assert n == 1
     assert st.latest_verdict(sid)["review_severity"] == "completed:no issues"
     assert any(
-        e["layer"] == "L6 review" and "no issues" in e["event"]
+        e["layer"] == "review" and "no issues" in e["event"]
         for e in st.timeline(ticket_id="tkt_D", limit=20)
     )
     assert (

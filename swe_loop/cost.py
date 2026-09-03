@@ -50,7 +50,7 @@ def _active_from_events(events: list[dict[str, Any]], start: str | None, end: st
 
 def repair_active_seconds(store: Store, session: dict[str, Any]) -> float:
     events = [
-        e for e in store.timeline(session_id=session["id"], limit=5000) if e["layer"] == "L4 poll"
+        e for e in store.timeline(session_id=session["id"], limit=5000) if e["layer"] == "poll"
     ]
     return _active_from_events(events, session.get("created_at"), session.get("terminal_at"))
 
@@ -59,7 +59,7 @@ def triage_active_seconds(store: Store, tri: dict[str, Any]) -> float:
     lo, hi = _ts(tri.get("created_at")), _ts(tri.get("terminal_at"))
     events = []
     for e in store.timeline(ticket_id=tri["ticket_id"], limit=5000):
-        if e["layer"] != "L1 triage":
+        if e["layer"] != "triage":
             continue
         t = _ts(e.get("at"))
         if t is None or (lo and t < lo) or (hi and t > hi):

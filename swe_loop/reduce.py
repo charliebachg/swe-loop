@@ -1,4 +1,4 @@
-"""L7: reduce. Writes stay single-threaded and a person merges.
+"""Merge. Writes stay single-threaded and a person merges.
 
 Sessions read and reason in parallel; nothing here merges anything. Reduce answers two
 questions per ticket: are all of its shards verified and reviewed, and do any two shards touch
@@ -204,7 +204,7 @@ def _github_review_outcome(
 
 
 def refresh_reviews(store: Store, client: Any, github_token: str = "", fetch: Any = None) -> int:
-    """Read back every requested Devin Review. The request happens at the gate (L6); the result
+    """Read back every requested Devin Review. The request happens at the gate; the result
     is read here so the Tracker and the Review page show it. Returns how many were updated."""
     rows = store._all(
         "SELECT v.id, v.session_id, v.created_at, s.pull_request_url AS pr_url, s.work_order_id FROM verdicts v "
@@ -217,7 +217,7 @@ def refresh_reviews(store: Store, client: Any, github_token: str = "", fetch: An
             state = client.t.get_pr_review(r["pr_url"])
         except Exception as ex:  # noqa: BLE001 - leave it requested; try again next pass
             store.log(
-                "L6 review", "status read failed", session_id=r["session_id"], detail=str(ex)[:120]
+                "review", "status read failed", session_id=r["session_id"], detail=str(ex)[:120]
             )
             continue
         if state.get("status") != "completed":
@@ -230,7 +230,7 @@ def refresh_reviews(store: Store, client: Any, github_token: str = "", fetch: An
         store.conn.commit()
         wo = store.get_work_order(r["work_order_id"])
         store.log(
-            "L6 review",
+            "review",
             f"Devin Review completed: {outcome or 'see the pull request'}",
             ticket_id=wo["ticket_id"] if wo else None,
             session_id=r["session_id"],

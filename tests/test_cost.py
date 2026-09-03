@@ -24,13 +24,13 @@ def _session_with_polls(st, working_gaps=(20, 20, 20), waiting_gaps=(30,)):
         t += timedelta(seconds=g)
         st.conn.execute(
             "INSERT INTO timeline (at, layer, event, ticket_id, session_id, detail) VALUES (?,?,?,?,?,?)",
-            (t.isoformat(), "L4 poll", "running/working", "tkt_D", sid, ""),
+            (t.isoformat(), "poll", "running/working", "tkt_D", sid, ""),
         )
     for g in waiting_gaps:
         t += timedelta(seconds=g)
         st.conn.execute(
             "INSERT INTO timeline (at, layer, event, ticket_id, session_id, detail) VALUES (?,?,?,?,?,?)",
-            (t.isoformat(), "L4 poll", "running/waiting_for_user", "tkt_D", sid, ""),
+            (t.isoformat(), "poll", "running/waiting_for_user", "tkt_D", sid, ""),
         )
     st.conn.commit()
     st.mark_terminal(sid, status="exit", status_detail="finished", acus_consumed=0.0)

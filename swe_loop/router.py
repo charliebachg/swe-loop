@@ -1,4 +1,4 @@
-"""L2: route. Policy lives here and in the seam, never in a prompt, so no session can set its
+"""Route. Policy lives here and in the seam, never in a prompt, so no session can set its
 own autonomy. Every decision carries its reason and lands in the store as an escalation when
 it is not `devin`."""
 

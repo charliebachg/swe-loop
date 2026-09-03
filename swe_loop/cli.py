@@ -63,7 +63,7 @@ def cmd_seed(args: argparse.Namespace) -> int:
 
         ids = load_tickets(store, INVENTORY / "tickets.json", triaged=False)
         store.log(
-            "L0 intake",
+            "intake",
             f"{len(ids)} ticket(s) loaded as new",
             detail=str(INVENTORY / "tickets.json"),
         )
@@ -142,7 +142,7 @@ def run_once(
                     log(f"  gate {g.gate_result}: {'; '.join(g.reasons)[:120]} -> {did}")
                 else:
                     store.log(
-                        "L5 gate",
+                        "gate",
                         "skipped",
                         ticket_id=t["id"],
                         session_id=sid,

@@ -134,6 +134,21 @@ def digest(data: bytes | str) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+# Step names written by earlier versions of this code, and what they are called now.
+STEP_RENAMES = {
+    "L0 intake": "intake",
+    "L1 triage": "triage",
+    "L2 route": "route",
+    "L3 shard": "shard",
+    "L4 dispatch": "dispatch",
+    "L4 poll": "poll",
+    "L4 manage": "steer",
+    "L5 gate": "gate",
+    "L6 review": "review",
+    "L7 reduce": "merge",
+}
+
+
 class Store:
     def __init__(self, path: Path | str = ":memory:"):
         self.path = str(path)
@@ -148,6 +163,8 @@ class Store:
             cols = {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if "cost_usd" not in cols:
                 self.conn.execute(f"ALTER TABLE {table} ADD COLUMN cost_usd REAL")
+        for old, new in STEP_RENAMES.items():
+            self.conn.execute("UPDATE timeline SET layer=? WHERE layer=?", (new, old))
         self.conn.commit()
 
     # ------------------------------------------------------------------ helpers
@@ -274,7 +291,7 @@ class Store:
             "UPDATE tickets SET router_decision=?, router_reason=?, status=?, updated_at=? WHERE id=?",
             (decision, reason, status, now(), ticket_id),
         )
-        self.log("L2 route", decision, ticket_id=ticket_id, detail=reason)
+        self.log("route", decision, ticket_id=ticket_id, detail=reason)
         if decision != "devin":
             self.insert_escalation(
                 ticket_id,
@@ -373,7 +390,7 @@ class Store:
         row = self.get_session(sid)
         wo = self.get_work_order(row["work_order_id"]) if row else None
         self.log(
-            "L4 dispatch",
+            "dispatch",
             "session bound",
             ticket_id=wo["ticket_id"] if wo else None,
             session_id=sid,
@@ -559,7 +576,7 @@ class Store:
             ),
         )
         self.log(
-            "L5 gate",
+            "gate",
             f"{tier} {'ok' if passed else 'FAIL'} exit {exit_code}",
             session_id=session_id,
             detail=command,
@@ -596,7 +613,7 @@ class Store:
             "INSERT INTO verdicts VALUES (?,?,?,?,?,?,?,?)",
             (vid, session_id, gate_result, review_severity, decision, reason, tree_hash, now()),
         )
-        self.log("L5 gate", f"{gate_result} -> {decision}", session_id=session_id, detail=reason)
+        self.log("gate", f"{gate_result} -> {decision}", session_id=session_id, detail=reason)
         return vid
 
     def latest_verdict(self, session_id: str) -> dict[str, Any] | None:
@@ -625,7 +642,7 @@ class Store:
         self.conn.execute("UPDATE escalations SET resolved_at=? WHERE id=?", (now(), eid))
         self.conn.commit()
         self.log(
-            "L7 reduce",
+            "merge",
             "escalation dismissed by a person",
             ticket_id=e["ticket_id"],
             session_id=e["session_id"],
@@ -648,7 +665,7 @@ class Store:
             "INSERT INTO human_actions VALUES (?,?,?,?,?)",
             (hid, ticket_id, kind, now(), digest(actor)[:16]),
         )
-        self.log("L7 reduce", f"human {kind}", ticket_id=ticket_id)
+        self.log("merge", f"human {kind}", ticket_id=ticket_id)
         return hid
 
     def get_setting(self, key: str, default: str | None = None) -> str | None:
