@@ -21,4 +21,7 @@ swe_loop.egg-info/requires.txt
 swe_loop.egg-info/top_level.txt
 swe_loop/detect/__init__.py
 swe_loop/detect/pandas_warnings.py
+tests/test_devin.py
+tests/test_intake.py
 tests/test_store.py
+tests/test_triage.py
