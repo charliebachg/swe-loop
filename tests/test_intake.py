@@ -150,7 +150,7 @@ def test_intake_pr_creates_untriaged_ticket(client):
     r = c.post("/intake/github", json=dependabot_pr())
     assert r.json()["accepted"] and r.json()["ticket_id"] == "tkt_pu42671"
     t = c.get("/tickets/tkt_pu42671").json()
-    assert t["triage_verdict_json"] is None and t["work_orders"] == []  # triage session scopes it
+    assert t["status"] == "new" and t["triage_verdict_json"] is None and t["work_orders"] == []
 
 
 def test_intake_rejects_bad_signature_when_secret_set(client, monkeypatch):

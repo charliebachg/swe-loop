@@ -97,7 +97,7 @@ def ingest(store: Store, ev: NormalizedEvent) -> str:
         id=tid,
         source=ev.source,
         title=ev.title,
-        status="triaged",
+        status="triaged" if verdict else "new",
         external_ref=ev.external_ref,
         cls=",".join(wo.get("classes", [])) or None,
         triage_verdict=verdict,

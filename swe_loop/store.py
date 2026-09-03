@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 TICKET_STATUSES = (
+    "new",  # no verdict yet: the triage session scopes it; the router never sees it
     "triaged",
     "routed",
     "dispatched",
@@ -444,7 +445,9 @@ class Store:
     # ------------------------------------------------------------------ the headline queries
     def metrics(self) -> dict[str, Any]:
         """The four tiles at the top of the dashboard, as queries. Nothing is narrated."""
-        tickets = self._one("SELECT COUNT(*) AS n FROM tickets")["n"]
+        tickets = self._one("SELECT COUNT(*) AS n FROM tickets WHERE router_decision IS NOT NULL")[
+            "n"
+        ]  # decided tickets only: a ticket still in triage could not have been verified yet
         verified = self._one(
             """SELECT COUNT(DISTINCT t.id) AS n FROM tickets t
                JOIN work_orders w ON w.ticket_id = t.id

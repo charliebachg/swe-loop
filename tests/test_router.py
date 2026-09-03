@@ -124,3 +124,10 @@ def test_route_ticket_without_work_order_or_verdict_refuses(tmp_path):
     st.upsert_ticket(id="t1", source="manual", title="x", status="triaged")
     d = route_ticket(st, "t1", CFG)
     assert d[0].route == "refuse" and st.get_ticket("t1")["status"] == "refused"
+
+
+def test_route_all_skips_tickets_still_in_triage(tmp_path):
+    st = Store(tmp_path / "t.sqlite")
+    st.upsert_ticket(id="tkt_is6", source="github", title="parent, no work order", status="new")
+    assert route_all(st, CFG) == {}
+    assert st.get_ticket("tkt_is6")["status"] == "new"  # waits for the triage session
