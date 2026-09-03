@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "swe-loop repair result",
+  "description": "What a repair session reports. It is recorded next to the gate's own result; the gate's result is what counts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["shard", "self_reported_done", "files_changed", "call_sites_fixed", "tests_run", "tests_passed", "needs_human"],
+  "properties": {
+    "shard": {"type": "string", "minLength": 1},
+    "self_reported_done": {"type": "boolean"},
+    "files_changed": {"type": "array", "items": {"type": "string"}},
+    "call_sites_fixed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "line", "change"],
+        "properties": {
+          "file": {"type": "string"},
+          "line": {"type": "integer", "minimum": 1},
+          "change": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "tests_run": {"type": "integer", "minimum": 0},
+    "tests_passed": {"type": "integer", "minimum": 0},
+    "acceptance": {
+      "type": "object",
+      "description": "Exit code per named acceptance command, as the session observed them.",
+      "additionalProperties": {"type": "integer"}
+    },
+    "pr_url": {"type": "string", "pattern": "^https://github\\.com/[^/]+/[^/]+/pull/[0-9]+$"},
+    "branch": {"type": "string"},
+    "needs_human": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["site", "reason"],
+        "properties": {
+          "site": {"type": "string"},
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "context_sufficient": {"type": "boolean"},
+    "notes": {"type": "string", "maxLength": 4000}
+  }
+}
