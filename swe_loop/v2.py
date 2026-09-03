@@ -283,7 +283,8 @@ def _status_kind(status: str | None, detail: str | None, terminal: bool) -> str:
 
 def cost_rows(store: Store) -> list[dict[str, Any]]:
     """Every session with its Devin id, minutes, and the console figure if entered: the Settings form."""
-    rate = cost.observed_rate(store)
+    cost.rates(store)
+    kr = cost.rates(store)
     out = []
     for r in store._all("SELECT * FROM sessions ORDER BY created_at"):
         wo = store.get_work_order(r["work_order_id"]) or {}
@@ -294,8 +295,8 @@ def cost_rows(store: Store) -> list[dict[str, Any]]:
                 "minutes": f"{cost.repair_active_seconds(store, r) / 60.0:.1f}",
                 "usd": r.get("cost_usd"),
                 "est": (
-                    f"{cost.repair_active_seconds(store, r) / 60.0 * rate:.2f}"
-                    if rate and r.get("cost_usd") is None
+                    f"{cost.repair_active_seconds(store, r) / 60.0 * kr['rep']:.2f}"
+                    if r.get("cost_usd") is None
                     else ""
                 ),
             }
@@ -308,8 +309,8 @@ def cost_rows(store: Store) -> list[dict[str, Any]]:
                 "minutes": f"{cost.triage_active_seconds(store, r) / 60.0:.1f}",
                 "usd": r.get("cost_usd"),
                 "est": (
-                    f"{cost.triage_active_seconds(store, r) / 60.0 * rate:.2f}"
-                    if rate and r.get("cost_usd") is None
+                    f"{cost.triage_active_seconds(store, r) / 60.0 * kr['tri']:.2f}"
+                    if r.get("cost_usd") is None
                     else ""
                 ),
             }
@@ -322,11 +323,9 @@ def _cost_help(sp: dict[str, Any]) -> str:
     if sp["source"] == "console":
         detail = " (every session entered)"
     elif sp["source"] == "mixed":
-        detail = f" ({sp['n_console']} of {sp['n_sessions']} entered; the rest estimated at ${sp['rate']:.2f} per active minute)"
-    elif sp["rate"]:
-        detail = f"; estimated at ${sp['rate']:.2f} per active minute"
+        detail = f" ({sp['n_console']} of {sp['n_sessions']} entered; the rest at ${sp['rates']['rep']:.2f} per repair minute and ${sp['rates']['tri']:.2f} per triage minute)"
     else:
-        detail = "; enter them in Settings"
+        detail = f", or minutes of AI work at ${sp['rates']['rep']:.2f} per repair minute and ${sp['rates']['tri']:.2f} per triage minute; refresh the figures in Settings whenever you like"
     return (
         base
         + detail
@@ -337,7 +336,7 @@ def _cost_help(sp: dict[str, Any]) -> str:
 def usd_label(sp: dict[str, Any]) -> str:
     if sp["usd"] is None:
         return ""
-    return f"${sp['usd']:.2f}" + ("" if sp["source"] == "console" else " est.")
+    return f"${sp['usd']:.2f}"
 
 
 # ---------------------------------------------------------------------------- frame
@@ -1413,13 +1412,13 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
     mins: dict[str, float] = {}
     usd_rows: dict[str, tuple[float | None, str]] = {}
     if not metered:
-        rate = cost.observed_rate(store)
+        kind_rates = cost.rates(store)
         for r in store._all("SELECT * FROM sessions"):
             mins[r["id"]] = cost.repair_active_seconds(store, r) / 60.0
-            usd_rows[r["id"]] = cost.session_usd(store, r, "rep", rate)
+            usd_rows[r["id"]] = cost.session_usd(store, r, "rep", kind_rates)
         for r in store.list_triage_sessions():
             mins[r["id"]] = cost.triage_active_seconds(store, r) / 60.0
-            usd_rows[r["id"]] = cost.session_usd(store, r, "tri", rate)
+            usd_rows[r["id"]] = cost.session_usd(store, r, "tri", kind_rates)
     rows = []
     for s in ss["sessions"]:
         is_triage = s.get("kind") == "triage"
@@ -1455,7 +1454,6 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
                     f"{TRIAGE_ACU_CAP if is_triage else cap:.0f}"
                     if metered
                     else f"{mins.get(s['id'], 0.0):.1f} min"
-                    + (" est." if usd_rows.get(s["id"], (None, ""))[1] == "estimate" else "")
                 ),
                 "acuPct": _pct(s.get("acus"), TRIAGE_ACU_CAP if is_triage else cap)
                 if metered
@@ -1939,9 +1937,9 @@ def report(
         if sp["metered"]:
             return _fmt_acu(r.get("acus"))
         sid = sid_by_devin.get(r.get("devin_id"))
-        u, src = usd_by_sid.get(sid, (None, ""))
+        u, _src = usd_by_sid.get(sid, (None, ""))
         if u is not None:
-            return f"${u:.2f}" + (" est." if src == "estimate" else "")
+            return f"${u:.2f}"
         return f"{mins_by_sid.get(sid, 0.0):.1f}m"
 
     tiles = [
@@ -1975,7 +1973,7 @@ def report(
                         if sp["source"] == "console"
                         else " · some sessions estimated at the observed rate"
                     ),
-                    "dollars per session as shown in the Devin console, entered by a person on Settings; sessions without a figure are priced at the observed dollars per active minute",
+                    "dollars per session: the console's figure where a person entered it, otherwise minutes of AI work at the rate for that kind of session",
                 )
                 if pass_usd
                 else (

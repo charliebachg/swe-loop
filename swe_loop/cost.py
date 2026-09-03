@@ -83,36 +83,53 @@ def calibration(store: Store) -> dict[str, Any]:
     return {"credits_usd": c, "active_min_at_entry": m, "at": at, "usd_per_active_min": rate}
 
 
+# Dollars per active minute by session kind. Seeded from the 2026-09-03 run's console figures
+# (repair $6.98 over 27.0 min, triage $7.80 over 13.5 min: a triage minute costs about twice a
+# repair minute). Every console figure a person enters refines the rate for its kind.
+DEFAULT_RATES = {"rep": 0.26, "tri": 0.58}
+
+
+def rates(store: Store) -> dict[str, float]:
+    """Dollars per active minute for repair and triage sessions: from the console figures a person
+    entered where there are any, the seeded defaults otherwise. The formula is ours; the pages
+    show its result as the cost, and a person refreshes the console figures periodically."""
+    out: dict[str, float] = {}
+    for kind, table, fn in (
+        ("rep", "sessions", repair_active_seconds),
+        ("tri", "triage_sessions", triage_active_seconds),
+    ):
+        usd, secs = 0.0, 0.0
+        for r in store._all(f"SELECT * FROM {table} WHERE cost_usd IS NOT NULL"):
+            usd += float(r["cost_usd"])
+            secs += fn(store, r)
+        out[kind] = (usd / (secs / 60.0)) if secs > 0 and usd > 0 else DEFAULT_RATES[kind]
+    return out
+
+
 def session_usd(
-    store: Store, row: dict[str, Any], kind: str, rate: float | None
-) -> tuple[float | None, str]:
-    """(dollars, source). source is 'console' when a person entered the figure, 'estimate' when
-    priced from active minutes at the observed rate, 'none' when neither exists."""
+    store: Store, row: dict[str, Any], kind: str, rate: Any = None
+) -> tuple[float, str]:
+    """(dollars, source): 'console' when a person entered the figure, 'rate' when computed from
+    active minutes at the kind's rate. There is always a number."""
     if row.get("cost_usd") is not None:
         return float(row["cost_usd"]), "console"
-    if rate:
-        secs = (
-            repair_active_seconds(store, row)
-            if kind == "rep"
-            else triage_active_seconds(store, row)
-        )
-        return secs / 60.0 * rate, "estimate"
-    return None, "none"
+    r = rate if isinstance(rate, dict) else rates(store)
+    secs = repair_active_seconds(store, row) if kind == "rep" else triage_active_seconds(store, row)
+    return secs / 60.0 * r[kind], "rate"
 
 
 def observed_rate(store: Store) -> float | None:
-    """Dollars per active minute across the sessions that carry a console figure."""
-    usd, secs = 0.0, 0.0
-    for r in store._all("SELECT * FROM sessions WHERE cost_usd IS NOT NULL"):
-        usd += float(r["cost_usd"])
-        secs += repair_active_seconds(store, r)
-    for r in store._all("SELECT * FROM triage_sessions WHERE cost_usd IS NOT NULL"):
-        usd += float(r["cost_usd"])
-        secs += triage_active_seconds(store, r)
-    if secs > 0:
-        return usd / (secs / 60.0)
-    cal = calibration(store)
-    return cal["usd_per_active_min"]
+    """One blended figure for labels: total dollars over total active minutes."""
+    rs = rates(store)
+    secs = {"rep": 0.0, "tri": 0.0}
+    for r in store._all("SELECT * FROM sessions"):
+        secs["rep"] += repair_active_seconds(store, r)
+    for r in store.list_triage_sessions():
+        secs["tri"] += triage_active_seconds(store, r)
+    total_min = (secs["rep"] + secs["tri"]) / 60.0
+    if total_min <= 0:
+        return None
+    return (secs["rep"] / 60.0 * rs["rep"] + secs["tri"] / 60.0 * rs["tri"]) / total_min
 
 
 def spend(store: Store) -> dict[str, Any]:
@@ -128,13 +145,14 @@ def spend(store: Store) -> dict[str, Any]:
         triage_active_seconds(store, t) for t in tri
     )
     rate = observed_rate(store)
+    kind_rates = rates(store)
     usd_console = sum(float(r["cost_usd"]) for r in sessions + tri if r.get("cost_usd") is not None)
     n_console = sum(1 for r in sessions + tri if r.get("cost_usd") is not None)
     usd_total = 0.0
     any_usd = False
     for kind, rows in (("rep", sessions), ("tri", tri)):
         for r in rows:
-            u, _src = session_usd(store, r, kind, rate)
+            u, _src = session_usd(store, r, kind, kind_rates)
             if u is not None:
                 usd_total += u
                 any_usd = True
@@ -150,6 +168,7 @@ def spend(store: Store) -> dict[str, Any]:
         "n_console": n_console,
         "n_sessions": len(sessions) + len(tri),
         "rate": rate,
+        "rates": kind_rates,
         "calibrated_at": cal["at"],
         "credits_usd": cal["credits_usd"],
         "source": (

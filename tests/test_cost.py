@@ -50,11 +50,10 @@ def test_active_seconds_count_only_working_gaps(tmp_path):
     # created -> poll1 (20 s, working), poll1 -> poll2 (20), poll2 -> poll3 (20), poll3 -> waiting (30, still working before it)
     assert 85 <= secs <= 95
     sp = cost.spend(st)
+    assert sp["metered"] is False and sp["acu"] == 0 and 1.4 <= sp["active_min"] <= 1.6
     assert (
-        sp["metered"] is False
-        and sp["acu"] == 0
-        and 1.4 <= sp["active_min"] <= 1.6
-        and sp["usd"] is None
+        sp["usd"] is not None
+        and abs(sp["usd"] - sp["active_min_raw"] * cost.DEFAULT_RATES["rep"]) < 0.02
     )
 
 
@@ -70,12 +69,12 @@ def test_credits_calibrate_minutes_into_dollars(tmp_path, monkeypatch):
     st = Store(tmp_path / "t.sqlite")
     st.set_budget(acu_cap=40, per_session_cap=6)
     _session_with_polls(st)
-    before = cost.spend(st)
-    sp = cost.record_credits(st, 3.0)
+    st.set_session_cost("dev-1", 3.0)
+    sp = cost.spend(st)
     assert (
-        sp["rate"]
-        and abs(sp["rate"] * before["active_min_raw"] - 3.0) < 0.01
+        sp["source"] == "console"
         and abs(sp["usd"] - 3.0) < 0.01
+        and sp["rates"]["rep"] > cost.DEFAULT_RATES["rep"]
     )
     app = build_app(Settings.from_env(), st, seed_replay=False)
     with TestClient(app) as c:
@@ -97,6 +96,6 @@ def test_credits_calibrate_minutes_into_dollars(tmp_path, monkeypatch):
             == 400
         )
         home = c.get("/").text
-        assert "AI cost" in home and "$" in home and "est." in home  # estimated from the observed rate
+        assert "AI cost" in home and "$" in home and " est." not in home
         report = c.get("/report").text
         assert "AI working time per verified change" in report
