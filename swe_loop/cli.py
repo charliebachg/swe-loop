@@ -2,6 +2,7 @@
 
     python -m swe_loop serve                 # dashboard + intake on :8000
     python -m swe_loop triage [--ticket ID]  # one triage session per new ticket; the verdict becomes work orders
+    python -m swe_loop review-followup --ticket ID  # review remarks back to the session, re-gate
     python -m swe_loop run                   # one pass: route, dispatch, poll, gate, reduce
     python -m swe_loop seed                  # fill an empty store for replay
     python -m swe_loop record data/replay/run.json
@@ -245,6 +246,17 @@ def cmd_triage(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_review_followup(args: argparse.Namespace) -> int:
+    from swe_loop.followup import review_followup
+
+    settings, cfg, store, client = _ctx()
+    if not settings.live:
+        print("mode=replay: the session is faked; the gate is skipped", file=sys.stderr)
+    out = review_followup(store, client, cfg, args.ticket, settings.github_token)
+    print(json.dumps(out))
+    return 0
+
+
 def cmd_cost(args: argparse.Namespace) -> int:
     """A person copies the console's per-session dollars: --set <devin id or prefix>=<usd> ..."""
     _, _, store, _ = _ctx()
@@ -341,6 +353,13 @@ def main(argv: list[str] | None = None) -> int:
         help="a person's answer to a waiting triage session; polling resumes",
     )
     tr.set_defaults(fn=cmd_triage)
+    rf = sub.add_parser("review-followup")
+    rf.add_argument(
+        "--ticket",
+        required=True,
+        help="send the review remarks on this ticket's PR back to its session, then re-gate",
+    )
+    rf.set_defaults(fn=cmd_review_followup)
     co = sub.add_parser("cost")
     co.add_argument(
         "--set",
