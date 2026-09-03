@@ -94,6 +94,17 @@ def decide(shard: dict[str, Any], cfg: TargetConfig, verdict: dict[str, Any] | N
     return Decision("devin", reason, review=review, shard=shard)
 
 
+def _needs_human_reason(needs_human: Any) -> str:
+    """The verdict's own words when it gave them; the standing rule otherwise."""
+    if isinstance(needs_human, list) and needs_human and isinstance(needs_human[0], dict):
+        first = needs_human[0]
+        where = str(first.get("site") or "")[:60]
+        why = str(first.get("reason") or "")[:140]
+        more = f" (+{len(needs_human) - 1} more)" if len(needs_human) > 1 else ""
+        return f"triage: {len(needs_human)} site(s) need a person{more}: {where}: {why}"
+    return "triage: sessions never edit tests or CI; the oracle is read-only"
+
+
 def route_ticket(store: Store, ticket_id: str, cfg: TargetConfig) -> list[Decision]:
     """Split each work order, decide per shard, write the decisions back. Ticket-level
     decision is `devin` if any shard is; otherwise the strictest of the rest."""
@@ -108,7 +119,7 @@ def route_ticket(store: Store, ticket_id: str, cfg: TargetConfig) -> list[Decisi
         if verdict and verdict.get("needs_human"):
             d = Decision(
                 "human_only",
-                "triage: sessions never edit tests or CI; the oracle is read-only",
+                _needs_human_reason(verdict["needs_human"]),
                 shard={},
             )
         else:

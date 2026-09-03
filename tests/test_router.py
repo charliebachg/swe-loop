@@ -131,3 +131,38 @@ def test_route_all_skips_tickets_still_in_triage(tmp_path):
     st.upsert_ticket(id="tkt_is6", source="github", title="parent, no work order", status="new")
     assert route_all(st, CFG) == {}
     assert st.get_ticket("tkt_is6")["status"] == "new"  # waits for the triage session
+
+
+def test_human_only_reason_quotes_the_verdict(tmp_path):
+    from swe_loop.config import TargetConfig
+    from swe_loop.router import route_ticket
+    from swe_loop.store import Store
+
+    st = Store(tmp_path / "t.sqlite")
+    st.upsert_ticket(
+        id="tkt_A",
+        source="inventory",
+        title="a",
+        status="triaged",
+        triage_verdict={
+            "split": "one",
+            "sites": [],
+            "acceptance_cmd": {"p3": "true"},
+            "needs_human": [
+                {
+                    "site": "superset/charts/client_processing.py:639",
+                    "reason": "Silent behaviour change: tests do not distinguish",
+                },
+                {"site": "superset/charts/client_processing.py:557", "reason": "stack semantics"},
+            ],
+        },
+    )
+    cfg = TargetConfig.load(
+        Path(__file__).resolve().parents[1] / "configs" / "superset-pandas3.yaml"
+    )
+    d = route_ticket(st, "tkt_A", cfg)[0]
+    assert d.route == "human_only"
+    assert (
+        "2 site(s) need a person (+1 more)" in d.reason
+        and "client_processing.py:639: Silent behaviour change" in d.reason
+    )
