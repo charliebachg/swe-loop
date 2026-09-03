@@ -78,7 +78,11 @@ def funnel(rows: list[tuple[str, int, int | None]], w: int = 520) -> str:
 
 
 def dot_strip(
-    points: list[tuple[str, float, str]], cap: float | None, median: float | None, w: int = 520
+    points: list[tuple[str, float, str]],
+    cap: float | None,
+    median: float | None,
+    w: int = 520,
+    unit: str = "ACU",
 ) -> str:
     """ACU per session as dots on one axis; the cap as a red line; the median as a tick.
     points: (label, value, color)."""
@@ -92,7 +96,7 @@ def dot_strip(
         return _svg(
             w,
             h,
-            f'<text x="0" y="30" font-size="12" fill="{INK}" style="{MONO}">every session reports 0.0 ACU</text>'
+            f'<text x="0" y="30" font-size="12" fill="{INK}" style="{MONO}">every session reports 0.0 {unit}</text>'
             f'<text x="0" y="50" font-size="11" fill="{FAINT}" style="{MONO}">{escape(note)}</text>',
             "ACU per session",
         )
@@ -123,7 +127,7 @@ def dot_strip(
         seen[k] = seen.get(k, 0) + 1
         dy = (seen[k] - 1) * 13
         out.append(
-            f'<circle cx="{sx(v):.1f}" cy="{40 - dy}" r="6" fill="{color}" fill-opacity=".9"><title>{escape(label)}: {v:g} ACU</title></circle>'
+            f'<circle cx="{sx(v):.1f}" cy="{40 - dy}" r="6" fill="{color}" fill-opacity=".9"><title>{escape(label)}: {v:.1f} {unit}</title></circle>'
         )
         out.append(
             f'<text x="{sx(v):.1f}" y="{44 - dy}" font-size="8" font-weight="700" fill="#fff" text-anchor="middle" style="{MONO}">{escape(label[:1])}</text>'

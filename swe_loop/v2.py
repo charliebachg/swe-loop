@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-from swe_loop import ops, pages
+from swe_loop import cost, ops, pages
 from swe_loop import reduce as reduce_mod
 from swe_loop import report as report_mod
 from swe_loop.config import Settings, TargetConfig
@@ -226,6 +226,16 @@ def ev(e: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _median(xs: list[float]) -> float:
+    xs = sorted(xs)
+    return xs[len(xs) // 2] if xs else 0.0
+
+
+def _p95(xs: list[float]) -> float:
+    xs = sorted(xs)
+    return xs[min(len(xs) - 1, int(0.95 * (len(xs) - 1)))] if xs else 0.0
+
+
 def _fmt_acu(x: Any) -> str:
     try:
         return f"{float(x):.1f}"
@@ -274,6 +284,7 @@ def _status_kind(status: str | None, detail: str | None, terminal: bool) -> str:
 # ---------------------------------------------------------------------------- frame
 def frame(settings: Settings, cfg: TargetConfig, store: Store, active: str) -> dict[str, Any]:
     b = store.budget_state()
+    sp = cost.spend(store)
     live = settings.live
     nav = []
     for i, key in enumerate(JOURNEY):
@@ -324,7 +335,14 @@ def frame(settings: Settings, cfg: TargetConfig, store: Store, active: str) -> d
         "modeHelp": "connected to the Devin organisation; sessions are real"
         if live
         else "showing a recorded run of the real system; no AI session is started from this page",
-        "acuHelp": ACU_HELP,
+        "acuHelp": ACU_HELP
+        if sp["metered"]
+        else "this plan is billed in credits, not ACU: the API reports 0 ACU for every session. Shown instead: minutes the AI was actively working, measured from our own polls"
+        + (
+            f"; ${sp['rate']:.3f} per active minute, calibrated from the console figure entered on {(sp['calibrated_at'] or '')[:10]}"
+            if sp["rate"]
+            else "; enter the credits figure from the console in Settings to see dollars"
+        ),
         "modeBg": PL["ok"][1] if live else PL["run"][1],
         "modeFg": PL["ok"][0] if live else PL["run"][0],
         "modeSmall": "live" if live else "replay",
@@ -335,9 +353,16 @@ def frame(settings: Settings, cfg: TargetConfig, store: Store, active: str) -> d
         else "rendered from the recorded run, no Devin key",
         "repo": cfg.repo,
         "branch": cfg.base_branch,
-        "acuSpent": _fmt_acu(b.get("spent")),
-        "acuCap": f"{b['cap']:.0f}" if b.get("cap") else "no cap",
-        "acuPct": _pct(b.get("spent"), b.get("cap")),
+        "acuSpent": (_fmt_acu(b.get("spent")) if sp["metered"] else f"{sp['active_min']:.0f} min"),
+        "acuCap": (
+            (f"{b['cap']:.0f}" if b.get("cap") else "no cap")
+            if sp["metered"]
+            else (
+                f"est. ${sp['usd']:.2f}" if sp["usd"] is not None else "credits: enter in Settings"
+            )
+        ),
+        "acuPct": _pct(b.get("spent"), b.get("cap")) if sp["metered"] else "0",
+        "costUnit": "ACU" if sp["metered"] else "",
         "perSession": f"{b['per_session_cap']:.0f}"
         if b.get("per_session_cap")
         else str(cfg.max_acu_limit),
@@ -540,6 +565,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
     groups = _group_events(events, open_groups, raw_mode)
     on, off = ("#e2e9f6", "#2457a8"), ("transparent", "#8f97a3")
     b = store.budget_state()
+    sp0 = cost.spend(store)
     conc = next((r["concurrency"] for r in store.list_automations() if r["kind"] == "repair"), 4)
     gate_n = len(passed)
     gate_total = sum(1 for x in sess if store.latest_verdict(x["id"]))
@@ -560,14 +586,27 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
             "color": PL["bad"][0] if (counts["needs_human"] or blocking) else FAINT,
             "pct": None,
         },
-        {
-            "n": _fmt_acu(b.get("spent")),
-            "of": f"of {b['cap']:.0f} ACU" if b.get("cap") else "no cap",
-            "label": "compute used",
-            "color": INK,
-            "help": ACU_HELP,
-            "pct": _pct(b.get("spent"), b.get("cap")),
-        },
+        (
+            {
+                "n": _fmt_acu(b.get("spent")),
+                "of": f"of {b['cap']:.0f} ACU" if b.get("cap") else "no cap",
+                "label": "compute used",
+                "color": INK,
+                "help": ACU_HELP,
+                "pct": _pct(b.get("spent"), b.get("cap")),
+            }
+            if sp0["metered"]
+            else {
+                "n": f"{sp0['active_min']:.0f} min",
+                "of": (
+                    f"est. ${sp0['usd']:.2f}" if sp0["usd"] is not None else "not yet in dollars"
+                ),
+                "label": "AI working time",
+                "color": INK,
+                "help": "minutes the AI was actively working, measured from our own polls; this plan is billed in credits, so the API reports no ACU. Enter the console's credits figure in Settings to see dollars",
+                "pct": None,
+            }
+        ),
         {
             "n": str(verified),
             "of": f"of {len(decided)} planned",
@@ -640,6 +679,8 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
             else "",
         },
     ]
+    for tile in tiles:
+        tile.setdefault("help", "")
     inbox = []
     for e in store.list_escalations():
         t = store.get_ticket(e["ticket_id"]) or {}
@@ -813,11 +854,27 @@ def _sparklines(store: Store) -> list[dict[str, Any]]:
     from swe_loop import charts
 
     starts: list[tuple[datetime, float]] = []
-    for r in store._all("SELECT created_at, acus_consumed FROM sessions") + store._all(
-        "SELECT created_at, acus_consumed FROM triage_sessions"
-    ):
+    metered = any(
+        (r["acus_consumed"] or 0) > 0 for r in store._all("SELECT acus_consumed FROM sessions")
+    )
+    for r in store._all("SELECT * FROM sessions"):
         try:
-            starts.append((datetime.fromisoformat(r["created_at"]), float(r["acus_consumed"] or 0)))
+            val = (
+                float(r["acus_consumed"] or 0)
+                if metered
+                else cost.repair_active_seconds(store, r) / 60.0
+            )
+            starts.append((datetime.fromisoformat(r["created_at"]), val))
+        except (TypeError, ValueError):
+            pass
+    for r in store.list_triage_sessions():
+        try:
+            val = (
+                float(r["acus_consumed"] or 0)
+                if metered
+                else cost.triage_active_seconds(store, r) / 60.0
+            )
+            starts.append((datetime.fromisoformat(r["created_at"]), val))
         except (TypeError, ValueError):
             pass
     verdicts: list[tuple[datetime, str]] = []
@@ -861,8 +918,10 @@ def _sparklines(store: Store) -> list[dict[str, Any]]:
             "last": str(int(sum(s_bins))),
         },
         {
-            "label": "ACU",
-            "svg": charts.sparkline(a_bins, INK, title="ACU per bin"),
+            "label": "ACU" if metered else "active minutes",
+            "svg": charts.sparkline(
+                a_bins, INK, title="ACU per bin" if metered else "active minutes per bin"
+            ),
             "span": span,
             "last": f"{sum(a_bins):.1f}",
         },
@@ -1290,6 +1349,13 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
     b = store.budget_state()
     cap = b.get("per_session_cap") or cfg.max_acu_limit
     drawer_id = q.get("drawer")
+    metered = cost.spend(store)["metered"]
+    mins: dict[str, float] = {}
+    if not metered:
+        for r in store._all("SELECT * FROM sessions"):
+            mins[r["id"]] = cost.repair_active_seconds(store, r) / 60.0
+        for r in store.list_triage_sessions():
+            mins[r["id"]] = cost.triage_active_seconds(store, r) / 60.0
     rows = []
     for s in ss["sessions"]:
         is_triage = s.get("kind") == "triage"
@@ -1312,9 +1378,13 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
                 ),
                 "stBg": PL[st_kind][1],
                 "stFg": PL[st_kind][0],
-                "acu": _fmt_acu(s.get("acus")),
-                "cap": f"{TRIAGE_ACU_CAP if is_triage else cap:.0f}",
-                "acuPct": _pct(s.get("acus"), TRIAGE_ACU_CAP if is_triage else cap),
+                "acu": _fmt_acu(s.get("acus")) if metered else f"{mins.get(s['id'], 0.0):.1f} min",
+                "cap": f"{TRIAGE_ACU_CAP if is_triage else cap:.0f}"
+                if metered
+                else f"cap {TRIAGE_ACU_CAP if is_triage else cap:.0f} ACU",
+                "acuPct": _pct(s.get("acus"), TRIAGE_ACU_CAP if is_triage else cap)
+                if metered
+                else _pct(mins.get(s["id"], 0.0), max(list(mins.values()) or [1.0])),
                 "size": size or "·",
                 "sizeBg": PL["bad"][1]
                 if size in ("L", "XL")
@@ -1396,9 +1466,11 @@ def _drawer(store: Store, sid: str, cap: float) -> dict[str, Any]:
         else (s.get("status") or ""),
         "stBg": PL[st_kind][1],
         "stFg": PL[st_kind][0],
-        "acu": _fmt_acu(s.get("acus_consumed")),
-        "cap": f"{cap:.0f}",
-        "acuPct": _pct(s.get("acus_consumed"), cap),
+        "acu": _fmt_acu(s.get("acus_consumed"))
+        if (s.get("acus_consumed") or 0) > 0
+        else f"{cost.repair_active_seconds(store, s) / 60.0:.1f} min",
+        "cap": f"{cap:.0f}" if (s.get("acus_consumed") or 0) > 0 else f"cap {cap:.0f} ACU",
+        "acuPct": _pct(s.get("acus_consumed"), cap) if (s.get("acus_consumed") or 0) > 0 else "0",
         "size": (s.get("session_size") or "·").upper(),
         "retries": str(s.get("retries") or 0),
         "pr": f"#{(s.get('pull_request_url') or '').rsplit('/', 1)[-1]}"
@@ -1761,8 +1833,21 @@ def report(
         set(all_keys) if sql_q in ("1", "all") else (set(sql_q.split(",")) if sql_q else set())
     )
     all_open = all(k in open_keys for k in all_keys)
-    rate = rep.get("acu_rate") or (2.0, 2.25)
     acu = h["acu"]
+    sp = cost.spend(store)
+    mins_by_sid = {
+        r["id"]: cost.repair_active_seconds(store, r) / 60.0
+        for r in store._all("SELECT * FROM sessions")
+    }
+    sid_by_devin = {
+        r["devin_session_id"]: r["id"]
+        for r in store._all("SELECT id, devin_session_id FROM sessions")
+    }
+    pass_mins = sorted(
+        mins_by_sid[s["id"]]
+        for s in store._all("SELECT * FROM sessions")
+        if (store.latest_verdict(s["id"]) or {}).get("gate_result") == "pass"
+    )
     tiles = [
         (
             "verified",
@@ -1773,17 +1858,28 @@ def report(
             h["verified"]["sql"],
         ),
         (
-            "acu",
-            "ACU per verified change",
-            str(acu["median"]) if acu["median"] is not None else "n/a",
-            "median",
-            f"p95 {acu['p95'] if acu['p95'] is not None else 'n/a'} · n={acu['n']}"
-            + (
-                f" · about ${acu['usd_low']} to ${acu['usd_high']} at a third-party estimate of ${rate[0]} to ${rate[1]} per ACU; the vendor does not publish a rate"
-                if acu.get("usd_low")
-                else ""
-            ),
-            acu["sql"],
+            (
+                "acu",
+                "ACU per verified change",
+                str(acu["median"]) if acu["median"] is not None else "n/a",
+                "median",
+                f"p95 {acu['p95'] if acu['p95'] is not None else 'n/a'} · n={acu['n']}",
+                acu["sql"],
+            )
+            if sp["metered"]
+            else (
+                "acu",
+                "AI working time per verified change",
+                (f"{_median(pass_mins):.1f}" if pass_mins else "n/a"),
+                "min, median",
+                f"p95 {_p95(pass_mins):.1f} min · n={len(pass_mins)}"
+                + (
+                    f" · est. ${_median(pass_mins) * sp['rate']:.2f} per change"
+                    if pass_mins and sp["rate"]
+                    else " · this plan is billed in credits; the API reports no ACU. Minutes come from our polls"
+                ),
+                "active minutes: gaps between our polls while the session reported working, each gap capped at 60 s; see swe_loop/cost.py",
+            )
         ),
         (
             "claims",
@@ -1874,7 +1970,9 @@ def report(
                 else (PL["bad"][0] if r.get("gate") else PL["na"][0]),
                 "review": r.get("review") or "",
                 "retries": str(r.get("retries") or 0),
-                "acu": _fmt_acu(r.get("acus")),
+                "acu": _fmt_acu(r.get("acus"))
+                if sp["metered"]
+                else f"{mins_by_sid.get(sid_by_devin.get(r.get('devin_id')), 0.0):.1f}m",
                 "size": (r.get("size") or "·").upper(),
                 "mergedBy": r.get("merged_by") or "no",
             }
@@ -1925,7 +2023,14 @@ def report(
         fun_rows.append((name, n, None))
     cap = h["budget"].get("per_session_cap")
     points = [
-        (r["shard"], float(r.get("acus") or 0), tk_color(r["ticket"])) for r in rep["receipts"]
+        (
+            r["shard"],
+            float(r.get("acus") or 0)
+            if sp["metered"]
+            else mins_by_sid.get(sid_by_devin.get(r.get("devin_id")), 0.0),
+            tk_color(r["ticket"]),
+        )
+        for r in rep["receipts"]
     ]
     verd = store._all(
         "SELECT v.gate_result, v.decision, w.shard_id FROM verdicts v JOIN sessions s ON s.id = v.session_id "
@@ -1969,14 +2074,23 @@ def report(
     ]
     chart_svgs = {
         "funnel": charts.funnel(fun_rows),
-        "acu": charts.dot_strip(points, cap, acu["median"]),
+        "acu": charts.dot_strip(
+            points,
+            cap if sp["metered"] else None,
+            acu["median"] if sp["metered"] else (_median(pass_mins) if pass_mins else None),
+            unit="ACU" if sp["metered"] else "min",
+        ),
         "gate": charts.squares(sq),
         "burndown": charts.stacked_bar(stack),
         "size": charts.histogram([(k, n, bad) for k, n, bad in rep["size_hist"]]),
     }
     chart_notes = {
         "funnel": f"{rep['funnel'][0][1]} decided · drops in red",
-        "acu": (f"n={len(points)} · cap {cap:g} per session" if cap else f"n={len(points)}"),
+        "acu": (
+            f"n={len(points)} · cap {cap:g} ACU per session"
+            if (cap and sp["metered"])
+            else f"n={len(points)} · active minutes per session; the plan reports no ACU"
+        ),
         "gate": f"{len(sq)} verdict(s), oldest first",
         "burndown": f"{bd0.get('total', 0)} sites measured",
         "size": "L and XL unhealthy",

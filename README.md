@@ -131,4 +131,8 @@ pytest -q
 ruff check . && ruff format --check .
 ```
 
+## Cost on a self-serve plan
+
+Self-serve Devin plans are billed in dollar credits; the API reports `acus_consumed` as 0.0 for every session and the consumption endpoints return 0 (verified on this organisation). The pages therefore show minutes the AI was actively working, measured from the loop's own polls (gaps between polls while the session reported `working`, each gap capped at 60 s; `swe_loop/cost.py`). Enter the credits figure from the console (Settings, Plans) on the Settings page once and every minute is priced at that rate. On an ACU-metered plan the same pages show ACU.
+
 Built with coding assist tools, with Fable.

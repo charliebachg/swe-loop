@@ -28,6 +28,13 @@
       <button class="btn" type="submit">Save</button>
       <span class="foot">spent so far {{ s.budget.spent }} ACU · at the cap every live session is terminated and archived</span>
     </form>
+    <h3 style="margin-top:18px">Cost <span class="who code">measured by us; the plan reports no ACU</span></h3>
+    <p class="foot">This organisation is on a self-serve plan, billed in dollar credits. The API reports 0 ACU for every session, so cost is measured here as minutes the AI was actively working, from our own polls: <b>{{ cost.active_min }} min</b> across {{ cost.n_sessions }} session(s){% if cost.usd is not none %}, about <b>${{ cost.usd }}</b> at ${{ "%.3f" | format(cost.rate) }} per active minute, calibrated {{ (cost.calibrated_at or "")[:10] }}{% else %}. Enter the credits figure from the console (Settings, Plans) to turn minutes into dollars{% endif %}.</p>
+    <form method="post" action="/settings/credits" style="display:flex; gap:10px; align-items:end; flex-wrap:wrap">
+      <label style="font-size:12px;color:var(--muted)">credits used so far, USD, from the console<br><input name="credits_usd" type="number" step="0.01" min="0" value="{{ cost.credits_usd if cost.credits_usd is not none else '' }}" placeholder="e.g. 12.40" style="padding:6px 8px;border:1px solid var(--rule);border-radius:4px;width:160px"></label>
+      <button class="btn primary" type="submit">Calibrate</button>
+      <span class="foot">the figure and the minutes measured at that moment are kept; every later minute is priced at the same rate</span>
+    </form>
   </div>
 </div>
 {% endblock %}

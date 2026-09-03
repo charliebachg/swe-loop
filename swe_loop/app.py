@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from swe_loop import connect, ops, pages, replay, report, v2
+from swe_loop import connect, cost, ops, pages, replay, report, v2
 from swe_loop import reduce as reduce_mod
 from swe_loop.cli import run_once
 from swe_loop.config import Settings, TargetConfig
@@ -332,8 +332,23 @@ def build_app(
             request,
             "settings.html",
             "settings",
+            cost=cost.spend(request.app.state.store),
             s=pages.settings_page(settings, cfg, st, request.app.state.client),
         )
+
+    @app.post("/settings/credits")
+    async def settings_credits(request: Request) -> RedirectResponse:
+        """A person read the credits figure in the console (Settings > Plans); it calibrates the
+        active-minute estimate into dollars."""
+        form = parse_qs((await request.body()).decode())
+        try:
+            usd = float((form.get("credits_usd") or [""])[0])
+        except ValueError as ex:
+            raise HTTPException(status_code=400, detail="credits must be a number") from ex
+        if usd < 0:
+            raise HTTPException(status_code=400, detail="credits must be zero or more")
+        cost.record_credits(request.app.state.store, usd)
+        return RedirectResponse("/settings", status_code=303)
 
     @app.post("/settings/budget")
     async def settings_budget(request: Request) -> RedirectResponse:
