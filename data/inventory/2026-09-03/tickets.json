@@ -1,0 +1,544 @@
+{
+ "parent": {
+  "id": "P",
+  "title": "Finish the pandas 2.3.3 to 3.0.5 migration behind apache/superset#42671",
+  "route": "parent"
+ },
+ "shards": [
+  {
+   "id": "A",
+   "title": "pandas 3: copy-on-write and stack changes in charts/client_processing.py",
+   "route": "devin",
+   "review": "required",
+   "files": [
+    "superset/charts/client_processing.py"
+   ],
+   "why": "Three sites that pandas 2.3.3 flags and pandas 3.0.5 silently changes. All 26 tests still pass on 3.0.5, which is the dangerous case: an `inplace=True` on a column selection becomes a no-op under copy-on-write and nothing fails. Fix each site as pandas' own message prescribes and keep the placeholder-replacement behaviour identical on both versions.",
+   "sites": [
+    {
+     "file": "superset/charts/client_processing.py",
+     "lines": [
+      557
+     ],
+     "classes": [
+      "stack-impl"
+     ],
+     "warned": true,
+     "broke": false,
+     "r2": "FutureWarning: The previous implementation of stack is deprecated and will be removed in a future version of pandas. See the What's New notes for pandas 2.1.0 for details. Specify future_stack=True to adopt the new imple",
+     "r3": "",
+     "tests": [
+      "tests.unit_tests.charts.test_client_processing::test_pivot_df_multi_column"
+     ]
+    },
+    {
+     "file": "superset/charts/client_processing.py",
+     "lines": [
+      639
+     ],
+     "classes": [
+      "inplace-on-copy"
+     ],
+     "warned": true,
+     "broke": false,
+     "r2": "FutureWarning: A value is trying to be set on a copy of a DataFrame or Series through chained assignment using an inplace method.\nThe behavior will change in pandas 3.0. This inplace method will never work because the in",
+     "r3": "",
+     "tests": [
+      "tests.unit_tests.charts.test_client_processing::test_nested_leaf_rows_still_divide_by_database_rollups",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_df_complex",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_df_complex_null_values",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_df_no_cols_no_rows_single_metric",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_df_no_cols_no_rows_two_metrics",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_df_show_values_as_ignores_legacy_aggregate_function[Average]",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_df_show_values_as_ignores_legacy_aggregate_function[Maximum]",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_df_show_values_as_ignores_legacy_aggregate_function[Sum]",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_df_show_values_as_keeps_metrics_separate",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_df_show_values_as_percent_col",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_df_show_values_as_percent_row",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_df_show_values_as_percent_total",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_df_show_values_as_supersedes_legacy_fraction_aggfunc",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_df_show_values_as_zero_denominator_is_blank",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_df_single_row_two_metrics",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_table_v2_auto_currency_tracks_subtotal_context",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_table_v2_rollup_totals_divide_by_themselves",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_table_v2_show_values_as_uses_min_max_rollups",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_table_v2_totals_land_on_the_displayed_axis[rowTotals-COLUMNS]",
+      "tests.unit_tests.charts.test_client_processing::test_row_subtotal_divides_by_its_own_rollup",
+      "tests.unit_tests.charts.test_client_processing::test_row_subtotal_keeps_its_total_column_cell"
+     ]
+    },
+    {
+     "file": "superset/charts/client_processing.py",
+     "lines": [
+      754
+     ],
+     "classes": [
+      "replace-downcast"
+     ],
+     "warned": true,
+     "broke": false,
+     "r2": "FutureWarning: Downcasting behavior in `replace` is deprecated and will be removed in a future version. To retain the old behavior, explicitly call `result.infer_objects(copy=False)`. To opt-in to the future behavior, se",
+     "r3": "",
+     "tests": [
+      "tests.unit_tests.charts.test_client_processing::test_pivot_df_single_row_null_mix_values_numbers",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_df_single_row_null_mix_values_strings",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_df_single_row_null_values",
+      "tests.unit_tests.charts.test_client_processing::test_pivot_multi_level_index"
+     ]
+    }
+   ],
+   "tests": [
+    "tests/unit_tests/charts/test_client_processing.py"
+   ],
+   "acceptance": {
+    "pandas_2_3_3_warnings_as_errors": ".venv-p2/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= -W error::FutureWarning tests/unit_tests/charts/test_client_processing.py",
+    "pandas_3_0_5": ".venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= tests/unit_tests/charts/test_client_processing.py",
+    "detector_zero_hits": "REPO_ROOT=$PWD python -m swe_loop.detect.pandas_warnings  # 0 rows for the files above",
+    "lint": "ruff check superset/charts/client_processing.py && ruff format --check superset/charts/client_processing.py"
+   }
+  },
+  {
+   "id": "B",
+   "title": "pandas 3: changed API surface in pandas_postprocessing (stack, rolling quantile, loc assignment)",
+   "route": "devin",
+   "review": "normal",
+   "files": [
+    "superset/utils/pandas_postprocessing/pivot.py",
+    "superset/utils/pandas_postprocessing/rolling.py",
+    "superset/utils/pandas_postprocessing/utils.py"
+   ],
+   "why": "Three sites that both warn on 2.3.3 and fail on 3.0.5: the new `stack` implementation rejects `dropna=`, `Rolling.quantile` renamed `quantile=` to `q=`, and `.loc[:, cols] = ...` now raises on an incompatible dtype instead of upcasting.",
+   "sites": [
+    {
+     "file": "superset/utils/pandas_postprocessing/pivot.py",
+     "lines": [
+      360
+     ],
+     "classes": [
+      "stack-impl"
+     ],
+     "warned": true,
+     "broke": true,
+     "r2": "FutureWarning: The previous implementation of stack is deprecated and will be removed in a future version of pandas. See the What's New notes for pandas 2.1.0 for details. Specify future_stack=True to adopt the new imple",
+     "r3": "ValueError: dropna must be unspecified as the new implementation does not introduce rows of NA values. This argument will be removed in a future version of pandas.",
+     "tests": [
+      "tests.unit_tests.pandas_postprocessing.test_pivot::test_pivot_combine_sparse_metrics_no_spurious_extra_columns",
+      "tests.unit_tests.pandas_postprocessing.test_pivot::test_pivot_preserves_all_nan_metric_combine_value_with_metric",
+      "tests.unit_tests.pandas_postprocessing.test_pivot::test_pivot_show_values_as_with_combine_value_with_metric_preserves_per_metric"
+     ]
+    },
+    {
+     "file": "superset/utils/pandas_postprocessing/rolling.py",
+     "lines": [
+      102,
+      104
+     ],
+     "classes": [
+      "rolling-quantile-kwarg"
+     ],
+     "warned": true,
+     "broke": true,
+     "r2": "FutureWarning: the 'quantile' keyword is deprecated, use 'q' instead.",
+     "r3": "superset.exceptions.InvalidPostProcessingError: Invalid options for quantile: {'quantile': 0.25}",
+     "tests": [
+      "tests.unit_tests.pandas_postprocessing.test_rolling::test_rolling"
+     ]
+    },
+    {
+     "file": "superset/utils/pandas_postprocessing/utils.py",
+     "lines": [
+      231
+     ],
+     "classes": [
+      "incompatible-dtype-set"
+     ],
+     "warned": true,
+     "broke": true,
+     "r2": "FutureWarning: Setting an item of incompatible dtype is deprecated and will raise in a future error of pandas. Value '[nan 12.]' has dtype incompatible with int64, please explicitly cast to a compatible dtype first.",
+     "r3": "TypeError: Invalid value '[nan 12.]' for dtype 'int64'",
+     "tests": [
+      "tests.unit_tests.pandas_postprocessing.test_rolling::test_rolling_min_periods_trims_correctly"
+     ]
+    }
+   ],
+   "tests": [
+    "tests/unit_tests/pandas_postprocessing/test_pivot.py",
+    "tests/unit_tests/pandas_postprocessing/test_rolling.py"
+   ],
+   "acceptance": {
+    "pandas_2_3_3_warnings_as_errors": ".venv-p2/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= -W error::FutureWarning tests/unit_tests/pandas_postprocessing/test_pivot.py tests/unit_tests/pandas_postprocessing/test_rolling.py",
+    "pandas_3_0_5": ".venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= tests/unit_tests/pandas_postprocessing/test_pivot.py tests/unit_tests/pandas_postprocessing/test_rolling.py",
+    "detector_zero_hits": "REPO_ROOT=$PWD python -m swe_loop.detect.pandas_warnings  # 0 rows for the files above",
+    "lint": "ruff check superset/utils/pandas_postprocessing/pivot.py superset/utils/pandas_postprocessing/rolling.py superset/utils/pandas_postprocessing/utils.py && ruff format --check superset/utils/pandas_postprocessing/pivot.py superset/utils/pandas_postprocessing/rolling.py superset/utils/pandas_postprocessing/utils.py"
+   }
+  },
+  {
+   "id": "C",
+   "title": "pandas 3: string dtype semantics in pandas_postprocessing (aggregate, histogram, resample)",
+   "route": "devin",
+   "review": "normal",
+   "files": [
+    "superset/utils/pandas_postprocessing/aggregate.py",
+    "superset/utils/pandas_postprocessing/histogram.py",
+    "superset/utils/pandas_postprocessing/resample.py"
+   ],
+   "why": "pandas 3 infers a dedicated `str` dtype where 2.x used `object`. `mean` over a str column, `fillna(0)` into a str column, and `interpolate` on object/str now raise. Two of these three sites gave no warning on 2.3.3; the instrument cannot see this class in advance, which is why the pandas 3.0.5 run exists.",
+   "sites": [
+    {
+     "file": "superset/utils/pandas_postprocessing/aggregate.py",
+     "lines": [
+      46
+     ],
+     "classes": [
+      "str-dtype"
+     ],
+     "warned": false,
+     "broke": true,
+     "r2": "",
+     "r3": "TypeError: dtype 'str' does not support operation 'mean'",
+     "tests": [
+      "tests.unit_tests.pandas_postprocessing.test_boxplot::test_boxplot_type_coercion"
+     ]
+    },
+    {
+     "file": "superset/utils/pandas_postprocessing/histogram.py",
+     "lines": [
+      78
+     ],
+     "classes": [
+      "str-dtype"
+     ],
+     "warned": false,
+     "broke": true,
+     "r2": "",
+     "r3": "TypeError: Invalid value '[nan nan nan nan nan nan nan nan nan nan]' for dtype 'str'",
+     "tests": [
+      "tests.unit_tests.pandas_postprocessing.test_histogram::test_histogram_with_non_numeric_column"
+     ]
+    },
+    {
+     "file": "superset/utils/pandas_postprocessing/resample.py",
+     "lines": [
+      82,
+      85
+     ],
+     "classes": [
+      "interpolate-object",
+      "str-dtype"
+     ],
+     "warned": true,
+     "broke": true,
+     "r2": "FutureWarning: DataFrame.interpolate with object dtype is deprecated and will raise in a future version. Call obj.infer_objects(copy=False) before interpolating instead.",
+     "r3": "TypeError: Invalid value '0' for dtype 'str'. Value should be a string or missing value, got 'int' instead.",
+     "tests": [
+      "tests.unit_tests.pandas_postprocessing.test_resample::test_resample_linear",
+      "tests.unit_tests.pandas_postprocessing.test_resample::test_resample_zero_fill",
+      "tests.unit_tests.pandas_postprocessing.test_resample::test_resample_zero_fill_with_gaps"
+     ]
+    }
+   ],
+   "tests": [
+    "tests/unit_tests/pandas_postprocessing/test_boxplot.py",
+    "tests/unit_tests/pandas_postprocessing/test_histogram.py",
+    "tests/unit_tests/pandas_postprocessing/test_resample.py"
+   ],
+   "acceptance": {
+    "pandas_2_3_3_warnings_as_errors": ".venv-p2/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= -W error::FutureWarning tests/unit_tests/pandas_postprocessing/test_boxplot.py tests/unit_tests/pandas_postprocessing/test_histogram.py tests/unit_tests/pandas_postprocessing/test_resample.py",
+    "pandas_3_0_5": ".venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= tests/unit_tests/pandas_postprocessing/test_boxplot.py tests/unit_tests/pandas_postprocessing/test_histogram.py tests/unit_tests/pandas_postprocessing/test_resample.py",
+    "detector_zero_hits": "REPO_ROOT=$PWD python -m swe_loop.detect.pandas_warnings  # 0 rows for the files above",
+    "lint": "ruff check superset/utils/pandas_postprocessing/aggregate.py superset/utils/pandas_postprocessing/histogram.py superset/utils/pandas_postprocessing/resample.py && ruff format --check superset/utils/pandas_postprocessing/aggregate.py superset/utils/pandas_postprocessing/histogram.py superset/utils/pandas_postprocessing/resample.py"
+   }
+  },
+  {
+   "id": "D",
+   "title": "pandas 3: mixed-timezone parsing in models/helpers.py needs utc=True",
+   "route": "devin",
+   "review": "normal",
+   "files": [
+    "superset/models/helpers.py"
+   ],
+   "why": "One site. `pd.to_datetime(..., format='mixed')` on mixed offsets warns on 2.3.3 and raises on 3.0.5, surfacing as a QueryObjectValidationError. Smallest shard; the first one to run.",
+   "sites": [
+    {
+     "file": "superset/models/helpers.py",
+     "lines": [
+      345,
+      347
+     ],
+     "classes": [
+      "to_datetime-mixed-tz"
+     ],
+     "warned": true,
+     "broke": true,
+     "r2": "FutureWarning: In a future version of pandas, parsing datetimes with mixed time zones will raise an error unless `utc=True`. Please specify `utc=True` to opt in to the new behaviour and silence this warning. To create a ",
+     "r3": "superset.exceptions.QueryObjectValidationError: Unable to align time comparison because temporal axis 'ds' contains values that cannot be parsed as datetimes. Update the column's datetime format or choose a valid tempora",
+     "tests": [
+      "tests.unit_tests.common.test_time_shifts::test_join_offset_dfs_no_time_grain_aligns_mixed_offset_temporal_strings"
+     ]
+    }
+   ],
+   "tests": [
+    "tests/unit_tests/common/test_time_shifts.py"
+   ],
+   "acceptance": {
+    "pandas_2_3_3_warnings_as_errors": ".venv-p2/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= -W error::FutureWarning tests/unit_tests/common/test_time_shifts.py",
+    "pandas_3_0_5": ".venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= tests/unit_tests/common/test_time_shifts.py",
+    "detector_zero_hits": "REPO_ROOT=$PWD python -m swe_loop.detect.pandas_warnings  # 0 rows for the files above",
+    "lint": "ruff check superset/models/helpers.py && ruff format --check superset/models/helpers.py"
+   }
+  },
+  {
+   "id": "E",
+   "title": "pandas 3: 15 test expectations encode pandas 2 behaviour (human-only)",
+   "route": "human",
+   "review": "n/a",
+   "files": [
+    "tests/unit_tests/commands/databases/columnar_reader_test.py",
+    "tests/unit_tests/commands/databases/csv_reader_test.py",
+    "tests/unit_tests/commands/importers/v1/utils_test.py",
+    "tests/unit_tests/models/core_test.py",
+    "tests/unit_tests/pandas_postprocessing/test_rank.py",
+    "tests/unit_tests/pandas_postprocessing/test_sort.py",
+    "tests/unit_tests/result_set_test.py",
+    "tests/unit_tests/utils/excel_tests.py",
+    "tests/unit_tests/utils/test_date_parsing.py"
+   ],
+   "why": "These tests assert pandas-2 behaviour directly: `object` dtype where 3.0 infers `str`, bytes passed to `read_excel`, positional `Series[0]`, out-of-bounds datetimes coerced to NaT, groupby-apply including grouping columns. Repair sessions are not allowed to edit tests or CI config (the oracle is read-only to the agent), so this ticket is routed to a person. Until it is done, the pandas 3.0.5 unit-test job stays red even after A to D land.",
+   "sites": [
+    {
+     "file": "tests/unit_tests/commands/databases/columnar_reader_test.py",
+     "lines": [
+      133
+     ],
+     "classes": [
+      "reader-expectation"
+     ],
+     "r3": "assert None == nan",
+     "r2": "",
+     "tests": [
+      "tests.unit_tests.commands.databases.columnar_reader_test::test_columnar_reader_file_to_dataframe[file3-options3-expected_cols3-expected_values3]"
+     ]
+    },
+    {
+     "file": "tests/unit_tests/commands/databases/columnar_reader_test.py",
+     "lines": [
+      143
+     ],
+     "classes": [
+      "reader-expectation"
+     ],
+     "r3": "AssertionError: assert 'Parsing erro...ename: string' == 'Parsing erro...ename: string'\n  Skipping 47 identical leading characters in diff, use -v to show\n  -  in Name: string\n  +  in Name: large_string\n  ?           +++",
+     "r2": "",
+     "tests": [
+      "tests.unit_tests.commands.databases.columnar_reader_test::test_excel_reader_wrong_columns_to_read"
+     ]
+    },
+    {
+     "file": "tests/unit_tests/commands/databases/csv_reader_test.py",
+     "lines": [
+      459
+     ],
+     "classes": [
+      "str-dtype"
+     ],
+     "r3": "AssertionError: assert <StringDtype(na_value=nan)> == 'object'\n +  where <StringDtype(na_value=nan)> = 0            25.5\\n1              15\\n2    123456789086\\n3             abc\\n4            4.75\\nName: id, dtype: str.d",
+     "r2": "",
+     "tests": [
+      "tests.unit_tests.commands.databases.csv_reader_test::test_csv_reader_object_type_auto_inferring"
+     ]
+    },
+    {
+     "file": "tests/unit_tests/commands/databases/csv_reader_test.py",
+     "lines": [
+      877
+     ],
+     "classes": [
+      "str-dtype"
+     ],
+     "r3": "AssertionError: assert <StringDtype(na_value=nan)> == 'object'\n +  where <StringDtype(na_value=nan)> = 0    1439403621518935563\\n1               42286989\\n2    1413660691875593351\\n3            8.26839e+17\\nName: id, dty",
+     "r2": "",
+     "tests": [
+      "tests.unit_tests.commands.databases.csv_reader_test::test_csv_reader_successful_string_conversion_with_floats"
+     ]
+    },
+    {
+     "file": "tests/unit_tests/commands/importers/v1/utils_test.py",
+     "lines": [
+      59
+     ],
+     "classes": [
+      "oob-datetime"
+     ],
+     "r3": "AssertionError: assert False\n +  where False = <function isna at 0x10e1fb060>(Timestamp('3118-01-01 00:00:00'))\n +    where <function isna at 0x10e1fb060> = pd.isna",
+     "r2": "",
+     "tests": [
+      "tests.unit_tests.commands.importers.v1.utils_test.TestConvertTemporalColumns::test_out_of_bounds_coerced_to_nat"
+     ]
+    },
+    {
+     "file": "tests/unit_tests/commands/importers/v1/utils_test.py",
+     "lines": [
+      122
+     ],
+     "classes": [
+      "pandas-other"
+     ],
+     "r3": "TypeError: 'NoneType' object is not subscriptable",
+     "r2": "",
+     "tests": [
+      "tests.unit_tests.commands.importers.v1.utils_test.TestConvertTemporalColumns::test_warning_count_excludes_preexisting_nulls"
+     ]
+    },
+    {
+     "file": "tests/unit_tests/models/core_test.py",
+     "lines": [
+      2129
+     ],
+     "classes": [
+      "str-dtype"
+     ],
+     "r3": "AssertionError: assert <StringDtype(na_value=nan)> == <class 'numpy.object_'>\n +  where <StringDtype(na_value=nan)> = 1    [1, 2]\\n2    [3, 4]\\nName: col, dtype: str.dtype\n +  and   <class 'numpy.object_'> = numpy.object",
+     "r2": "",
+     "tests": [
+      "tests.unit_tests.models.core_test::test_post_process_df_non_zero_based_index"
+     ]
+    },
+    {
+     "file": "tests/unit_tests/pandas_postprocessing/test_rank.py",
+     "lines": [
+      35
+     ],
+     "classes": [
+      "groupby-apply-cols"
+     ],
+     "r3": "",
+     "r2": "FutureWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups",
+     "tests": [
+      "tests.unit_tests.pandas_postprocessing.test_rank::test_rank_should_rank"
+     ]
+    },
+    {
+     "file": "tests/unit_tests/pandas_postprocessing/test_sort.py",
+     "lines": [
+      37
+     ],
+     "classes": [
+      "positional-getitem"
+     ],
+     "r3": "KeyError: 0",
+     "r2": "FutureWarning: Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser",
+     "tests": [
+      "tests.unit_tests.pandas_postprocessing.test_sort::test_sort"
+     ]
+    },
+    {
+     "file": "tests/unit_tests/result_set_test.py",
+     "lines": [
+      191
+     ],
+     "classes": [
+      "oob-datetime"
+     ],
+     "r3": "AssertionError: assert False\n +  where False = <function isna at 0x10c997060>(Timestamp('3118-01-01 00:00:00+0000', tz='UTC'))\n +    where <function isna at 0x10c997060> = pd.isna",
+     "r2": "",
+     "tests": [
+      "tests.unit_tests.result_set_test::test_out_of_bounds_datetime_coerced_to_nat"
+     ]
+    },
+    {
+     "file": "tests/unit_tests/utils/excel_tests.py",
+     "lines": [
+      41
+     ],
+     "classes": [
+      "read_excel-bytes"
+     ],
+     "r3": "TypeError: Expected file path name or file-like object, got <class 'bytes'> type",
+     "r2": "FutureWarning: Passing bytes to 'read_excel' is deprecated and will be removed in a future version. To read from a byte string, wrap it in a `BytesIO` object.",
+     "tests": [
+      "tests.unit_tests.utils.excel_tests::test_timezone_conversion"
+     ]
+    },
+    {
+     "file": "tests/unit_tests/utils/excel_tests.py",
+     "lines": [
+      50
+     ],
+     "classes": [
+      "read_excel-bytes"
+     ],
+     "r3": "TypeError: Expected file path name or file-like object, got <class 'bytes'> type",
+     "r2": "FutureWarning: Passing bytes to 'read_excel' is deprecated and will be removed in a future version. To read from a byte string, wrap it in a `BytesIO` object.",
+     "tests": [
+      "tests.unit_tests.utils.excel_tests::test_quote_formulas"
+     ]
+    },
+    {
+     "file": "tests/unit_tests/utils/excel_tests.py",
+     "lines": [
+      69
+     ],
+     "classes": [
+      "read_excel-bytes"
+     ],
+     "r3": "TypeError: Expected file path name or file-like object, got <class 'bytes'> type",
+     "r2": "FutureWarning: Passing bytes to 'read_excel' is deprecated and will be removed in a future version. To read from a byte string, wrap it in a `BytesIO` object.",
+     "tests": [
+      "tests.unit_tests.utils.excel_tests::test_quote_formulas_in_headers_and_index"
+     ]
+    },
+    {
+     "file": "tests/unit_tests/utils/excel_tests.py",
+     "lines": [
+      221
+     ],
+     "classes": [
+      "read_excel-bytes"
+     ],
+     "r3": "TypeError: Expected file path name or file-like object, got <class 'bytes'> type",
+     "r2": "FutureWarning: Passing bytes to 'read_excel' is deprecated and will be removed in a future version. To read from a byte string, wrap it in a `BytesIO` object.",
+     "tests": [
+      "tests.unit_tests.utils.excel_tests::test_apply_column_types_with_duplicate_column_labels"
+     ]
+    },
+    {
+     "file": "tests/unit_tests/utils/test_date_parsing.py",
+     "lines": [
+      140
+     ],
+     "classes": [
+      "str-dtype"
+     ],
+     "r3": "assert <StringDtype(na_value=nan)> == object\n +  where <StringDtype(na_value=nan)> = 0    not_a_number\\n1         invalid\\n2             abc\\nName: epoch, dtype: str.dtype",
+     "r2": "",
+     "tests": [
+      "tests.unit_tests.utils.test_date_parsing::test_epoch_format_invalid_values"
+     ]
+    }
+   ],
+   "tests": [
+    "tests/unit_tests/commands/databases/columnar_reader_test.py",
+    "tests/unit_tests/commands/databases/csv_reader_test.py",
+    "tests/unit_tests/commands/importers/v1/utils_test.py",
+    "tests/unit_tests/models/core_test.py",
+    "tests/unit_tests/pandas_postprocessing/test_rank.py",
+    "tests/unit_tests/pandas_postprocessing/test_sort.py",
+    "tests/unit_tests/result_set_test.py",
+    "tests/unit_tests/utils/excel_tests.py",
+    "tests/unit_tests/utils/test_date_parsing.py"
+   ],
+   "acceptance": {
+    "pandas_3_0_5": ".venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= tests/unit_tests/commands/databases/columnar_reader_test.py tests/unit_tests/commands/databases/csv_reader_test.py tests/unit_tests/commands/importers/v1/utils_test.py tests/unit_tests/models/core_test.py tests/unit_tests/pandas_postprocessing/test_rank.py tests/unit_tests/pandas_postprocessing/test_sort.py tests/unit_tests/result_set_test.py tests/unit_tests/utils/excel_tests.py tests/unit_tests/utils/test_date_parsing.py"
+   }
+  }
+ ],
+ "numbers": {
+  "A": 1,
+  "B": 2,
+  "C": 3,
+  "D": 4,
+  "E": 5,
+  "P": 6
+ },
+ "repo": "charliebachg/superset"
+}
