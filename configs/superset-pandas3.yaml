@@ -50,3 +50,9 @@ gate:
 triage:
   # what the triage session reads besides the ticket: the measured inventory, published with this repository
   inventory_url: https://raw.githubusercontent.com/charliebachg/swe-loop/main/data/inventory/2026-09-03/inventory.json
+
+rerun:
+  # Reset a shard for a live rerun: its files go back to this commit (the base branch before any fix
+  # landed), the old repair branch is deleted, and the store forgets the ticket. The issue stays open.
+  baseline: 452817f2a1
+  branch_prefix: swe-loop/

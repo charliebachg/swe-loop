@@ -75,6 +75,7 @@ python -m swe_loop triage --ticket tkt_A --answer "..."   # answer a question; w
 python -m swe_loop run                      # route, dispatch, poll, gate, review, reduce: one pass
 python -m swe_loop review-followup --ticket tkt_B         # send Devin Review's remarks back, re-gate
 python -m swe_loop cost --set 58d404d2=1.78 # the console's figure for a session
+python -m swe_loop reset-shard --shard D    # put one shard back to its broken state, on the fork and in the store
 python -m swe_loop record data/replay/run.json            # capture the run for replay, redacted
 ```
 
@@ -124,7 +125,7 @@ agent: each step says who does it, the AI or a person, and every session is pric
 | **Report** | the funnel from sites to merges, cost per verified change, where the gate said no, the burn-down against the inventory, session sizes, receipts, tripwires, routing and refusals |
 | **Devin · Sessions** | every session with its status, minutes, dollars and size; click a row for its timeline, structured output and verdicts |
 | **Devin · Playbooks** | the procedures sessions follow, with their structured output schema and last output; add one, attach it to an automation |
-| **Settings** (gear) | the connected repository, the budget caps, the console's dollars per session, live connection checks |
+| **Settings** (gear) | the connected repository, the budget caps, the console's dollars per session, live connection checks, and Rerun a shard: one button puts a fixed shard back to its broken state on the repository and in the store, so the next Run does it again for real |
 
 Further pages sit at `/devin/knowledge`, `/devin/review`, `/devin/insights`, `/devin/integrations`
 and `/devin/next`: the notes sessions retrieve, the review results, Session Insights, the org's

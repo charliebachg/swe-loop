@@ -74,6 +74,15 @@ def cmd_seed(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_reset_shard(args: argparse.Namespace) -> int:
+    from swe_loop.rerun import reset_shard
+
+    settings, cfg, store, _ = _ctx()
+    out = reset_shard(settings, cfg, store, args.shard.upper(), push=not args.no_push, log=print)
+    print(json.dumps(out))
+    return 0
+
+
 def cmd_budget(args: argparse.Namespace) -> int:
     _, cfg, store, _ = _ctx()
     per = args.per_session if args.per_session is not None else cfg.max_acu_limit
@@ -368,6 +377,10 @@ def main(argv: list[str] | None = None) -> int:
         help="<devin session id or prefix>=<usd from the console>; repeatable",
     )
     co.set_defaults(fn=cmd_cost)
+    rs = sub.add_parser("reset-shard")
+    rs.add_argument("--shard", required=True, help="the shard letter, e.g. D")
+    rs.add_argument("--no-push", action="store_true", help="restore in the local clone only")
+    rs.set_defaults(fn=cmd_reset_shard)
     ac = sub.add_parser("apply-config")
     ac.add_argument(
         "--dry-run", action="store_true", help="print what would be created; create nothing"

@@ -20,6 +20,8 @@ from swe_loop.config import Settings, TargetConfig
 from swe_loop.store import Store
 from swe_loop.triage import TRIAGE_ACU_CAP
 
+ROOT = Path(__file__).resolve().parents[1]
+
 ACT = {
     "code": ("#5b6f8a", "#eaeef4", "code"),
     "devin": ("#7a4fb5", "#f1eafa", "Devin"),
@@ -377,6 +379,42 @@ def _usd_or_min(store: Store, row: dict[str, Any], kind: str, rates: dict[str, f
         else cost.repair_active_seconds(store, row)
     )
     return f"{secs / 60.0:.0f} min"
+
+
+def rerun_ctx(settings: Settings, cfg: TargetConfig, store: Store) -> dict[str, Any]:
+    """What the Reset button will do, and what the last reset did."""
+    from swe_loop import rerun
+
+    last_raw = store.get_setting("rerun.last")
+    last = json.loads(last_raw) if last_raw else None
+    root = (ROOT / cfg.gate.get("repo_root", "../superset-fork")).resolve()
+    have_clone = (root / ".git").exists()
+    live = settings.live
+    return {
+        "shards": rerun.shards(),
+        "default": "D",
+        "baseline": cfg.rerun.get("baseline", ""),
+        "base": cfg.base_branch,
+        "repo": cfg.repo,
+        "live": live,
+        "haveClone": have_clone,
+        "clone": str(root),
+        "willPush": live and have_clone,
+        "last": last,
+        "lastLine": (
+            (
+                f"shard {last['shard']}: {last.get('error')}"
+                if last.get("error")
+                else f"shard {last['shard']} at {last.get('at', '')[:16].replace('T', ' ')}: repository {last.get('repo')}"
+                + (", pushed" if last.get("pushed") else "")
+                + (", old repair branch deleted" if last.get("branch_deleted") else "")
+                + f" · {last.get('store_rows', 0)} store row(s) forgotten"
+                + (f" · snapshot {last.get('snapshot')}" if last.get("snapshot") else "")
+            )
+            if last
+            else "never reset"
+        ),
+    }
 
 
 def _usd_cap(store: Store) -> float | None:

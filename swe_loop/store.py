@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import threading
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -154,14 +155,16 @@ STEP_RENAMES = {
 
 
 class Store:
+    """One SQLite file. Each thread gets its own connection to it: the web server answers
+    requests while a run thread writes, and SQLite's WAL mode lets both proceed. A single
+    connection shared across threads would interleave cursors and fail in the middle of a run."""
+
     def __init__(self, path: Path | str = ":memory:"):
         self.path = str(path)
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(self.path, isolation_level=None, check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA foreign_keys=ON")
+        self._local = threading.local()
+        self._memory: sqlite3.Connection | None = None
         self.conn.executescript(SCHEMA)
         for table in ("sessions", "triage_sessions"):
             cols = {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})").fetchall()}
@@ -170,6 +173,27 @@ class Store:
         for old, new in STEP_RENAMES.items():
             self.conn.execute("UPDATE timeline SET layer=? WHERE layer=?", (new, old))
         self.conn.commit()
+
+    def _connect(self) -> sqlite3.Connection:
+        c = sqlite3.connect(self.path, isolation_level=None, check_same_thread=False, timeout=30.0)
+        c.row_factory = sqlite3.Row
+        c.execute("PRAGMA journal_mode=WAL")
+        c.execute("PRAGMA foreign_keys=ON")
+        c.execute("PRAGMA busy_timeout=30000")
+        return c
+
+    @property
+    def conn(self) -> sqlite3.Connection:
+        """This thread's connection, opened on first use."""
+        if self.path == ":memory:":
+            if self._memory is None:
+                self._memory = self._connect()
+            return self._memory
+        c = getattr(self._local, "conn", None)
+        if c is None:
+            c = self._connect()
+            self._local.conn = c
+        return c
 
     # ------------------------------------------------------------------ helpers
     @contextmanager
@@ -671,6 +695,58 @@ class Store:
         )
         self.log("merge", f"human {kind}", ticket_id=ticket_id)
         return hid
+
+    def ticket_dump(self, ticket_id: str) -> dict[str, list[dict[str, Any]]]:
+        """Every row about one ticket, for a snapshot before the rows are forgotten."""
+        wos = self.work_orders_for(ticket_id)
+        sess = [s for w in wos for s in self.sessions_for(w["id"])]
+        sids = [s["id"] for s in sess]
+        tri = self.list_triage_sessions(ticket_id)
+        tsids = [t["id"] for t in tri]
+        q = lambda sql, ids: (
+            self._all(sql.replace("?", ",".join("?" for _ in ids)), *ids) if ids else []
+        )
+        return {
+            "tickets": [t for t in [self.get_ticket(ticket_id)] if t],
+            "work_orders": wos,
+            "sessions": sess,
+            "triage_sessions": tri,
+            "evidence": q("SELECT * FROM evidence WHERE session_id IN (?)", sids),
+            "verdicts": q("SELECT * FROM verdicts WHERE session_id IN (?)", sids),
+            "escalations": self._all("SELECT * FROM escalations WHERE ticket_id=?", ticket_id),
+            "human_actions": self._all("SELECT * FROM human_actions WHERE ticket_id=?", ticket_id),
+            "events": self._all("SELECT * FROM events WHERE ticket_id=?", ticket_id),
+            "timeline": self._all("SELECT * FROM timeline WHERE ticket_id=?", ticket_id)
+            + q(
+                "SELECT * FROM timeline WHERE ticket_id IS NULL AND session_id IN (?)", sids + tsids
+            ),
+        }
+
+    def forget_ticket(self, ticket_id: str) -> int:
+        """Delete every row about one ticket. Returns the number of rows removed. Used by a
+        shard reset; the caller snapshots first."""
+        d = self.ticket_dump(ticket_id)
+        n = sum(len(v) for v in d.values())
+        sids = [s["id"] for s in d["sessions"]]
+        tsids = [t["id"] for t in d["triage_sessions"]]
+        with self.tx() as c:
+
+            def rm(sql: str, ids: list[str]) -> None:
+                if ids:
+                    c.execute(sql.replace("?", ",".join("?" for _ in ids)), ids)
+
+            rm("DELETE FROM timeline WHERE session_id IN (?)", sids + tsids)
+            c.execute("DELETE FROM timeline WHERE ticket_id=?", (ticket_id,))
+            rm("DELETE FROM evidence WHERE session_id IN (?)", sids)
+            rm("DELETE FROM verdicts WHERE session_id IN (?)", sids)
+            rm("DELETE FROM sessions WHERE id IN (?)", sids)
+            c.execute("DELETE FROM triage_sessions WHERE ticket_id=?", (ticket_id,))
+            c.execute("DELETE FROM work_orders WHERE ticket_id=?", (ticket_id,))
+            c.execute("DELETE FROM escalations WHERE ticket_id=?", (ticket_id,))
+            c.execute("DELETE FROM human_actions WHERE ticket_id=?", (ticket_id,))
+            c.execute("DELETE FROM events WHERE ticket_id=?", (ticket_id,))
+            c.execute("DELETE FROM tickets WHERE id=?", (ticket_id,))
+        return n
 
     def get_setting(self, key: str, default: str | None = None) -> str | None:
         row = self._one("SELECT value FROM settings WHERE key=?", key)
