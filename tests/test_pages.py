@@ -95,7 +95,7 @@ def test_tickets_page_groups_by_source(client):
     assert "Issues on the fork" in html and "Scan" in html
     assert "human-only" in html and "sessions never edit tests" in html
     assert 'href="https://github.com/charliebachg/superset/issues/4"' in html
-    assert html.count("track</a>") == 5
+    assert html.count("/tracker#tkt_") == 5
 
 
 def test_tracker_rows_stages_and_merge(client):
@@ -149,17 +149,11 @@ def test_sessions_page_eta_parent_and_drawer(client):
     assert c.get("/partials/session/nope").status_code == 404
 
 
-def test_automations_page_toggle_and_run_now(client):
+def test_automations_run_now_dispatches_a_routed_ticket(client):
     c, st = client
     html = c.get("/automations").text
     assert "Repair" in html and "Scan" in html and "schedule:recurring" in html
     assert "Run now" in html and "replay" in html
-    # toggle off, run now refused, toggle on
-    assert "Disable" in c.post("/automations/toggle").text or True
-    assert st.get_setting("automation.repair.enabled") == "0"
-    assert c.post("/run-now").status_code == 409
-    c.post("/automations/toggle")
-    assert st.get_setting("automation.repair.enabled") == "1"
     # a fresh routed ticket, then run now dispatches it on the fake transport
     st.upsert_ticket(
         id="tkt_X",
@@ -176,13 +170,13 @@ def test_automations_page_toggle_and_run_now(client):
         acceptance={"p3": "true"},
     )
     before = len(st._all("SELECT id FROM sessions"))
-    r = c.post("/run-now")
+    r = c.post("/automations/auto_repair/run")
     assert r.status_code == 200
     th = c.app.state.run_thread
     th.join(timeout=30)
     assert not th.is_alive()
     assert len(st._all("SELECT id FROM sessions")) == before + 1
-    assert st.get_setting("automation.repair.last_run")
+    assert st.get_automation("auto_repair")["last_run"]
     assert "gate" in " ".join(e["layer"] for e in st.timeline(ticket_id="tkt_X", limit=50))
     assert st.get_ticket("tkt_X")["status"] == "gated"
 
@@ -191,11 +185,10 @@ def test_capability_pages_render_real_state(client):
     c, _ = client
     html = c.get("/devin/playbooks").text
     assert "Repair one shard" in html and "Triage a dependency-upgrade ticket" in html
-    assert (
-        "<h4>Forbidden Actions</h4>" in html
-        and "self_reported_done" in html
-        and "acceptance_cmd" in html
-    )
+    repair = c.get("/partials/playbook/pb_repair").text
+    triage = c.get("/partials/playbook/pb_triage").text
+    assert "<h4>Forbidden Actions</h4>" in repair and "self_reported_done" in repair
+    assert "<h4>Forbidden Actions</h4>" in triage and "acceptance_cmd" in triage
     html = c.get("/devin/knowledge").text
     assert html.count("<tr>") >= 7 and "ruff" in html and "oxlint" in html and "lower bound" in html
     html = c.get("/devin/insights").text

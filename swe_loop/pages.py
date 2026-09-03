@@ -162,6 +162,32 @@ def _ticket_row(store: Store, t: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def ticket_detail(store: Store, tid: str) -> dict[str, Any] | None:
+    t = store.get_ticket(tid)
+    if not t:
+        return None
+    row = _ticket_row(store, t)
+    verdict = json.loads(t["triage_verdict_json"]) if t.get("triage_verdict_json") else {}
+    wos = store.work_orders_for(tid)
+    acceptance = {}
+    for w in wos:
+        acceptance.update(w["acceptance"])
+    if not acceptance and isinstance(verdict.get("acceptance_cmd"), dict):
+        acceptance = verdict["acceptance_cmd"]
+    return {
+        **row,
+        "sites": verdict.get("sites", []),
+        "acceptance": acceptance,
+        "work_orders": wos,
+        "escalations": [
+            e for e in store.list_escalations(unresolved_only=False) if e["ticket_id"] == tid
+        ],
+        "timeline": store.timeline(ticket_id=tid, limit=40),
+        "review": verdict.get("review"),
+        "needs_human": verdict.get("needs_human"),
+    }
+
+
 def tickets(store: Store) -> dict[str, Any]:
     groups: dict[str, list[dict[str, Any]]] = {}
     for t in store.list_tickets():
@@ -196,7 +222,17 @@ def tickets(store: Store) -> dict[str, Any]:
         else:
             merged.append(g)
     total = sum(len(g["rows"]) for g in merged)
-    return {"groups": merged, "total": total}
+    allrows = [r for g in merged for r in g["rows"]]
+    summary = {
+        "total": total,
+        "devin": sum(1 for r in allrows if r["route"] == "devin"),
+        "human": sum(1 for r in allrows if r["route"] in ("human_only", "refuse")),
+        "pending": sum(1 for r in allrows if not r["route"]),
+        "merged": sum(1 for r in allrows if r["status"] == "merged"),
+        "active": sum(1 for r in allrows if r["status"] in ("dispatched", "running", "gated")),
+        "sites": sum(r["sites"] for r in allrows),
+    }
+    return {"groups": merged, "total": total, "summary": summary}
 
 
 # ---------------------------------------------------------------------------- tracker
@@ -442,6 +478,59 @@ VERIFIED_SOURCES = [
     ("snapshot_build", "completed"),
     ("linear · jira · pylon · incident_io · gitlab", "issue and pipeline events"),
 ]
+TRIGGER_CHOICES = [
+    ("github:pull_request", "GitHub · pull request opened or updated"),
+    ("github:issues", "GitHub · issue opened or labelled"),
+    ("github:check_run", "GitHub · check run failed"),
+    ("github:push", "GitHub · push to a branch"),
+    ("schedule:recurring", "Schedule · recurring"),
+    ("webhook:incoming", "Webhook · incoming"),
+    ("slack:message", "Slack · message"),
+]
+KIND_NOTES = {
+    "repair": "reads the tickets and runs the loop: route, dispatch, poll and manage, gate, review, a person merges",
+    "scan": "points a triage session at the repository on a schedule; its verdict becomes tickets in the Scan group",
+    "custom": "a trigger, a playbook and a cap; the loop between trigger and merge is the same",
+}
+
+
+def seed_automations(store: Store, cfg: TargetConfig) -> None:
+    """The two automations every target starts with. Idempotent: keyed by fixed ids."""
+    if store.get_automation("auto_repair") is None:
+        store.upsert_automation(
+            id="auto_repair",
+            name="Repair",
+            kind="repair",
+            enabled=True,
+            availability="live",
+            trigger={
+                "source": cfg.trigger.get("source", "github"),
+                "event": cfg.trigger.get("event", "pull_request"),
+                "actions": cfg.trigger.get("actions", []),
+                "match": cfg.trigger.get("match", {}),
+                "issue_label": cfg.trigger.get("issue_label", "swe-loop"),
+            },
+            target=cfg.repo,
+            playbook="repair-pandas3",
+            max_acu=cfg.max_acu_limit,
+            concurrency=4,
+            notes="v0: the running lane",
+        )
+    if store.get_automation("auto_scan") is None:
+        store.upsert_automation(
+            id="auto_scan",
+            name="Scan",
+            kind="scan",
+            enabled=False,
+            availability="next",
+            trigger={"source": "schedule", "event": "recurring"},
+            target=cfg.repo,
+            playbook="triage-pandas3",
+            max_acu=3,
+            concurrency=1,
+            schedule="every weekday at 06:00",
+            notes="v1: a triage session in investigative mode; files the tickets itself",
+        )
 
 
 def automations(
@@ -449,49 +538,49 @@ def automations(
 ) -> dict[str, Any]:
     from swe_loop.intake import ADAPTERS
 
-    native = None
-    playbooks_on_org: list[dict[str, Any]] = []
+    seed_automations(store, cfg)
+    native: dict[str, Any] = {}
     if client is not None and not client.is_fake:
         try:
             for a in client.t.list_automations():
-                if cfg.name in json.dumps(a) or "swe-loop" in json.dumps(a):
-                    native = a
-                    break
-            playbooks_on_org = client.t.list_playbooks()
+                native[json.dumps(a)[:0] or a.get("name", "")] = a
         except Exception:  # noqa: BLE001 - listing is informational
-            native = None
-    last_result = store.get_setting("automation.repair.last_result")
+            native = {}
+    rows = []
+    for a in store.list_automations():
+        t = a["trigger"]
+        rows.append(
+            {
+                **a,
+                "trigger_label": f"{t.get('source', '')}:{t.get('event', '')}",
+                "trigger_detail": (
+                    (", ".join(t.get("actions", [])) + " · " if t.get("actions") else "")
+                    + (" · ".join(f"{k}={v}" for k, v in (t.get("match") or {}).items()))
+                    + (f" · label {t['issue_label']}" if t.get("issue_label") else "")
+                    + (f" · {a['schedule']}" if a.get("schedule") else "")
+                ),
+                "kind_note": KIND_NOTES.get(a["kind"], KIND_NOTES["custom"]),
+                "native": native.get(a["name"]),
+                "runnable": a["kind"] == "repair" and a["availability"] == "live",
+                "running": running and a["kind"] == "repair",
+            }
+        )
     return {
-        "repair": {
-            "enabled": store.get_setting("automation.repair.enabled", "1") == "1",
-            "trigger": cfg.trigger,
-            "native": native,
-            "native_note": (
-                "native Devin Automation on the org"
-                if native
-                else (
-                    "no native automation found on the org yet; the GitHub webhook posts to /intake/github"
-                    if settings.live
-                    else "replay: the GitHub webhook posts to /intake/github; the native Automation is created on the org in live mode"
-                )
-            ),
-            "last_run": store.get_setting("automation.repair.last_run"),
-            "last_result": json.loads(last_result) if last_result else None,
-            "running": running,
-            "playbook": cfg.session.get("playbook"),
-            "playbooks_on_org": [p.get("name") for p in playbooks_on_org][:5],
-            "cap": cfg.max_acu_limit,
-            "routed": len(store.list_tickets("routed")),
-        },
-        "scan": {
-            "schedule": "every weekday at 06:00",
-            "target": cfg.repo,
-            "playbook": "triage, investigative mode",
-            "produces": "tickets in the Scan group, each with sites and acceptance commands",
-        },
-        "adapters": [(src, [a.kind for a in ads]) for src, ads in ADAPTERS.items()],
+        "rows": rows,
+        "adapters": [(src, [ad.kind for ad in ads]) for src, ads in ADAPTERS.items()],
         "sources": VERIFIED_SOURCES,
+        "trigger_choices": TRIGGER_CHOICES,
+        "playbook_names": [p["name"] for p in store.list_playbooks()]
+        or ["repair-pandas3", "triage-pandas3"],
+        "target": cfg.repo,
+        "cap": cfg.max_acu_limit,
+        "routed": len(store.list_tickets("routed")),
         "live": settings.live,
+        "native_note": (
+            "native Devin Automations on the org are listed beside their config"
+            if settings.live
+            else "replay: the GitHub webhook posts to /intake/github; native Automations are created on the org in live mode"
+        ),
     }
 
 
@@ -556,12 +645,52 @@ def _inline(s: str) -> str:
     return _re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
 
 
-def playbooks(store: Store, cfg: TargetConfig, client: DevinClient | None) -> dict[str, Any]:
+def seed_playbooks(store: Store, cfg: TargetConfig) -> None:
+    """The playbooks on disk are the source of truth for the two agents; they are mirrored into
+    the store so the page is one list, and user-added playbooks sit beside them."""
     from swe_loop.dispatch import ROOT as _R
     from swe_loop.dispatch import load_result_schema
     from swe_loop.knowledge import load_playbook
     from swe_loop.triage import TRIAGE_ACU_CAP, load_schema
 
+    specs = [
+        ("pb_triage", "triage-pandas3", "triage session", load_schema(), TRIAGE_ACU_CAP, "live"),
+        (
+            "pb_repair",
+            "repair-pandas3",
+            "repair sessions",
+            load_result_schema(),
+            cfg.max_acu_limit,
+            "live",
+        ),
+    ]
+    for pid, name, agent, schema, cap, avail in specs:
+        pb = load_playbook(_R / "playbooks" / f"{name}.md")
+        store.upsert_playbook(
+            id=pid,
+            name=name,
+            agent=agent,
+            body=pb.body,
+            schema=schema,
+            max_acu=cap,
+            source="file",
+            availability=avail,
+        )
+    if store.get_playbook("pb_scan") is None:
+        store.upsert_playbook(
+            id="pb_scan",
+            name="scan (triage, investigative mode)",
+            agent="scan session",
+            body="# Scan a repository for the work a dependency bot cannot finish\n\n## Overview\n\nThe triage playbook pointed at a repository instead of a ticket. Same six sections, same verdict schema; the verdict becomes the tickets.\n\n## Required from User\n\n- The repository and branch.\n- The library and the two versions.\n",
+            schema=load_schema(),
+            max_acu=3,
+            source="file",
+            availability="next",
+        )
+
+
+def playbooks(store: Store, cfg: TargetConfig, client: DevinClient | None) -> dict[str, Any]:
+    seed_playbooks(store, cfg)
     org: dict[str, str] = {}
     if client is not None and not client.is_fake:
         try:
@@ -569,51 +698,58 @@ def playbooks(store: Store, cfg: TargetConfig, client: DevinClient | None) -> di
                 org[p.get("name", "")] = p.get("playbook_id") or p.get("id") or ""
         except Exception:  # noqa: BLE001
             org = {}
-    last_verdict = store._one(
-        "SELECT triage_verdict_json FROM tickets WHERE triage_verdict_json IS NOT NULL ORDER BY updated_at DESC, rowid DESC LIMIT 1"
-    )
-    last_claim = store._one(
-        "SELECT structured_output_json FROM sessions WHERE structured_output_json IS NOT NULL ORDER BY created_at DESC, rowid DESC LIMIT 1"
-    )
-    specs = [
-        (
-            "triage-pandas3",
-            "triage session",
-            load_schema(),
-            TRIAGE_ACU_CAP,
-            "/tracker",
-            "the triage stage",
-            json.loads(last_verdict["triage_verdict_json"]) if last_verdict else None,
-        ),
-        (
-            "repair-pandas3",
-            "repair sessions",
-            load_result_schema(),
-            cfg.max_acu_limit,
-            "/devin/sessions",
-            "every repair session",
-            json.loads(last_claim["structured_output_json"]) if last_claim else None,
-        ),
-    ]
-    out = []
-    for name, agent, schema, cap, link, used_by, last in specs:
-        pb = load_playbook(_R / "playbooks" / f"{name}.md")
-        out.append(
+    used_by = {
+        "pb_triage": ("the triage stage", "/tracker"),
+        "pb_repair": ("every repair session", "/devin/sessions"),
+        "pb_scan": ("the Scan automation", "/automations"),
+    }
+    rows = []
+    for p in store.list_playbooks():
+        title = next(
+            (ln[2:].strip() for ln in p["body"].splitlines() if ln.startswith("# ")), p["name"]
+        )
+        sections = [ln[3:].strip() for ln in p["body"].splitlines() if ln.startswith("## ")]
+        rows.append(
             {
-                "name": pb.name,
-                "agent": agent,
-                "path": f"playbooks/{name}.md",
-                "html": _md_to_html(pb.body),
-                "schema": schema,
-                "schema_fields": list(schema.get("properties", {}).keys()),
-                "last_output": last,
-                "cap": cap,
-                "used_by": used_by,
-                "used_by_link": link,
-                "org_id": org.get(pb.name),
+                **p,
+                "title": title,
+                "sections": sections,
+                "schema_fields": list((p.get("schema") or {}).get("properties", {}).keys()),
+                "org_id": org.get(p["name"]),
+                "used_by": used_by.get(
+                    p["id"], ("user-added; attach it to an automation", "/automations")
+                )[0],
+                "used_by_link": used_by.get(p["id"], ("", "/automations"))[1],
             }
         )
-    return {"playbooks": out}
+    return {"rows": rows}
+
+
+def playbook_detail(store: Store, pid: str) -> dict[str, Any] | None:
+    p = store.get_playbook(pid)
+    if not p:
+        return None
+    last = None
+    if pid == "pb_triage":
+        r = store._one(
+            "SELECT triage_verdict_json FROM tickets WHERE triage_verdict_json IS NOT NULL ORDER BY updated_at DESC, rowid DESC LIMIT 1"
+        )
+        last = json.loads(r["triage_verdict_json"]) if r else None
+    elif pid == "pb_repair":
+        r = store._one(
+            "SELECT structured_output_json FROM sessions WHERE structured_output_json IS NOT NULL ORDER BY created_at DESC, rowid DESC LIMIT 1"
+        )
+        last = json.loads(r["structured_output_json"]) if r else None
+    title = next(
+        (ln[2:].strip() for ln in p["body"].splitlines() if ln.startswith("# ")), p["name"]
+    )
+    return {
+        **p,
+        "title": title,
+        "html": _md_to_html(p["body"]),
+        "last_output": last,
+        "schema_fields": list((p.get("schema") or {}).get("properties", {}).keys()),
+    }
 
 
 def knowledge(store: Store, settings: Settings) -> dict[str, Any]:

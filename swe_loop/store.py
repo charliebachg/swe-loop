@@ -96,6 +96,17 @@ CREATE TABLE IF NOT EXISTS timeline (
   layer TEXT NOT NULL, event TEXT NOT NULL, detail TEXT
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS automations (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+  availability TEXT NOT NULL DEFAULT 'live', trigger_json TEXT NOT NULL, target TEXT NOT NULL,
+  playbook TEXT, max_acu REAL, concurrency INTEGER NOT NULL DEFAULT 4, schedule TEXT, notes TEXT,
+  created_at TEXT NOT NULL, last_run TEXT, last_result TEXT
+);
+CREATE TABLE IF NOT EXISTS playbooks (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, agent TEXT NOT NULL, body TEXT NOT NULL,
+  schema_json TEXT, max_acu REAL, source TEXT NOT NULL, availability TEXT NOT NULL DEFAULT 'live',
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS ix_timeline_session ON timeline(session_id);
 CREATE INDEX IF NOT EXISTS ix_tickets_status ON tickets(status);
 CREATE INDEX IF NOT EXISTS ix_sessions_wo ON sessions(work_order_id);
@@ -548,6 +559,104 @@ class Store:
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
             (key, value, now()),
         )
+
+    # ------------------------------------------------------------------ automations (configs)
+    def upsert_automation(self, **a: Any) -> str:
+        aid = a.get("id") or new_id("auto")
+        row = {
+            "id": aid,
+            "name": a["name"],
+            "kind": a.get("kind", "custom"),
+            "enabled": 1 if a.get("enabled", True) else 0,
+            "availability": a.get("availability", "live"),
+            "trigger_json": json.dumps(a.get("trigger") or {}, sort_keys=True),
+            "target": a.get("target", ""),
+            "playbook": a.get("playbook"),
+            "max_acu": a.get("max_acu"),
+            "concurrency": int(a.get("concurrency") or 4),
+            "schedule": a.get("schedule"),
+            "notes": a.get("notes"),
+            "created_at": now(),
+            "last_run": a.get("last_run"),
+            "last_result": a.get("last_result"),
+        }
+        cols = ", ".join(row)
+        qs = ", ".join("?" for _ in row)
+        updates = ", ".join(f"{k}=excluded.{k}" for k in row if k not in ("id", "created_at"))
+        self.conn.execute(
+            f"INSERT INTO automations ({cols}) VALUES ({qs}) ON CONFLICT(id) DO UPDATE SET {updates}",
+            tuple(row.values()),
+        )
+        return aid
+
+    def list_automations(self) -> list[dict[str, Any]]:
+        out = []
+        for r in self._all("SELECT * FROM automations ORDER BY created_at, rowid"):
+            r["trigger"] = json.loads(r.pop("trigger_json") or "{}")
+            r["last_result"] = json.loads(r["last_result"]) if r.get("last_result") else None
+            out.append(r)
+        return out
+
+    def get_automation(self, aid: str) -> dict[str, Any] | None:
+        rows = [a for a in self.list_automations() if a["id"] == aid]
+        return rows[0] if rows else None
+
+    def set_automation(self, aid: str, **fields: Any) -> None:
+        allowed = {
+            "enabled",
+            "last_run",
+            "last_result",
+            "notes",
+            "max_acu",
+            "concurrency",
+            "schedule",
+            "playbook",
+        }
+        bad = set(fields) - allowed
+        assert not bad, bad
+        if "last_result" in fields and not isinstance(fields["last_result"], str | type(None)):
+            fields["last_result"] = json.dumps(fields["last_result"])
+        sets = ", ".join(f"{k}=?" for k in fields)
+        self.conn.execute(f"UPDATE automations SET {sets} WHERE id=?", (*fields.values(), aid))
+
+    def delete_automation(self, aid: str) -> None:
+        self.conn.execute("DELETE FROM automations WHERE id=? AND kind='custom'", (aid,))
+
+    # ------------------------------------------------------------------ playbooks
+    def upsert_playbook(self, **p: Any) -> str:
+        pid = p.get("id") or new_id("pb")
+        ts = now()
+        self.conn.execute(
+            """INSERT INTO playbooks (id, name, agent, body, schema_json, max_acu, source, availability, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(id) DO UPDATE SET name=excluded.name, agent=excluded.agent, body=excluded.body,
+                 schema_json=excluded.schema_json, max_acu=excluded.max_acu, availability=excluded.availability,
+                 updated_at=excluded.updated_at""",
+            (
+                pid,
+                p["name"],
+                p.get("agent", "custom"),
+                p["body"],
+                json.dumps(p["schema"]) if p.get("schema") else None,
+                p.get("max_acu"),
+                p.get("source", "user"),
+                p.get("availability", "live"),
+                ts,
+                ts,
+            ),
+        )
+        return pid
+
+    def list_playbooks(self) -> list[dict[str, Any]]:
+        out = []
+        for r in self._all("SELECT * FROM playbooks ORDER BY created_at, rowid"):
+            r["schema"] = json.loads(r.pop("schema_json")) if r.get("schema_json") else None
+            out.append(r)
+        return out
+
+    def get_playbook(self, pid: str) -> dict[str, Any] | None:
+        rows = [p for p in self.list_playbooks() if p["id"] == pid]
+        return rows[0] if rows else None
 
     def set_budget(self, acu_cap: float, per_session_cap: float) -> None:
         self.conn.execute(

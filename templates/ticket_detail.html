@@ -1,0 +1,25 @@
+<div class="card tk {{ d.letter }}" style="border-left-width:5px">
+  <h3>{{ d.id }}{% if d.issue_url %} <a class="mono" href="{{ d.issue_url }}" target="_blank" style="text-transform:none;letter-spacing:0">issue #{{ d.issue }}</a>{% endif %} <a href="/tracker#{{ d.id }}" style="text-transform:none;letter-spacing:0;margin-left:auto">track →</a></h3>
+  <p style="margin:0 0 8px;font-weight:600">{{ d.title }}</p>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+    {% if d.route == "devin" %}<span class="pill p-devin">routed to Devin</span>{% elif d.route == "human_only" %}<span class="pill p-bad">routed to a person</span>{% elif d.route %}<span class="pill p-bad">{{ d.route }}</span>{% else %}<span class="pill p-na">awaiting triage</span>{% endif %}
+    <span class="pill {{ d.pill }}">{{ d.status }}</span>{% if d.review == "required" %}<span class="pill p-gate">review required</span>{% endif %}
+    <span class="pill p-na">source: {{ d.source }}</span>
+  </div>
+  {% if d.reason %}<p class="foot" style="margin:0 0 10px"><b>why:</b> {{ d.reason }}</p>{% endif %}
+  {% if d.classes %}<p class="mono" style="font-size:11px;margin:0 0 10px;color:var(--muted)">{{ d.classes | join(' · ') }}</p>{% endif %}
+  {% if d.sites %}
+  <b>Sites</b> <span class="foot">the library's own message per site</span>
+  <table class="sites">
+    <tr><th>file:lines</th><th>class</th><th>warned</th><th>broke</th><th class="wrap">message</th></tr>
+    {% for s in d.sites %}<tr><td class="mono">{{ (s.file or '').replace('superset/', '') }}:{{ s.lines | join(',') if s.lines else s.line }}</td><td class="mono" style="font-size:11px">{{ (s.classes or [s.get('class', '')]) | join(', ') }}</td><td>{% if s.warned %}<span class="pill p-run">yes</span>{% else %}<span class="pill p-na">no</span>{% endif %}</td><td>{% if s.broke %}<span class="pill p-bad">yes</span>{% else %}<span class="pill p-na">no</span>{% endif %}</td><td class="wrap" style="color:var(--muted);font-size:12px">{{ (s.r3 or s.r2 or s.prescribed_fix or '')[:160] }}</td></tr>{% endfor %}
+  </table>
+  {% endif %}
+  {% if d.acceptance %}
+  <div class="acc" style="margin-top:10px"><b>Acceptance</b> <span class="foot">the gate re-runs these itself, from a clean checkout</span>
+    {% for k, v in d.acceptance.items() %}<pre class="code"><b>{{ k }}</b>  {{ v }}</pre>{% endfor %}</div>
+  {% endif %}
+  {% if d.files %}<p class="foot" style="margin-top:10px"><b>files:</b> <span class="mono">{{ d.files | join(', ') }}</span></p>{% endif %}
+  {% if d.escalations %}<div style="margin-top:10px"><b>Escalations</b><table>{% for e in d.escalations %}<tr><td><span class="pill p-bad">{{ e.kind }}</span></td><td class="wrap">{{ e.reason }}</td></tr>{% endfor %}</table></div>{% endif %}
+  <details style="margin-top:10px"><summary>timeline ({{ d.timeline | length }})</summary><div class="tl">{% for e in d.timeline %}<div class="{{ e.layer.split(' ')[0] }}"><span class="t">{{ e.at[11:19] }}</span><b>{{ e.layer }}</b> {{ e.event }}{% if e.detail %} <span class="d">{{ e.detail[:100] }}</span>{% endif %}</div>{% endfor %}</div></details>
+</div>

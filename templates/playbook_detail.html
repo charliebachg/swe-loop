@@ -1,0 +1,11 @@
+{% if d %}
+<div class="card">
+  <h3>{{ d.title if d.title else d.name }} <span class="who devin">{{ d.agent }}</span></h3>
+  <p class="foot">cap {{ d.max_acu | int if d.max_acu else '·' }} ACU · source {{ d.source }} · updated {{ d.updated_at[:19] }}</p>
+  <div class="sec">{{ d.html | safe }}</div>
+  <details style="margin-top:10px" open><summary>structured output schema · {{ d.schema_fields | length }} fields</summary><p class="foot">{{ d.schema_fields | join(' · ') }}</p><pre class="code">{{ d.schema | tojson(indent=1) if d.schema else "none" }}</pre></details>
+  <details><summary>last output received against this schema</summary><pre class="code">{{ d.last_output | tojson(indent=1) if d.last_output else "none yet" }}</pre></details>
+</div>
+{% else %}
+<div class="card"><div class="empty">Select a playbook to read it.</div></div>
+{% endif %}

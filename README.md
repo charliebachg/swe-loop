@@ -73,12 +73,12 @@ others link to it.
 | module | owns |
 |---|---|
 | **Home** | what is happening now, what needs a person, what just happened |
-| **Automations** | how work enters: the Repair automation (trigger, native Devin Automation, run now) and the Scan automation (next) |
-| **Tickets** | the tickets, grouped by source, with the router's decision and reason |
+| **Automations** | a list of configs for how work enters and how sessions are managed on it: trigger, target, playbook, cap per session, concurrency; Repair (run now) and Scan (next) are seeded, more can be added |
+| **Tickets** | the tickets, grouped by source, with the router's decision and reason; a detail panel shows each ticket's sites, the library's messages and the acceptance commands |
 | **Tracker** | each ticket's run through the layers: sessions as stages, the gate's receipts, the review stage, the merge control |
 | **Report** | effectiveness: verified changes, cost per verified change, said-done versus verified, tripwires, the routing table, what is deliberately not shown |
 | **Devin · Sessions** | every session as Devin sees it: status, ACU, size, parent and children, time left |
-| **Devin · Playbooks** | the procedures each session follows, with their structured output schemas |
+| **Devin · Playbooks** | a list of the procedures sessions follow, each with its structured output schema and last output; new ones can be added and attached to an automation |
 | **Devin · Knowledge** | the notes a session retrieves by trigger, grouped by agent |
 | **Devin · Insights** | Session Insights: size and ACU per session |
 | **Devin · Review** | Devin Review requests, made only after a gate pass |
