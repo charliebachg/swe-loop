@@ -4,16 +4,27 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 
+from swe_loop import reduce as reduce_mod
+from swe_loop import replay, report
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.intake import NormalizedEvent, normalize, ticket_id_for, verify_github_signature
 from swe_loop.store import Store
 
+ROOT = Path(__file__).resolve().parents[1]
+TEMPLATES = Jinja2Templates(directory=str(ROOT / "templates"))
+INVENTORY = ROOT / "data" / "inventory" / "2026-09-03"
 
-def build_app(settings: Settings | None = None, store: Store | None = None) -> FastAPI:
+
+def build_app(
+    settings: Settings | None = None, store: Store | None = None, *, seed_replay: bool = True
+) -> FastAPI:
     settings = settings or Settings.from_env()
     cfg = TargetConfig.load(settings.config_path)
 
@@ -22,6 +33,13 @@ def build_app(settings: Settings | None = None, store: Store | None = None) -> F
         app.state.settings = settings
         app.state.cfg = cfg
         app.state.store = store or Store(settings.db_path)
+        if not settings.live and seed_replay:
+            replay.seed(
+                app.state.store,
+                cfg,
+                tickets_json=INVENTORY / "tickets.json",
+                replay_dir=settings.replay_dir,
+            )
         yield
 
     app = FastAPI(title="swe-loop", lifespan=lifespan)
@@ -68,6 +86,48 @@ def build_app(settings: Settings | None = None, store: Store | None = None) -> F
             raise HTTPException(status_code=404)
         t["work_orders"] = st.work_orders_for(ticket_id)
         return t
+
+    @app.get("/", response_class=HTMLResponse)
+    @app.get("/dashboard", response_class=HTMLResponse)
+    def dashboard(request: Request, sql: int = 0) -> HTMLResponse:
+        vm = report.build(request.app.state.store, INVENTORY)
+        return TEMPLATES.TemplateResponse(
+            request,
+            "dashboard.html",
+            {
+                "h": vm["headline"],
+                "bd": vm["burndown"],
+                "sql": bool(sql),
+                "mode": settings.mode,
+                **vm,
+            },
+        )
+
+    @app.get("/partials/board", response_class=HTMLResponse)
+    def board(request: Request) -> HTMLResponse:
+        vm = report.build(request.app.state.store, INVENTORY)
+        return TEMPLATES.TemplateResponse(request, "board.html", {"board": vm["board"]})
+
+    @app.post("/tickets/{ticket_id}/merge")
+    async def merge(ticket_id: str, request: Request) -> dict[str, Any]:
+        body = await request.json()
+        actor = (body or {}).get("actor")
+        if not actor:
+            raise HTTPException(
+                status_code=400, detail="actor is required; it is hashed, never rendered"
+            )
+        try:
+            return reduce_mod.record_merge(
+                request.app.state.store, ticket_id, actor, (body or {}).get("pr_url")
+            )
+        except ValueError as ex:
+            raise HTTPException(status_code=409, detail=str(ex)) from ex
+
+    @app.get("/reduce")
+    def reduce_summary() -> dict[str, Any]:
+        st: Store = app.state.store
+        reduce_mod.detect_conflicts(st)
+        return reduce_mod.summary(st)
 
     @app.get("/metrics")
     def metrics() -> dict[str, Any]:

@@ -125,7 +125,7 @@ def client(tmp_path, monkeypatch):
     settings = Settings.from_env()
     assert settings.mode == "replay"
     st = Store(tmp_path / "t.sqlite")
-    app = build_app(settings, st)
+    app = build_app(settings, st, seed_replay=False)
     with TestClient(app) as c:
         yield c, st
 

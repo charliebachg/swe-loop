@@ -414,10 +414,10 @@ class Store:
         """Only evidence produced on `tree_hash` counts. Anything else is stale by definition."""
         if tree_hash is None:
             return self._all(
-                "SELECT * FROM evidence WHERE session_id=? ORDER BY created_at", session_id
+                "SELECT * FROM evidence WHERE session_id=? ORDER BY created_at, rowid", session_id
             )
         return self._all(
-            "SELECT * FROM evidence WHERE session_id=? AND tree_hash=? ORDER BY created_at",
+            "SELECT * FROM evidence WHERE session_id=? AND tree_hash=? ORDER BY created_at, rowid",
             session_id,
             tree_hash,
         )
@@ -444,7 +444,8 @@ class Store:
 
     def latest_verdict(self, session_id: str) -> dict[str, Any] | None:
         return self._one(
-            "SELECT * FROM verdicts WHERE session_id=? ORDER BY created_at DESC LIMIT 1", session_id
+            "SELECT * FROM verdicts WHERE session_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            session_id,
         )
 
     # ------------------------------------------------------------------ escalations / humans / budget
