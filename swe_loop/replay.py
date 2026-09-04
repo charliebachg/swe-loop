@@ -27,6 +27,7 @@ TABLES = (
     "work_orders",
     "sessions",
     "triage_sessions",
+    "scan_sessions",
     "evidence",
     "verdicts",
     "escalations",

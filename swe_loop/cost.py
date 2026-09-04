@@ -68,6 +68,20 @@ def triage_active_seconds(store: Store, tri: dict[str, Any]) -> float:
     return _active_from_events(events, tri.get("created_at"), tri.get("terminal_at"))
 
 
+def scan_active_seconds(store: Store, sc: dict[str, Any]) -> float:
+    """A scan session's working time, from the same polls, on its own step name."""
+    lo, hi = _ts(sc.get("created_at")), _ts(sc.get("terminal_at"))
+    events = []
+    for e in store.timeline(session_id=sc["id"], limit=5000):
+        if e["layer"] != "scan":
+            continue
+        t = _ts(e.get("at"))
+        if t is None or (lo and t < lo) or (hi and t > hi):
+            continue
+        events.append(e)
+    return _active_from_events(events, sc.get("created_at"), sc.get("terminal_at"))
+
+
 def calibration(store: Store) -> dict[str, Any]:
     """Dollars per active minute, from the credits figure a person entered and the minutes we
     had measured at that moment. None until a person enters the figure."""
@@ -86,7 +100,7 @@ def calibration(store: Store) -> dict[str, Any]:
 # Dollars per active minute by session kind. Seeded from the 2026-09-03 run's console figures
 # (repair $6.98 over 27.0 min, triage $7.80 over 13.5 min: a triage minute costs about twice a
 # repair minute). Every console figure a person enters refines the rate for its kind.
-DEFAULT_RATES = {"rep": 0.26, "tri": 0.58}
+DEFAULT_RATES = {"rep": 0.26, "tri": 0.58, "scn": 0.58}
 
 
 def rates(store: Store) -> dict[str, float]:
@@ -97,6 +111,7 @@ def rates(store: Store) -> dict[str, float]:
     for kind, table, fn in (
         ("rep", "sessions", repair_active_seconds),
         ("tri", "triage_sessions", triage_active_seconds),
+        ("scn", "scan_sessions", scan_active_seconds),
     ):
         usd, secs = 0.0, 0.0
         for r in store._all(f"SELECT * FROM {table} WHERE cost_usd IS NOT NULL"):
@@ -114,7 +129,11 @@ def session_usd(
     if row.get("cost_usd") is not None:
         return float(row["cost_usd"]), "console"
     r = rate if isinstance(rate, dict) else rates(store)
-    secs = repair_active_seconds(store, row) if kind == "rep" else triage_active_seconds(store, row)
+    secs = {
+        "rep": repair_active_seconds,
+        "tri": triage_active_seconds,
+        "scn": scan_active_seconds,
+    }[kind](store, row)
     return secs / 60.0 * r[kind], "rate"
 
 
@@ -138,19 +157,25 @@ def spend(store: Store) -> dict[str, Any]:
     observed rate for the rest."""
     sessions = store._all("SELECT * FROM sessions")
     tri = store.list_triage_sessions()
-    acu = sum((s["acus_consumed"] or 0) for s in sessions) + sum(
-        (t["acus_consumed"] or 0) for t in tri
+    scn = store.list_scan_sessions()
+    acu = (
+        sum((s["acus_consumed"] or 0) for s in sessions)
+        + sum((t["acus_consumed"] or 0) for t in tri)
+        + sum((c["acus_consumed"] or 0) for c in scn)
     )
-    active_s = sum(repair_active_seconds(store, s) for s in sessions) + sum(
-        triage_active_seconds(store, t) for t in tri
+    active_s = (
+        sum(repair_active_seconds(store, s) for s in sessions)
+        + sum(triage_active_seconds(store, t) for t in tri)
+        + sum(scan_active_seconds(store, c) for c in scn)
     )
     rate = observed_rate(store)
     kind_rates = rates(store)
-    usd_console = sum(float(r["cost_usd"]) for r in sessions + tri if r.get("cost_usd") is not None)
-    n_console = sum(1 for r in sessions + tri if r.get("cost_usd") is not None)
+    priced = sessions + tri + scn
+    usd_console = sum(float(r["cost_usd"]) for r in priced if r.get("cost_usd") is not None)
+    n_console = sum(1 for r in priced if r.get("cost_usd") is not None)
     usd_total = 0.0
     any_usd = False
-    for kind, rows in (("rep", sessions), ("tri", tri)):
+    for kind, rows in (("rep", sessions), ("tri", tri), ("scn", scn)):
         for r in rows:
             u, _src = session_usd(store, r, kind, kind_rates)
             if u is not None:
@@ -166,7 +191,7 @@ def spend(store: Store) -> dict[str, Any]:
         "usd": round(usd_total, 2) if any_usd else None,
         "usd_console": round(usd_console, 2),
         "n_console": n_console,
-        "n_sessions": len(sessions) + len(tri),
+        "n_sessions": len(sessions) + len(tri) + len(scn),
         "rate": rate,
         "rates": kind_rates,
         "calibrated_at": cal["at"],

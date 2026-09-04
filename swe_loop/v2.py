@@ -168,6 +168,7 @@ STATUS_PLAIN = {
 LAYER_PLAIN = {
     "intake": "received",
     "triage": "AI scoping",
+    "scan": "AI looking",
     "route": "decision",
     "shard": "split",
     "dispatch": "AI started",
@@ -1987,9 +1988,10 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
                 "acuPct": _pct(s.get("acus"), TRIAGE_ACU_CAP if is_triage else cap)
                 if metered
                 else _pct(mins.get(s["id"], 0.0), max(list(mins.values()) or [1.0])),
-                "did": "read the ticket and wrote the plan"
-                if is_triage
-                else "wrote the fix and opened a pull request",
+                "did": {
+                    "triage": "read the ticket and wrote the plan",
+                    "scan": "read the repository and filed what it found",
+                }.get(s.get("kind"), "wrote the fix and opened a pull request"),
                 "size": size or "·",
                 "sizeBg": PL["bad"][1]
                 if size in ("L", "XL")

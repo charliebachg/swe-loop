@@ -94,6 +94,10 @@ def test_output_that_is_not_the_agreed_shape_files_nothing(tmp_path):
                 (),
                 {
                     "session_id": "x",
+                    "url": "https://app.devin.ai/sessions/x",
+                    "status": "exit",
+                    "status_detail": "finished",
+                    "acus_consumed": 0.0,
                     "delivered": True,
                     "terminal": True,
                     "structured_output": {"findings": "not a list"},
@@ -141,3 +145,28 @@ def test_the_automation_carries_the_number(tmp_path, monkeypatch):
         assert a["max_findings"] == 3
         html = c.get("/automations?open=auto_scan").text
         assert "at most 3 tickets a run" in html and "tickets per run" in html
+
+
+def test_the_scan_session_is_visible_and_counted(tmp_path, monkeypatch):
+    """A scan spends money and does work, so it is a session like any other: on the page, with a
+    link, a timeline of its own, and its cost in the total."""
+    monkeypatch.delenv("DEVIN_API_KEY", raising=False)
+    st = Store(tmp_path / "s.sqlite")
+    client = DevinClient(FakeTransport(tmp_path))
+    scan.run_scan(
+        Settings(mode="replay"), CFG, st, client, sleep=lambda s: None, log=lambda m: None
+    )
+    rows = st.list_scan_sessions()
+    assert len(rows) == 1 and rows[0]["outcome"] == "filed" and rows[0]["terminal_at"]
+    assert rows[0]["url"].startswith("https://app.devin.ai/sessions/")
+    events = [e["event"] for e in st.timeline(session_id=rows[0]["id"], limit=50)]
+    assert "session started" in events and any("filed" in e for e in events)
+
+    from swe_loop import cost as cost_mod
+
+    assert cost_mod.spend(st)["n_sessions"] == 1  # it counts as a session, not as nothing
+    app = build_app(Settings.from_env(), st, seed_replay=False)
+    with TestClient(app) as c:
+        html = c.get("/devin/sessions").text
+        assert "read the repository and filed what it found" in html
+        assert rows[0]["devin_session_id"][:12] in html

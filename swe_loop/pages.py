@@ -475,6 +475,35 @@ def sessions(store: Store, cfg: TargetConfig) -> dict[str, Any]:
                 "created": (r["created_at"] or "")[11:19],
             }
         )
+    scan_rows = []
+    for sc in store.list_scan_sessions():
+        live = bool(sc["devin_session_id"]) and not sc["terminal_at"]
+        found = json.loads(sc["findings_json"]) if sc.get("findings_json") else {}
+        scan_rows.append(
+            {
+                "id": sc["id"],
+                "kind": "scan",
+                "devin_id": sc["devin_session_id"] or "",
+                "url": sc["url"] or "",
+                "ticket": "",
+                "shard": "",
+                "source": "the repository itself",
+                "status": sc["status"] or "",
+                "status_detail": sc["status_detail"] or "",
+                "pill": "p-run" if live else "p-ok",
+                "acus": sc["acus_consumed"] or 0.0,
+                "size": "",
+                "parent": "single",
+                "children": 0,
+                "pr_url": None,
+                "gate": None,
+                "outcome": sc["outcome"],
+                "eta": "",
+                "created": sc["created_at"],
+                "elapsed": ops._elapsed(sc["created_at"], sc["terminal_at"]),
+                "findings": len(found.get("findings") or []),
+            }
+        )
     triage_rows = []
     for tr in store.list_triage_sessions():
         t = store.get_ticket(tr["ticket_id"]) or {}
@@ -506,7 +535,7 @@ def sessions(store: Store, cfg: TargetConfig) -> dict[str, Any]:
                 "elapsed": ops._elapsed(tr["created_at"], tr["terminal_at"]),
             }
         )
-    out = sorted(out + triage_rows, key=lambda r: r["created"], reverse=True)
+    out = sorted(out + triage_rows + scan_rows, key=lambda r: r["created"], reverse=True)
     managed = any(r["parent_session_id"] for r in rows)
     return {
         "sessions": out,

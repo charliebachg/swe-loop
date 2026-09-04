@@ -79,6 +79,11 @@ CREATE TABLE IF NOT EXISTS triage_sessions (
   created_at TEXT NOT NULL, terminal_at TEXT, status TEXT, status_detail TEXT,
   acus_consumed REAL, verdict_json TEXT, outcome TEXT, cost_usd REAL
 );
+CREATE TABLE IF NOT EXISTS scan_sessions (
+  id TEXT PRIMARY KEY, devin_session_id TEXT UNIQUE, url TEXT, playbook_id TEXT, tags_json TEXT,
+  created_at TEXT NOT NULL, terminal_at TEXT, status TEXT, status_detail TEXT,
+  acus_consumed REAL, findings_json TEXT, outcome TEXT, cost_usd REAL
+);
 CREATE TABLE IF NOT EXISTS evidence (
   id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id),
   tier TEXT NOT NULL, command TEXT NOT NULL, cwd TEXT NOT NULL, tree_hash TEXT NOT NULL,
@@ -167,7 +172,7 @@ class Store:
         self._local = threading.local()
         self._memory: sqlite3.Connection | None = None
         self.conn.executescript(SCHEMA)
-        for table in ("sessions", "triage_sessions"):
+        for table in ("sessions", "triage_sessions", "scan_sessions"):
             cols = {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if "cost_usd" not in cols:
                 self.conn.execute(f"ALTER TABLE {table} ADD COLUMN cost_usd REAL")
@@ -554,6 +559,45 @@ class Store:
         cols = ", ".join(f"{k}=?" for k in fields)
         self.conn.execute(f"UPDATE triage_sessions SET {cols} WHERE id=?", (*fields.values(), tid))
         self.conn.commit()
+
+    def insert_scan_session(
+        self,
+        *,
+        devin_session_id: str,
+        url: str,
+        status: str,
+        status_detail: str | None,
+        playbook_id: str | None,
+        tags: list[str],
+    ) -> str:
+        """A scan session belongs to no ticket: it is what produces them."""
+        sid = f"scn_{uuid.uuid4().hex[:8]}"
+        self.conn.execute(
+            "INSERT INTO scan_sessions (id, devin_session_id, url, playbook_id, tags_json, "
+            "created_at, status, status_detail) VALUES (?,?,?,?,?,?,?,?)",
+            (
+                sid,
+                devin_session_id,
+                url,
+                playbook_id,
+                json.dumps(tags),
+                now(),
+                status,
+                status_detail,
+            ),
+        )
+        self.conn.commit()
+        return sid
+
+    def update_scan_session(self, sid: str, **fields: Any) -> None:
+        if "findings" in fields:
+            fields["findings_json"] = json.dumps(fields.pop("findings"))
+        cols = ", ".join(f"{k}=?" for k in fields)
+        self.conn.execute(f"UPDATE scan_sessions SET {cols} WHERE id=?", (*fields.values(), sid))
+        self.conn.commit()
+
+    def list_scan_sessions(self) -> list[dict[str, Any]]:
+        return self._all("SELECT * FROM scan_sessions ORDER BY created_at DESC, rowid DESC")
 
     def set_session_cost(self, devin_session_id: str, usd: float) -> str | None:
         """The console's dollar figure for one session, entered by a person. Matches a repair or a

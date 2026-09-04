@@ -168,30 +168,53 @@ def run_scan(
     )
     spec = build_spec(cfg, limit, playbook_id)
     state = client.start(spec)
+    sid = store.insert_scan_session(
+        devin_session_id=state.session_id,
+        url=getattr(state, "url", "") or f"https://app.devin.ai/sessions/{state.session_id}",
+        status=state.status,
+        status_detail=state.status_detail,
+        playbook_id=playbook_id,
+        tags=list(spec.tags),
+    )
     store.log(
-        "intake", "scan session started", detail=f"{state.session_id} · at most {limit} findings"
+        "scan",
+        "session started",
+        session_id=sid,
+        detail=f"{state.session_id} · at most {limit} finding(s)",
     )
     started = _time.monotonic()
     wait = 5.0
     while not (state.delivered or state.terminal):
         if _time.monotonic() - started > wall_clock:
-            store.log("intake", "scan session ran out of time", detail=state.session_id)
+            store.update_scan_session(sid, terminal_at=now(), outcome="timeout")
+            store.log("scan", "ran out of time", session_id=sid, detail=state.session_id)
             return {"kind": "timeout", "session": state.session_id}
         sleep(wait)
         wait = min(wait * 1.5, 30.0)
         state = client.status(state.session_id)
+        store.update_scan_session(
+            sid,
+            status=state.status,
+            status_detail=state.status_detail,
+            acus_consumed=state.acus_consumed,
+        )
+        store.log("scan", f"{state.status}/{state.status_detail or '-'}", session_id=sid)
     out = state.structured_output
     if not out:
-        store.log("intake", "scan session ended without findings", detail=state.session_id)
+        store.update_scan_session(sid, terminal_at=now(), outcome="no_output")
+        store.log("scan", "ended without findings", session_id=sid, detail=state.session_id)
         return {"kind": "no_output", "session": state.session_id}
     problems = validate(out)
     if problems:
-        store.log("intake", "scan output rejected", detail="; ".join(problems)[:200])
+        store.update_scan_session(sid, terminal_at=now(), outcome="invalid", findings=out)
+        store.log("scan", "output rejected", session_id=sid, detail="; ".join(problems)[:200])
         return {"kind": "invalid", "session": state.session_id, "problems": problems}
     filed = file_findings(store, cfg, out, limit)
+    store.update_scan_session(sid, terminal_at=now(), outcome="filed", findings=out)
     store.log(
-        "intake",
-        f"scan filed {len(filed['new'])} new ticket(s)",
+        "scan",
+        f"filed {len(filed['new'])} new ticket(s)",
+        session_id=sid,
         detail=(
             f"kept the {limit} most important, dropped {filed['dropped']}. "
             if filed["dropped"]
