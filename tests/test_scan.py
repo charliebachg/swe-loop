@@ -544,12 +544,17 @@ def test_a_fix_with_no_test_behind_it_is_not_called_verified(tmp_path):
     nothing to record but that."""
     from swe_loop import codescan
 
-    root = ROOT.parent / "superset-fork"
+    # a tree of its own, not the clone beside this repository: that one is a working copy on
+    # whoever's machine, so a test that reads it passes here and fails on a fresh checkout
+    root = tmp_path / "repo"
+    (root / "tests/unit_tests/databases").mkdir(parents=True)
+    (root / "tests/unit_tests/databases/api_test.py").write_text("")
+
     only_lint = codescan.acceptance_for(["superset/views/sql_lab/views.py"], root)
-    assert list(only_lint) == ["lint"]
+    assert list(only_lint) == ["lint"], "no test behind it, so nothing but the linter"
     assert codescan.acceptance_for([], root) == {}
     with_test = codescan.acceptance_for(["superset/databases/api.py"], root)
-    assert any(k.startswith("tests ") for k in with_test)
+    assert any(k.startswith("tests ") for k in with_test), "a test exists, so it runs"
 
 
 def test_a_remediation_is_scoped_by_the_finding_not_by_its_own_pull_request(tmp_path):
