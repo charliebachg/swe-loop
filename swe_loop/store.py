@@ -840,6 +840,16 @@ class Store:
         self, ticket_id: str, session_id: str | None, kind: str, reason: str
     ) -> str:
         _must(kind in ESCALATION_KINDS, f"unknown escalation: {kind}")
+        # One thing waiting on a person is one row. Two parts of the loop noticing the same
+        # thing is not two things to deal with, and a queue that counts it twice is a queue
+        # nobody trusts.
+        same = self._one(
+            "SELECT id FROM escalations WHERE ticket_id=? AND kind=? AND resolved_at IS NULL",
+            ticket_id,
+            kind,
+        )
+        if same:
+            return str(same["id"])
         eid = new_id("esc")
         self.conn.execute(
             "INSERT INTO escalations VALUES (?,?,?,?,?,?,?)",
@@ -857,6 +867,24 @@ class Store:
         }.get(kind, kind.replace("_", " "))
         self.log("escalate", said, ticket_id=ticket_id, session_id=session_id, detail=reason)
         return eid
+
+    def close_escalations(self, ticket_id: str, kinds: tuple[str, ...], note: str) -> int:
+        """Close what a ticket was waiting on, because it is no longer waiting on it.
+
+        An escalation describes a moment. When the thing it describes has passed, a change that
+        failed and then passed, work that was merged, the row has to go with it, or the board
+        keeps asking for something nobody needs to do."""
+        rows = self._all(
+            "SELECT id FROM escalations WHERE ticket_id=? AND resolved_at IS NULL", ticket_id
+        )
+        n = 0
+        for r in rows:
+            e = self._one("SELECT kind FROM escalations WHERE id=?", r["id"])
+            if kinds and e["kind"] not in kinds:
+                continue
+            self.resolve_escalation(r["id"], note)
+            n += 1
+        return n
 
     def resolve_escalation(self, eid: str, note: str | None = None) -> dict[str, Any] | None:
         e = self._one("SELECT * FROM escalations WHERE id=?", eid)

@@ -302,6 +302,8 @@ def record_merge(
         )
     hid = store.record_human_action(ticket_id, "merge", actor)
     store.set_ticket_status(ticket_id, "merged")
+    # merged work is not waiting on anybody
+    store.close_escalations(ticket_id, (), "the change was merged")
     store.conn.execute(
         "UPDATE work_orders SET status='merged' WHERE ticket_id=? AND status NOT IN ('split','refuse','human_only')",
         (ticket_id,),

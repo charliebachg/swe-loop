@@ -418,6 +418,8 @@ def gate_remediation(
         sid,
         status="exit",
         status_detail="finished",
+        # without this the row never leaves the list of what is working right now
+        terminal_at=now(),
         pull_request_url=pr_url,
         self_reported_done=1,
         structured_output={"pr_url": pr_url, "files_changed": files, "self_reported_done": True},

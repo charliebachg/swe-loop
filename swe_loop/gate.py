@@ -445,6 +445,12 @@ def apply_result(res: GateResult, store: Store, client: DevinClient, poller: Any
             (f"requested:{review.get('review_id', 'n/a')}", res.session_id),
         )
         store.set_ticket_status(ticket_id, "reviewed")
+        # it passed, so whatever it was stuck on before is no longer true
+        store.close_escalations(
+            ticket_id,
+            ("review_blocked", "detector_still_fires", "usage_limit"),
+            "the change passed every check afterwards",
+        )
         if res.scope_changed:
             store.insert_escalation(
                 ticket_id,

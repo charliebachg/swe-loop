@@ -281,3 +281,30 @@ def test_a_check_that_cannot_run_is_not_the_sessions_failure(tmp_path, monkeypat
     assert res.gate_result == "missing_evidence"
     assert any("could not be run" in r for r in res.reasons)
     assert any("not valid" in r for r in res.reasons)
+
+
+def test_a_pass_closes_what_the_failure_before_it_raised(tmp_path):
+    """An escalation describes a moment. A change that failed, went back and then passed is not
+    still stuck, and a board that keeps asking about it is asking for something nobody needs to
+    do."""
+    repo = make_repo(tmp_path)
+    st, sid = seed(tmp_path, branch="fix-good")
+    wo = st.get_session(sid)["work_order_id"]
+    tid = st.get_work_order(wo)["ticket_id"]
+    st.insert_escalation(tid, sid, "review_blocked", "the session stopped without finishing")
+    assert [e["kind"] for e in st.list_escalations() if e["ticket_id"] == tid] == ["review_blocked"]
+
+    res = make_gate(st, tmp_path, repo, "fix-good").run_gate(sid)
+    assert res.gate_result == "pass"
+    apply_result(res, st, FakeClient(), _NoRetry())
+    assert [e for e in st.list_escalations() if e["ticket_id"] == tid] == []
+
+
+class FakeClient:
+    def review_pr(self, pr_url):
+        return {"review_id": "rv-1"}
+
+
+class _NoRetry:
+    def retry_with_failure(self, *a, **k):
+        return False
