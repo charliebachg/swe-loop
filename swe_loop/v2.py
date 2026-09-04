@@ -158,7 +158,7 @@ STATUS_PLAIN = {
     "reviewed": "ready for you",
     "merged": "merged",
     "escalated": "with your team",
-    "refused": "refused",
+    "refused": "not taken on",
 }
 LAYER_PLAIN = {
     "intake": "received",
@@ -1583,6 +1583,9 @@ def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
         review_txt = "the AI reviewer is " + review
     if st == "merged":
         return plain(f"Merged by your team. Every check passed on a clean copy; {review_txt}.")
+    if st == "refused" or route == "refuse":
+        # a refusal is a decision the loop already took, not one waiting on anybody
+        return plain("Not taken on: " + clip(t.get("router_reason") or "it is out of bounds", 150))
     if st == "escalated" or (route and route != "devin"):
         return plain(
             "For your team to decide: " + clip(t.get("router_reason") or "a person decides", 150)
