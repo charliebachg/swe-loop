@@ -135,7 +135,7 @@ KIND_PLAIN = {
     "waiting_for_user": "the AI has a question",
     "review_blocked": "did not finish",
     "usage_limit": "too big for one run",
-    "oracle_touched": "tests were edited",
+    "oracle_touched": "confirm the test change",
     "ready to merge": "ready to ship",
 }
 EVENT_PLAIN = {

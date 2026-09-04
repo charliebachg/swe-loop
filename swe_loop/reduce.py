@@ -25,6 +25,9 @@ class TicketReadiness:
     reviewed: bool = False
     conflicts: list[tuple[str, str, str]] = field(default_factory=list)  # (file, shard, shard)
     pr_urls: list[str] = field(default_factory=list)
+    # tests this change edits, and whether a person has said they are happy with that
+    tests_touched: list[str] = field(default_factory=list)
+    tests_confirmed: bool = True
 
     @property
     def ready(self) -> bool:
@@ -33,6 +36,9 @@ class TicketReadiness:
             and self.verified == self.shards
             and self.reviewed
             and not self.conflicts
+            # a change to the tests is a change to the thing that decides the change works,
+            # so it goes nowhere until a person has read it and said so
+            and self.tests_confirmed
         )
 
 
@@ -96,6 +102,14 @@ def readiness(store: Store, ticket_id: str) -> TicketReadiness:
             if wo["status"] not in ("split", "refuse", "human_only")
         )
     )
+    open_oracle = [
+        e
+        for e in store.list_escalations()
+        if e["ticket_id"] == ticket_id and e["kind"] == "oracle_touched"
+    ]
+    if open_oracle:
+        r.tests_confirmed = False
+        r.tests_touched = [e["reason"] for e in open_oracle]
     shards = sorted(files_by_shard)
     for i, a in enumerate(shards):
         for b in shards[i + 1 :]:

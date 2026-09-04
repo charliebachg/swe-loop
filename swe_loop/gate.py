@@ -47,6 +47,9 @@ class GateResult:
     failure_text: str = ""
     evidence_ids: list[str] = field(default_factory=list)
     pr_url: str | None = None
+    # test files this change touched. Not a failure, but nothing goes to the base branch on
+    # these until a person has looked at them.
+    tests_touched: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -257,14 +260,27 @@ class Gate:
 
             # ---------------- T0: oracle untouched, in scope, artefacts exist
             changed = self.ws.changed_files(path, base_ref)
+            # A test is the thing that decides whether the change works, so a change to one is
+            # never waved through on the machine's say-so. It is not refused either: a session
+            # that adds a test proving its own fix has strengthened the check, not dodged it.
+            # The rule is that a person sees it, so it is recorded here and confirmed later.
+            tests = [f for f in changed if any(f.startswith(p) for p in self.cfg.oracle_paths)]
+            res.tests_touched = tests
             forbidden = [
-                f for f in changed if any(f.startswith(p) for p in self.cfg.forbidden_paths)
+                f
+                for f in changed
+                if any(f.startswith(p) for p in self.cfg.forbidden_paths) and f not in tests
             ]
-            out_of_scope = [f for f in changed if f not in set(wo["files"]) and f not in forbidden]
+            out_of_scope = [
+                f
+                for f in changed
+                if f not in set(wo["files"]) and f not in forbidden and f not in tests
+            ]
             missing = [f for f in claim.get("files_changed", []) if not (path / f).exists()]
             t0_ok = not forbidden and not out_of_scope and not missing
             t0_report = (
                 f"changed: {changed}\nforbidden touched: {forbidden}\nout of scope: {out_of_scope}\n"
+                f"tests touched, for a person to confirm: {tests}\n"
                 f"claimed but missing: {missing}"
             )
             res.evidence_ids.append(
@@ -398,6 +414,18 @@ def apply_result(res: GateResult, store: Store, client: DevinClient, poller: Any
             (f"requested:{review.get('review_id', 'n/a')}", res.session_id),
         )
         store.set_ticket_status(ticket_id, "reviewed")
+        if res.tests_touched:
+            # The change passed every check, and one of the things it changed is a thing that
+            # does the checking. That is for a person to confirm, so it is raised here and the
+            # merge waits on it.
+            store.insert_escalation(
+                ticket_id,
+                res.session_id,
+                "oracle_touched",
+                "this change edits the tests that decide whether it works: "
+                + ", ".join(res.tests_touched)
+                + ". Read the change to them before merging.",
+            )
         return "reviewed"
     if res.gate_result == "fail" and poller.retry_with_failure(res.session_id, res.failure_text):
         return "retried"

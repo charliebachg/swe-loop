@@ -32,6 +32,10 @@ router:
   max_files_per_shard: 3
   max_call_sites_per_shard: 6
   forbidden_paths: [tests/, .github/, superset/migrations/, requirements/]
+  # Where the tests live. A change here is confirmed by a person before it merges,
+  # rather than refused: a session that adds a test proving its own fix has raised the
+  # bar, and one that weakens a test is exactly what a person needs to see.
+  oracle_paths: [tests/]
   coverage_100_paths: [superset/sql/, superset/semantic_layers/]
   human_only_classes: [chained-assignment]      # upstream: needs context-dependent review
   test_only_rows_to: human                      # sessions never edit tests

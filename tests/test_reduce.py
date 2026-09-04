@@ -210,3 +210,37 @@ def test_a_ticket_with_no_issue_behind_it_closes_nothing(tmp_path):
     assert reduce.close_source_issue(st, "tkt_sc1", "tok", patch=patch) == (
         "no issue behind this ticket"
     )
+
+
+def test_a_change_that_edits_the_tests_does_not_merge_until_a_person_says_so(tmp_path):
+    """The tests decide whether a change works. A change to them passes the checks like any
+    other, and then waits: it is not ready to merge until a person has read it and resolved the
+    confirmation the gate raised."""
+    st = Store(tmp_path / "s.sqlite")
+    st.upsert_ticket(id="tkt_A", source="scan", title="t", status="reviewed")
+    wo = st.insert_work_order(
+        ticket_id="tkt_A", shard_id="A", files=["a.py"], tests=[], acceptance={"t": "true"}
+    )
+    sid = st.reserve_session(work_order_id=wo, playbook_id=None, tags=[])
+    st.bind_devin_session(sid, devin_session_id="dev1", url="")
+    st.update_session(sid, pull_request_url="https://github.com/o/r/pull/1")
+    st.insert_verdict(
+        session_id=sid,
+        tree_hash="t1",
+        gate_result="pass",
+        decision="pass",
+        reason="ok",
+        review_severity="completed:no issues",
+    )
+
+    assert readiness(st, "tkt_A").ready is True  # nothing outstanding
+
+    eid = st.insert_escalation(
+        "tkt_A", sid, "oracle_touched", "this change edits tests/unit_tests/a_test.py"
+    )
+    r = readiness(st, "tkt_A")
+    assert r.ready is False and r.tests_confirmed is False
+    assert "a_test.py" in r.tests_touched[0]
+
+    st.resolve_escalation(eid, "charlie")
+    assert readiness(st, "tkt_A").ready is True  # confirmed, so it may go

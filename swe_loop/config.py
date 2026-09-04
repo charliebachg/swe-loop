@@ -78,5 +78,14 @@ class TargetConfig:
         return list(self.router.get("forbidden_paths", []))
 
     @property
+    def oracle_paths(self) -> list[str]:
+        """Where the tests live: the files that decide whether a change works.
+
+        A change here is not refused, because a session that adds a test proving its own fix has
+        raised the bar rather than dodged it. It is never merged on the machine's say-so either:
+        a person confirms the change to the thing doing the checking."""
+        return list(self.router.get("oracle_paths", ["tests/"]))
+
+    @property
     def max_acu_limit(self) -> int:
         return int(self.session.get("max_acu_limit", 6))

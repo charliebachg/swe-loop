@@ -112,13 +112,16 @@ def test_pass_binds_evidence_to_the_tree(tmp_path):
     assert not list(Path(tmp_path).glob("swe-loop-gate-*"))  # worktree released
 
 
-def test_oracle_touched_fails_t0(tmp_path):
+def test_a_change_to_the_tests_is_recorded_for_a_person_not_refused(tmp_path):
+    """A test is the thing that decides whether a change works, so a change to one never merges
+    on the machine's say-so. It is not refused either: a session that adds a test proving its own
+    fix has raised the bar rather than dodged it. The rule is that a person sees it."""
     repo = make_repo(tmp_path)
     st, sid = seed(tmp_path, branch="fix-oracle")
     res = make_gate(st, tmp_path, repo, "fix-oracle").run_gate(sid)
-    assert res.gate_result == "fail" and res.tiers == {"T0": False}
-    assert any("oracle touched" in r and "tests/test_x.py" in r for r in res.reasons)
-    assert "T1" not in res.tiers  # nothing was run once the oracle was touched
+    assert res.tests_touched == ["tests/test_x.py"]
+    assert res.tiers.get("T0") is True  # the scope check no longer stops on it
+    assert not any("oracle touched" in r for r in res.reasons)
 
 
 def test_out_of_scope_change_fails_t0(tmp_path):
