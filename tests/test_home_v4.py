@@ -50,7 +50,7 @@ def test_dismiss_resolves_the_escalation(client):
     assert r.status_code == 200 and e["kind"] not in r.text.split("Needs you")[-1][:400]
     assert all(x["id"] != e["id"] for x in st.list_escalations())
     assert any(
-        ev["event"] == "escalation dismissed by a person"
+        ev["event"] == "dismissed by a person"
         for ev in st.timeline(ticket_id=e["ticket_id"], limit=10)
     )
     assert c.post("/escalations/nope/resolve", content="note=x", headers=FORM).status_code == 404

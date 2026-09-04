@@ -240,7 +240,10 @@ def tickets(store: Store) -> dict[str, Any]:
     summary = {
         "total": total,
         "devin": sum(1 for r in allrows if r["route"] == "devin"),
-        "human": sum(1 for r in allrows if r["route"] in ("human_only", "refuse")),
+        # work set aside because a file is busy was not handed to anyone: nobody was asked
+        # anything and nobody is expected to do anything about it
+        "human": sum(1 for r in allrows if r["route"] == "human_only"),
+        "waiting": sum(1 for r in allrows if r["route"] == "refuse"),
         "pending": sum(1 for r in allrows if not r["route"]),
         "merged": sum(1 for r in allrows if r["status"] == "merged"),
         "active": sum(1 for r in allrows if r["status"] in ("dispatched", "running", "gated")),

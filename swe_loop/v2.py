@@ -1686,6 +1686,7 @@ def tickets(store: Store, cfg: TargetConfig, q: dict[str, str], note: str = "") 
         "humanColor": col(sm["human"], PL["person"][0]),
         "activeColor": col(sm["active"], PL["run"][0]),
         "mergedColor": col(sm["merged"], PL["ok"][0]),
+        "waitingColor": FAINT,
         "pendingColor": FAINT,
     }
     keep_open = ",".join(sorted(open_ids)) or None
@@ -1786,7 +1787,8 @@ def tickets(store: Store, cfg: TargetConfig, q: dict[str, str], note: str = "") 
         "trackerRows": rows,
         "stageHead": tr["stageHead"],
         "legend": tr["legend"],
-        "ticketCount": f"{len(rows)}"
+        # what is actually on screen: the ones set aside are behind their own line
+        "ticketCount": f"{sum(len(g['rows']) for g in groups)}"
         + ("" if len(rows) == len(tr["trackerRows"]) else f" of {len(tr['trackerRows'])}"),
         "noTickets": not rows,
         "emptyText": EMPTY.get(f, "No tickets."),

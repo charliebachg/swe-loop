@@ -882,11 +882,15 @@ class Store:
             e = self._one("SELECT kind FROM escalations WHERE id=?", r["id"])
             if kinds and e["kind"] not in kinds:
                 continue
-            self.resolve_escalation(r["id"], note)
+            self.resolve_escalation(r["id"], note, by_hand=False)
             n += 1
         return n
 
-    def resolve_escalation(self, eid: str, note: str | None = None) -> dict[str, Any] | None:
+    def resolve_escalation(
+        self, eid: str, note: str | None = None, *, by_hand: bool = True
+    ) -> dict[str, Any] | None:
+        """Close one thing a person was waiting on. by_hand=False when the loop closed it
+        itself, because the log should not credit a person with something nobody did."""
         e = self._one("SELECT * FROM escalations WHERE id=?", eid)
         if not e:
             return None
@@ -894,7 +898,7 @@ class Store:
         self.conn.commit()
         self.log(
             "merge",
-            "escalation dismissed by a person",
+            "dismissed by a person" if by_hand else "no longer waiting on anyone",
             ticket_id=e["ticket_id"],
             session_id=e["session_id"],
             detail=(note or "")[:200],
