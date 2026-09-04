@@ -155,7 +155,9 @@ def _ticket_row(store: Store, t: dict[str, Any]) -> dict[str, Any]:
     sites = 0
     verdict = json.loads(t["triage_verdict_json"]) if t.get("triage_verdict_json") else {}
     sites = len(verdict.get("sites", [])) or sum(len(w["files"]) for w in wos)
-    n_sessions = sum(len(store.sessions_for(w["id"])) for w in wos)
+    n_sessions = sum(len(store.sessions_for(w["id"])) for w in wos) + len(
+        store.list_triage_sessions(t["id"])
+    )
     num, url = _issue(t)
     return {
         "id": t["id"],
@@ -452,7 +454,7 @@ def sessions(store: Store, cfg: TargetConfig) -> dict[str, Any]:
     for s in o["sessions"]:
         r = by_id[s["id"]]
         t = ticket_of.get(s["id"], {})
-        live = r["devin_session_id"] and not r["terminal_at"]
+        live = bool(r["devin_session_id"]) and not r["terminal_at"]
         ref = median(by_size.get((r["session_size"] or "").upper(), [])) or median(
             by_size.get("*", [])
         )

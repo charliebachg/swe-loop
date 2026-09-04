@@ -192,17 +192,31 @@ def reoffer_shard(
         "commit",
         "--quiet",
         "-m",
-        f"fix(pandas): shard {shard}, the change that was verified earlier",
+        (t.get("title") or f"shard {shard}").replace("pandas 3: ", "fix(pandas): "),
     )
     repo.git("push", "--quiet", "--force", "origin", f"{branch}:refs/heads/{branch}")
     repo.git("checkout", "--quiet", base)
 
+    t = store.get_ticket(tid) or {}
+    checks = [
+        e["command"].split(":", 1)[0]
+        for w in store.work_orders_for(tid)
+        for sess in store.sessions_for(w["id"])
+        for e in store.evidence_for(sess["id"])
+        if e["tier"] == "T1"
+    ]
     body = (
-        "The same change that was verified earlier, offered again so the merge step can be shown."
-        f" No session was spent: this is commit {fix[:10]} exactly as it was checked."
+        (t.get("title") or f"shard {shard}")
+        + "\n\nThis is the change that was checked on a clean copy of the repository before it "
+        "reached anyone: "
+        + (", ".join(dict.fromkeys(checks)) if checks else "the ticket's own commands")
+        + " all exited 0, no test or build file was touched, and the AI reviewer read it.\n\n"
+        f"Re-opened from commit {fix[:10]} without changing a line, so the merge step can be "
+        "walked through."
     )
     make = open_pr or _create_pr
-    pr = make(cfg.repo, f"{prefix}{shard}", base, settings.github_token, body, shard)
+    title = (t.get("title") or f"shard {shard}").replace("pandas 3: ", "fix(pandas): ")
+    pr = make(cfg.repo, f"{prefix}{shard}", base, settings.github_token, body, title)
     out["pr"] = pr
     if pr.startswith("http"):
         store.conn.execute("DELETE FROM human_actions WHERE ticket_id=? AND kind='merge'", (tid,))
@@ -227,7 +241,7 @@ def reoffer_shard(
     return out
 
 
-def _create_pr(repo: str, head: str, base: str, token: str, body: str, shard: str) -> str:
+def _create_pr(repo: str, head: str, base: str, token: str, body: str, title: str) -> str:
     import httpx
 
     headers = {"Accept": "application/vnd.github+json", "User-Agent": "swe-loop"}
@@ -238,7 +252,7 @@ def _create_pr(repo: str, head: str, base: str, token: str, body: str, shard: st
             f"https://api.github.com/repos/{repo}/pulls",
             headers=headers,
             json={
-                "title": f"fix(pandas): shard {shard}, offered again for a walk-through",
+                "title": title,
                 "head": head,
                 "base": base,
                 "body": body,

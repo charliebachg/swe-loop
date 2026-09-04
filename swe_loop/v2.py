@@ -143,6 +143,16 @@ KIND_PLAIN = {
     "oracle_touched": "tests were edited",
     "ready to merge": "ready to ship",
 }
+EVENT_PLAIN = {
+    "new/-": "queued",
+    "claimed/-": "picked up",
+    "running/-": "started",
+    "running/working": "writing code",
+    "running/waiting_for_user": "finished its turn",
+    "exit/finished": "finished",
+    "suspended/inactivity": "went idle",
+    "error/-": "errored",
+}
 STATUS_PLAIN = {
     "new": "not looked at",
     "triaged": "scoped",
@@ -280,7 +290,7 @@ def ev(e: dict[str, Any]) -> dict[str, Any]:
     return {
         "time": _hhmmss(e.get("at")),
         "layer": LAYER_PLAIN.get(e.get("layer", ""), e.get("layer", "")),
-        "event": plain(e.get("event", "")),
+        "event": EVENT_PLAIN.get(e.get("event", ""), plain(e.get("event", ""))),
         "detail": plain(detail),
         "ref": e.get("ticket_id") or "",
         "fg": ACT[actor][0],
@@ -1244,6 +1254,30 @@ def _sparklines(store: Store, rng: str = "run") -> list[dict[str, Any]]:
     ]
 
 
+def collapse(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A poll every thirty seconds is not news. Consecutive identical events become one line that
+    says how many there were and how long they covered, so what changed stands out."""
+    out: list[dict[str, Any]] = []
+    for e in events:
+        last = out[-1] if out else None
+        same = (
+            last
+            and last["event"] == e["event"]
+            and last["layer"] == e["layer"]
+            and not e.get("detail")
+            and not last.get("detail")
+        )
+        if same:
+            last["n"] = last.get("n", 1) + 1
+            last["until"] = e["time"]
+            continue
+        out.append({**e, "n": 1})
+    for e in out:
+        if e.get("n", 1) > 1:
+            e["detail"] = f"{e['n']} checks, up to {e['until']}"
+    return out
+
+
 def _group_events(
     events: list[dict[str, Any]], open_groups: set[str], raw_mode: bool
 ) -> list[dict[str, Any]]:
@@ -1413,7 +1447,11 @@ def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
             "For your team to decide: " + (t.get("router_reason") or "a person decides")[:150]
         )
     if st == "new":
-        return "Waiting for a triage session to read it."
+        return (
+            "A session is reading the issue now and deciding what the work is."
+            if row.get("triageLive")
+            else "Waiting for a session to read the issue."
+        )
     if st in ("triaged", "routed"):
         return f"Scoped by the AI: {row.get('count') or 'the sites are known'}. Waiting for a repair session."
     if st in ("dispatched", "running"):
@@ -1435,6 +1473,24 @@ def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
             )
         return plain(f"Every check passed on a clean copy; {review_txt}. Waiting on your decision.")
     return row.get("note") or ""
+
+
+def _neg_time(t: Any) -> str:
+    """Sort a timestamp descending without parsing it."""
+    return "".join(chr(0x10FFFD - ord(c)) if c.isdigit() else c for c in str(t or ""))
+
+
+def _attention(t: dict[str, Any], row: dict[str, Any]) -> int:
+    """Sort by what a person has to do about it: their turn first, the machine's turn next, and
+    what is finished at the bottom."""
+    st = t.get("status")
+    if st == "merged":
+        return 3
+    if row.get("ready") or st == "escalated" or (t.get("router_decision") or "devin") != "devin":
+        return 0
+    if st in ("dispatched", "running", "gated", "reviewed"):
+        return 1
+    return 2
 
 
 def tickets(store: Store, cfg: TargetConfig, q: dict[str, str], note: str = "") -> dict[str, Any]:
@@ -1512,7 +1568,9 @@ def tickets(store: Store, cfg: TargetConfig, q: dict[str, str], note: str = "") 
         r["prLabel"] = f"PR #{r['pr']}" if r.get("pr") and r["pr"] != "none" else ""
         r["scope"] = _ticket_panel(store, r["id"], f, q) if r["open"] else None
         r["isRunning"] = t.get("status") in ("dispatched", "running")
+        r["order"] = _attention(t, r)
         rows.append(r)
+    rows.sort(key=lambda x: (x["order"], x["ref"]))
     groups = []
     placed: set[str] = set()
     for name, sources, empty_note in SOURCE_GROUPS:
@@ -1623,7 +1681,8 @@ def _ticket_panel(store: Store, tid: str, f: str, q: dict[str, str]) -> dict[str
         "pills": pills,
         "hasSites": bool(sites),
         "noSites": not sites,
-        "siteNote": "No sites recorded yet: the triage session has not delivered a verdict for this ticket."
+        "siteNote": "Nothing scoped yet. The session reading the issue decides what the work is; "
+        "until it answers, this is only the issue as it was filed."
         if not d.get("triage_verdict_json") and not sites
         else "",
         "sites": sites,
@@ -1725,6 +1784,9 @@ def tracker(
                     "shadow": f"inset 0 0 0 2px {col}" if st == "n" else "none",
                 }
             )
+        tri = store.list_triage_sessions(r["id"])
+        tri_last = tri[-1] if tri else None
+        tri_live = bool(tri_last and not tri_last["terminal_at"])
         is_open = r["id"] in open_ids
         others = (open_ids - {r["id"]}) if is_open else (open_ids | {r["id"]})
         st_kind = _pill_kind(r["pill"])
@@ -1762,6 +1824,29 @@ def tracker(
                 "ready": bool(r["ready"]),
                 "sd": sd,
                 "verdict": verdict,
+                "triageLive": tri_live,
+                "hasTriage": bool(tri_last),
+                "triage": {
+                    "id": (tri_last["devin_session_id"] or "")[:12] if tri_last else "",
+                    "url": (tri_last["url"] or "#") if tri_last else "#",
+                    "state": (
+                        "reading the issue now"
+                        if tri_live
+                        else plain(str((tri_last or {}).get("outcome") or "finished"))
+                    ),
+                    "elapsed": ops._elapsed(
+                        tri_last["created_at"], tri_last["terminal_at"] if tri_last else None
+                    )
+                    if tri_last
+                    else "",
+                    "timeline": collapse(
+                        [ev(e) for e in store.timeline(session_id=tri_last["id"], limit=200)]
+                    )[-30:]
+                    if tri_last
+                    else [],
+                }
+                if tri_last
+                else None,
                 "hasShard": bool(sd),
                 "files": ", ".join(sd["files"]) if sd else "",
                 "session": (sd["devin_id"] or sd["id"])[:12] if sd else "",
@@ -1776,7 +1861,7 @@ def tracker(
                 "state": f"{sd['status']}/{sd['status_detail']}" if sd else "",
                 "stateBg": PL[state_kind][1],
                 "stateFg": PL[state_kind][0],
-                "timeline": [ev(e) for e in (sd["timeline"] if sd else [])][-40:],
+                "timeline": collapse([ev(e) for e in (sd["timeline"] if sd else [])])[-40:],
                 "evidence": evidence,
                 "said": (
                     f"{'done' if claim.get('self_reported_done') else 'not done'} · tests {claim.get('tests_passed', 0)}/{claim.get('tests_run', 0)}"
@@ -1853,7 +1938,14 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
             mins[r["id"]] = cost.triage_active_seconds(store, r) / 60.0
             usd_rows[r["id"]] = cost.session_usd(store, r, "tri", kind_rates)
     rows = []
-    for s in ss["sessions"]:
+    # still working first, then the most recent
+    for s in sorted(
+        ss["sessions"],
+        key=lambda x: (
+            1 if (x.get("outcome") or x.get("gate")) else 0,
+            _neg_time(x.get("created")),
+        ),
+    ):
         is_triage = s.get("kind") == "triage"
         st_kind = _pill_kind(s["pill"])
         size = (s.get("size") or "").upper()
@@ -2495,7 +2587,9 @@ def report(
             }
         )
 
-    events = [ev(e) for e in reversed(store.timeline(ticket_id=log_ticket or None, limit=400))]
+    events = collapse(
+        [ev(e) for e in reversed(store.timeline(ticket_id=log_ticket or None, limit=400))]
+    )
     if not log_open:
         events = events[:12]
     log_tickets = [
