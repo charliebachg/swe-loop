@@ -513,3 +513,40 @@ def test_one_repository_can_be_searched_in_more_than_one_area(tmp_path):
             assert defect not in p
     # the seam's own area is the default
     assert "in the migration area" in scan.build_prompt(cfg, 5, [])
+
+
+def test_devin_fixes_its_own_finding_and_the_loop_checks_the_result(tmp_path):
+    """Devin's scanner opens the pull request itself, which is its feature and not ours to
+    rebuild. What the loop adds is the part Devin cannot do for itself: the change is re-checked
+    here before anyone is asked to merge it."""
+    from swe_loop import codescan
+
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    client = DevinClient(FakeTransport())
+    codescan.run(Settings.from_env(), cfg, st, client, log=lambda _m: None)
+    tid = st.list_tickets("escalated")[0]["id"]
+
+    out = codescan.remediate(Settings.from_env(), cfg, st, client, tid, log=lambda _m: None)
+    assert out["kind"] == "opened"
+    assert out["pr"].startswith("https://github.com/")
+    called = next(c for c in client.t.calls if c[0] == "remediate_finding")
+    assert called[1] == ("fake-scan-001", "fake-finding-001")
+    assert st.get_ticket(tid)["status"] == "dispatched"
+    events = [e["event"] for e in st.timeline(ticket_id=tid)]
+    assert "Devin is fixing its own finding" in events
+    assert "a pull request was opened" in events
+
+
+def test_a_fix_with_no_test_behind_it_is_not_called_verified(tmp_path):
+    """A remediation arrives with no work order, so there are no acceptance commands to inherit.
+    The linter always runs; a test runs only where one exists, and where none does the gate has
+    nothing to record but that."""
+    from swe_loop import codescan
+
+    root = ROOT.parent / "superset-fork"
+    only_lint = codescan.acceptance_for(["superset/views/sql_lab/views.py"], root)
+    assert list(only_lint) == ["lint"]
+    assert codescan.acceptance_for([], root) == {}
+    with_test = codescan.acceptance_for(["superset/databases/api.py"], root)
+    assert any(k.startswith("tests ") for k in with_test)

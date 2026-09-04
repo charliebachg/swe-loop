@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 from typing import Any
 
 from swe_loop.config import Settings, TargetConfig
@@ -266,3 +267,97 @@ def safe_title(t: dict[str, Any], hide: bool) -> str:
         return t.get("title") or ""
     kind = (t.get("class") or "").replace("-", " ").strip() or "a security finding"
     return f"{kind}, detail withheld until someone confirms it"
+
+
+# ---------------------------------------------------------------- Devin fixes its own finding
+def acceptance_for(files: list[str], root: Path) -> dict[str, str]:
+    """What to re-run against a fix nobody wrote a ticket for.
+
+    A remediation arrives with no work order, so there are no acceptance commands to inherit.
+    What we can always run is the repository's own linter on what changed, and the unit tests
+    that sit under the same path. Where no test covers the change the gate records that instead
+    of a pass, which is the honest outcome: a fix nothing exercises has not been verified.
+    """
+    out: dict[str, str] = {}
+    if files:
+        out["lint"] = ".venv-p2/bin/ruff check " + " ".join(files)
+    for f in files:
+        parts = Path(f).with_suffix("").parts
+        if len(parts) < 2 or parts[0] != "superset":
+            continue
+        guess = Path("tests/unit_tests", *parts[1:-1], f"{parts[-1]}_test.py")
+        alt = Path("tests/unit_tests", *parts[1:-1], f"test_{parts[-1]}.py")
+        for cand in (guess, alt, Path("tests/unit_tests", *parts[1:-1])):
+            if (root / cand).exists():
+                out[f"tests {cand.name}"] = (
+                    f".venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider "
+                    f"-o addopts= {cand}"
+                )
+                break
+    return out
+
+
+def remediate(
+    settings: Settings,
+    cfg: TargetConfig,
+    store: Store,
+    client: Any,
+    ticket_id: str,
+    *,
+    sleep: Any = None,
+    wall_clock: float = 3600.0,
+    log: Any = print,
+) -> dict[str, Any]:
+    """Ask Devin to fix a finding its own scanner reported, then check the result like any other.
+
+    Devin's scanner can open the pull request itself. That is the fastest path from a finding to
+    a fix and it is Devin's own feature, so the loop uses it rather than describing one. What the
+    loop adds is the part Devin cannot do for itself: the change is re-checked here, on a clean
+    copy the session could not write to, before anyone is asked to merge it.
+    """
+    import time as _time
+
+    ev = store._one("SELECT payload_json FROM events WHERE ticket_id=?", ticket_id)
+    if not ev:
+        return {"kind": "no_finding", "ticket": ticket_id}
+    f = json.loads(ev["payload_json"])
+    scan_id, fid = f.get("scan_id"), f.get("finding_id")
+    if not (scan_id and fid):
+        return {"kind": "no_finding", "ticket": ticket_id}
+    sleep = sleep or (
+        (lambda s_: _time.sleep(min(s_, 0.05)))
+        if getattr(client, "is_fake", False)
+        else _time.sleep
+    )
+    try:
+        started = client.remediate(scan_id, fid)
+    except Exception as ex:  # noqa: BLE001 - a 409 means it is already being fixed
+        store.log(
+            "dispatch", "Devin would not start a fix", ticket_id=ticket_id, detail=str(ex)[:200]
+        )
+        return {"kind": "refused", "ticket": ticket_id, "why": str(ex)[:200]}
+    sess = started.get("session_id", "")
+    store.set_ticket_status(ticket_id, "dispatched")
+    store.log(
+        "dispatch",
+        "Devin is fixing its own finding",
+        ticket_id=ticket_id,
+        detail=f"session {sess} on finding {fid}",
+    )
+    log(f"remediation started for {ticket_id}: session {sess}")
+
+    t0, wait, pr = _time.monotonic(), 10.0, None
+    while not pr:
+        if _time.monotonic() - t0 > wall_clock:
+            store.log("poll", "the fix did not arrive in time", ticket_id=ticket_id)
+            return {"kind": "timeout", "ticket": ticket_id, "session": sess}
+        sleep(wait)
+        wait = min(wait * 1.5, 30.0)
+        now_f = next(
+            (x for x in client.code_scan_findings(scan_id) if x.get("finding_id") == fid), {}
+        )
+        pr = now_f.get("pr_url")
+        store.log("poll", "waiting on the fix", ticket_id=ticket_id, session_id=None)
+    store.log("dispatch", "a pull request was opened", ticket_id=ticket_id, detail=pr)
+    log(f"remediation pull request: {pr}")
+    return {"kind": "opened", "ticket": ticket_id, "session": sess, "pr": pr, "finding": fid}

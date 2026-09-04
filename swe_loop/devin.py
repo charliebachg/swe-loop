@@ -156,6 +156,7 @@ class Transport(Protocol):
         self, scan_id: str | None = None, repo_name: str | None = None
     ) -> list[dict[str, Any]]: ...
     def list_code_scan_profiles(self) -> list[dict[str, Any]]: ...
+    def remediate_finding(self, scan_id: str, finding_id: str) -> dict[str, Any]: ...
 
 
 # ---------------------------------------------------------------------------- HTTP
@@ -286,6 +287,9 @@ class HttpTransport:
 
     def list_code_scan_profiles(self) -> list[dict[str, Any]]:
         return self._paged("/code-scans/profiles", {})
+
+    def remediate_finding(self, scan_id: str, finding_id: str) -> dict[str, Any]:
+        return self._req("POST", f"/code-scans/{scan_id}/findings/{finding_id}/remediate")
 
     def get_pr_review(self, pr_url: str) -> dict[str, Any]:
         """Verified live 2026-09-03: status (running | completed), repo_path, pr_number,
@@ -573,8 +577,12 @@ class FakeTransport:
                 ],
                 "severity": "high",
                 "category": "open-redirect",
-                "pr_url": None,
-                "session_id": None,
+                "pr_url": getattr(self, "_fix_pr", None),
+                "session_id": (
+                    f"fake-remediation-{getattr(self, '_remediated', 0):03d}"
+                    if getattr(self, "_remediated", 0)
+                    else None
+                ),
                 "orchestrator_session_id": "fake-orchestrator-001",
                 "status": "open",
                 "created_at": 0,
@@ -584,6 +592,13 @@ class FakeTransport:
     def list_code_scan_profiles(self) -> list[dict[str, Any]]:
         self.calls.append(("list_code_scan_profiles", None))
         return []
+
+    def remediate_finding(self, scan_id: str, finding_id: str) -> dict[str, Any]:
+        self.calls.append(("remediate_finding", (scan_id, finding_id)))
+        self._remediated = getattr(self, "_remediated", 0) + 1
+        sid = f"fake-remediation-{self._remediated:03d}"
+        self._fix_pr = f"https://github.com/o/r/pull/{90 + self._remediated}"
+        return {"finding_id": finding_id, "session_id": sid}
 
 
 # ---------------------------------------------------------------------------- Client
@@ -645,3 +660,6 @@ class DevinClient:
 
     def code_scan_findings(self, scan_id: str) -> list[dict[str, Any]]:
         return self.t.list_code_scan_findings(scan_id=scan_id)
+
+    def remediate(self, scan_id: str, finding_id: str) -> dict[str, Any]:
+        return self.t.remediate_finding(scan_id, finding_id)
