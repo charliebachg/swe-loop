@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from swe_loop import scan
+from swe_loop import pages, scan
 from swe_loop.app import build_app
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.devin import DevinClient, FakeTransport
@@ -272,3 +272,29 @@ def test_a_finding_in_a_file_another_change_owns_is_refused(tmp_path):
     assert len(filed["new"]) == 1
     titles = [t["title"] for t in st.list_tickets()]
     assert titles == ["somewhere nobody is working"]
+
+
+def test_stopping_after_intake_files_tickets_and_spends_nothing_more(tmp_path, monkeypatch):
+    """Finding out what a repository holds should not cost what fixing it costs."""
+    from swe_loop import runner
+
+    monkeypatch.delenv("DEVIN_API_KEY", raising=False)
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    settings = Settings.from_env()
+    client = DevinClient.from_settings(settings)
+    pages.seed_automations(st, cfg)
+    pages.seed_playbooks(st, cfg)
+
+    out = runner.run_automation(
+        settings, cfg, st, client, "auto_scan", log=lambda _m: None, stop_after="intake"
+    )
+    assert out["stopped_after"] == "intake"
+    assert out["new_tickets"]
+    # a ticket exists, and nothing was scoped or dispatched against it
+    assert st.list_tickets("new")
+    assert st.list_triage_sessions() == []
+    assert st._all("SELECT * FROM sessions") == []
+    # the run is on the record like any other
+    runs = st.list_automation_runs("auto_scan")
+    assert runs and runs[0]["status"] == "done"

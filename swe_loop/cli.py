@@ -91,7 +91,13 @@ def cmd_automation(args: argparse.Namespace) -> int:
     pages.seed_playbooks(store, cfg)
     if not settings.live:
         print("mode=replay: sessions are simulated and the gate is skipped", file=sys.stderr)
-    print(json.dumps(runner.run_automation(settings, cfg, store, client, args.id, log=print)))
+    print(
+        json.dumps(
+            runner.run_automation(
+                settings, cfg, store, client, args.id, log=print, stop_after=args.stop_after
+            )
+        )
+    )
     return 0
 
 
@@ -624,6 +630,11 @@ def main(argv: list[str] | None = None) -> int:
     co.set_defaults(fn=cmd_cost)
     au = sub.add_parser("automation")
     au.add_argument("--id", default="auto_repair", help="which automation to run")
+    au.add_argument(
+        "--stop-after",
+        choices=["intake"],
+        help="file the tickets and stop; nothing is scoped or repaired",
+    )
     au.set_defaults(fn=cmd_automation)
     rs = sub.add_parser("reset-shard")
     rs.add_argument("--shard", required=True, help="the shard letter, e.g. D")

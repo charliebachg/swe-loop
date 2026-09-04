@@ -155,8 +155,12 @@ def run_automation(
     *,
     log: Callable[[str], None] = print,
     fetch: Fetch | None = None,
+    stop_after: str | None = None,
 ) -> dict[str, Any]:
-    """The whole loop for one automation: intake, triage, route, repair, gate, review."""
+    """The whole loop for one automation: intake, triage, route, repair, gate, review.
+
+    stop_after="intake" files the tickets and stops there, which is how you find out what a
+    repository holds without paying to fix it."""
     from swe_loop.cli import run_once
     from swe_loop.triage import triage_all
 
@@ -184,11 +188,14 @@ def run_automation(
                 log=log,
             )
             result["scan"] = found.get("kind")
+            result["session"] = found.get("session", "")
+            result["taken"] = len(found.get("taken", []))
+            result["dropped"] = found.get("dropped", 0)
             got = {
                 "issues": len(found.get("new", [])) + len(found.get("known", [])),
                 "new": found.get("new", []),
                 "known": len(found.get("known", [])),
-                "skipped": len(found.get("refused", [])),
+                "skipped": len(found.get("refused", [])) + len(found.get("taken", [])),
             }
         else:
             issues = (
@@ -223,6 +230,11 @@ def run_automation(
                 detail="playbooks and Knowledge notes; anything already there was adopted",
             )
             log(f"apply-config: {n} created, {len(made['already_on_the_org'])} already there")
+        if stop_after == "intake":
+            result["stopped_after"] = "intake"
+            log("stopping after intake, as asked: nothing is scoped or repaired")
+            store.finish_automation_run(rid, result)
+            return result
         inv = cfg.triage.get("inventory_url") or None
         pid_tri = store.get_setting("playbook_id.triage-pandas3")
         verdicts = triage_all(store, client, cfg, inventory_path=inv, playbook_id=pid_tri)
