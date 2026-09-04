@@ -5,9 +5,11 @@
 Tickets in, verified pull requests out.
 
 A loop on the Devin API for the class of work that dependency bots can open but cannot
-finish: major-version upgrades. Devin scopes each ticket and writes the fix. Code decides what
-happens next: it routes the ticket, checks the fix from a clean checkout, asks Devin to review
-it, and reports. A person merges. Nothing reaches the base branch on the AI's word alone.
+finish: major-version upgrades. Work arrives three ways: an issue on the repository, a session
+sent to read the repository, or Devin's own code scanner. Devin scopes each ticket and writes
+the fix. Code decides what happens next: it routes the ticket, checks the fix from a clean
+checkout, asks Devin to review it, and reports. A person merges. Nothing reaches the base
+branch on the AI's word alone.
 
 The app calls itself Backstop, because that is its job: it stands behind the AI and catches
 what should not go through.
@@ -22,9 +24,7 @@ code, 15 in test expectations. Those became the tickets.
 ## What it did
 
 Every row below comes out of the store, printed by `python -m swe_loop receipts`, so this table
-and the app cannot drift apart. It is the current state, not a highlight reel: three changes
-written and checked, two of them merged by a person, one waiting for a person to merge, and one
-ticket the system refused to touch.
+and the app cannot drift apart. It is the current state, not a highlight reel.
 
 | ticket | issue | scope | went to | session | checks | Devin Review | where it is |
 |---|---|---|---|---|---|---|---|
@@ -32,6 +32,20 @@ ticket the system refused to touch.
 | #00002 | [#2](https://github.com/charliebachg/superset/issues/2) | `pivot.py` and 2 more | Devin | [0f160096](https://app.devin.ai/sessions/0f1600968c9c47c18012fe8476f4f1e7) | passed | 4 comments | merged, [#8](https://github.com/charliebachg/superset/pull/8) |
 | #00003 | [#3](https://github.com/charliebachg/superset/issues/3) | `aggregate.py` and 2 more | Devin | [38e2b6e7](https://app.devin.ai/sessions/38e2b6e7d3994aa980d7379031b9117c) | passed | 3 comments | merged, [#9](https://github.com/charliebachg/superset/pull/9) |
 | #00004 | [#5](https://github.com/charliebachg/superset/issues/5) | not scoped | a person | none | not run | not requested | with the team |
+| #00009 | filed by a scan | `core.py` | Devin | [5308ec47](https://app.devin.ai/sessions/5308ec47521f4fd68d0c85ab09e6aece) | passed | 0 comments | waiting for a person, [#14](https://github.com/charliebachg/superset/pull/14) |
+| #00010 | filed by a scan | `result_set.py` | Devin | [03f72c31](https://app.devin.ai/sessions/03f72c310aa7448b890a96377eae5edd) | passed | no issues | merged, [#15](https://github.com/charliebachg/superset/pull/15) |
+| #00011 | filed by a scan | `dataframe_utils.py` | Devin | [0b92cade](https://app.devin.ai/sessions/0b92cadef9fe4cb792270c54bc57f47b) | passed | no issues | merged, [#16](https://github.com/charliebachg/superset/pull/16) |
+| #00012 | filed by a scan | `api.py` | a person | [61fb977b](https://app.devin.ai/sessions/61fb977bc53d4f72bfcdfede83171e3f) | passed | 0 comments | merged, [#17](https://github.com/charliebachg/superset/pull/17) |
+| #00013 | filed by a scan | `views.py` | a person | [3e5f60a5](https://app.devin.ai/sessions/3e5f60a5c6164cfbbd93fd55ffe56391) | passed | no issues | merged, [#18](https://github.com/charliebachg/superset/pull/18) |
+| #00016 | filed by a scan | `csv.py` | Devin | [dcdde9fa](https://app.devin.ai/sessions/dcdde9fa3d904261a66506391986bb8c) | passed | 1 comment | merged, [#19](https://github.com/charliebachg/superset/pull/19) |
+| #00017 | filed by a scan | `slack_mixin.py` | Devin | [c6e85826](https://app.devin.ai/sessions/c6e858267bc54d3ea633c664fcfe37f6) | passed | see the pull request | merged, [#20](https://github.com/charliebachg/superset/pull/20) |
+| #00018 | filed by a scan | `boxplot.py` | Devin | [1e7ba413](https://app.devin.ai/sessions/1e7ba41345b1442bb37aaf8e671afcf4) | passed | see the pull request | merged, [#21](https://github.com/charliebachg/superset/pull/21) |
+| #00019 | filed by a scan | `compare.py` | Devin | [b9ee6224](https://app.devin.ai/sessions/b9ee6224f7864b04bc8ffe1199037d4b) | failed | not requested | with the team |
+
+Nineteen tickets from three ways in, which is the point of the shape rather than a count: four
+from the fork's own issues, ten from a session pointed at the repository, five from Devin's own
+scanner. Twelve changes were written and checked; eleven passed. Nine were merged by a person,
+two are waiting on one, and three tickets were refused before anything was spent on them.
 
 The one to read is `#00001`. Its scoping session read the ticket and declined: the three places
 sat behind tests that encode pandas 2 behaviour, and a session may not edit tests, so it returned
@@ -43,28 +57,30 @@ kept the conversation.
 
 `#00004` went to the team and stays there. Fifteen test files assert pandas 2 results, and
 whether a test or the code is wrong is a product decision. A session may not edit tests, so it
-said so and stopped rather than making the tests agree with itself. The Report shows it as the
-ticket that went to a person, with the reason.
+said so and stopped rather than making the tests agree with itself.
 
-Issue #4 has no row because its shard is deliberately sitting at its unfixed state. It was
-repaired, merged, then put back by `reset-shard` so the whole loop can be run again from an open
-issue without anyone editing the store by hand. That is what Settings does, and it is the only
-honest way to demonstrate a loop whose work is already done.
+`#00019` is the one that failed. Its acceptance command was malformed, so nothing ran. The gate
+records that as work it could not verify, never as a pass, and the ticket went to a person. A
+check that cannot run is not a check that passed.
 
-The scan is the second way in. Pointed at the repository rather than at a ticket, one session
-read the pandas-importing modules and filed three findings as tickets in its own group. Two
-matched places the measured inventory already knew about, which is the check on it; one, at
-`client_processing.py:754`, it found on its own.
+`#00012` and `#00013` came from Devin's scanner and were fixed by Devin's own remediation, one
+call per finding. Both still went to a person first, because this repository requires an
+automated security finding to name the capability row in `SECURITY.md` it violates and the
+principal the attacker holds, and to be filed as a question when it cannot name both. The scanner
+returns neither field, so every security finding here is a question until someone answers it.
+Three still are.
 
 Measured, not asserted: 25 unit tests failed on pandas 3.0.5 before any of this ran. With the
-loop's four changes merged, 11 of them pass. Every one of the 14 that still fail is in a test
-file, which is the ticket the system refused to take and handed to a person. It fixed what it
-took on and nothing it declined. The test ids, the command and the three commits are in
+loop's first four changes merged, 11 of them pass. Every one of the 14 that still fail is in a
+test file, which is the ticket the system refused to take and handed to a person. It fixed what
+it took on and nothing it declined. The test ids, the command and the three commits are in
 `data/inventory/2026-09-04-closing/`; run it yourself and you get the same numbers.
 
-Cost so far: $14.97 across nine sessions, 48 minutes of active AI work, five of the nine priced
-from the console and the rest at the rate those five imply. Every session counts, including the
-ones that only read a ticket and the one that went to a person.
+Cost: $62.75 across 29 sessions and 160 minutes of active AI work. Twenty-six are priced from
+the console and the rest at the rate those imply. One cannot be priced at all: Devin's code scan
+runs sub-sessions this app never polls and the console does not itemise them, so the app says
+"not priced" rather than a false zero. Every session counts, including the ones that only read a
+ticket and the ones that went to a person.
 
 ## Why an agent
 
@@ -121,6 +137,41 @@ pandas 2 results, whether a test or the code is wrong is a product decision, and
 it and said why. The agent is the part that reads a failing test and decides what to do about it.
 Everything around it exists to check that decision.
 
+## What this uses of Devin
+
+Devin is the worker at every step that needs judgement, and the primitives are used as they
+ship rather than reimplemented:
+
+| | |
+|---|---|
+| **Sessions** (v3) | scoping, repair, and the scan, each with a playbook, a structured output contract and `max_acu_limit` |
+| **Playbooks** | the instructions per kind of session, editable on the Playbooks page |
+| **Knowledge notes** | repo-pinned, trigger-retrieved, created on the organisation by `apply-config` |
+| **Structured output** | a draft-07 schema per session kind. A terminal session with no structured output is a failure, not a pass |
+| **Devin Review** | requested on work the checks passed; its remarks are posted back into the session that wrote the code |
+| **Code scans** | Devin ships a scanner, so this runs it rather than describing one. A scan is started with an *area* to look in, never a defect to look for |
+| **Remediation** | `findings/{id}/remediate`: Devin fixes its own finding and opens the pull request |
+| **Auto-scan schedules** | the recurrence is Devin's, registered against the scan and backed by an Automation on the organisation. This app does not keep a timer of its own |
+| **Session Insights** | Devin's own read of each session, on its own page, kept separate from anything this app measures |
+
+**The schedule is theirs, and the watching is ours.** `POST` on a scan's `auto-scan` registers a
+recurrence and Devin backs it with an Automation. It is created switched off, and the switch on
+the Automations page moves Devin's, then shows what Devin answered. Devin has no outbound
+webhook, so `swe-loop watch` polls: a tick that finds nothing does nothing, and never starts a
+scan of its own, because that would make the timer beside the point. Because it reads state
+rather than events, stopping the watcher loses nothing; the next tick picks up whatever the
+schedule did meanwhile. Sub-hourly recurrences need a Teams plan, so on a self-serve plan hourly
+is the floor.
+
+**Two Devin features this deliberately does not use, and why.** Devin Review with Autofix has no
+API surface: `autofix` appears nowhere in the v3 spec and `PrReviewCreateRequest` carries one
+field, `pr_url`. It also reacts to bots commenting on a pull request, and the checks here run
+locally against a tree the session cannot reach, so there would be nothing for it to react to
+without publishing the results as comments and letting the reviewed thing fix itself. Auto-Triage
+is in the spec, as an automation action, but it requires a `slack_triage_config` with a source
+channel and exactly one `slack:message` trigger; the sources here are issues, a scan session and
+Devin's scanner. Where the API forces a choice this says so rather than claiming a preference.
+
 ## Run it
 
 Replay mode needs no credentials. It renders the app from the recorded run.
@@ -162,6 +213,9 @@ python -m swe_loop cost --set 58d404d2=1.78 # the console's figure for a session
 python -m swe_loop reset-shard --shard D    # put one shard back to its unfixed state, on the fork and in the store
 python -m swe_loop record data/replay/run.json            # capture the run for replay, redacted
 python -m swe_loop receipts                 # the table at the top of this file, from the store
+python -m swe_loop schedule                 # hand the code scan's recurrence to Devin, switched off
+python -m swe_loop schedule --on            # arm it;  --remove takes it off Devin again
+python -m swe_loop watch                    # wait for Devin's schedule to fire, then run the loop
 ```
 
 Or open Automations and click Run: it is the same chain from a button, and the pages refresh
@@ -173,7 +227,8 @@ while it works. Without `DEVIN_API_KEY` the mode is forced to replay. No key, no
 event (GitHub webhook: a dependency bot's PR, a labelled issue, a failed check)
   │
   ▼ intake            code      any event becomes one ticket; one adapter per source
-  ▼ scan session      Devin     the other way in: reads the repository and files what it finds
+  ▼ scan session      Devin     the second way in: reads the repository and files what it finds
+  ▼ code scan         Devin     the third: Devin's own scanner, on a recurrence Devin holds
   ▼ triage session    Devin     reads the ticket, decides one session or several, or asks
   ▼ ticket store      SQLite    the row exists before any session does
   ▼ route             code      policy from configs/*.yaml: refuse, human-only, or Devin, with the reason
@@ -206,7 +261,7 @@ agent: each step says who does it, the AI or a person, and every session is pric
 | page | shows |
 |---|---|
 | **Home** | the last run in five steps, what needs a person now with the buttons to answer, merge or dismiss, what is running, and what just happened |
-| **Automations** | how work enters and what happens when it runs. Issues from the fork is on: Run pulls the repository's open issues with the label, makes a ticket of each new one, starts one triage session per ticket, routes them, starts the repair sessions, checks every pull request from a clean copy and asks Devin Review. Scan the repository is the other way in: a session reads the repository itself, finds places the upgrade changes behaviour, and files each as a ticket that goes through the same loop. Both keep a run history, and you can add your own |
+| **Automations** | how work enters and what happens when it runs, in three rows. Issues from repo pulls the repository's open issues with the label, makes a ticket of each new one, starts one scoping session per ticket, routes them, starts the repair sessions, checks every pull request from a clean copy and asks Devin Review. Scan agent points a session at the repository itself, which finds places the upgrade changes behaviour and files each as a ticket through the same loop. Devin security scan runs Devin's own scanner, on a recurrence registered on Devin and switched from here. All three keep a run history, and you can add your own |
 | **Tickets** | every ticket, named by a number, in two views. The list groups them by source and gives each a one-line account of what it is doing right now. The pipeline view shows four steps per ticket: scoped, fixed, verified, merged. Open a ticket for what it covers, the sessions, the checks, the review and the merge button |
 | **Report** | three rates, each a count over a stated denominator: verification pass rate, human intervention rate, acceptance rate. Under them six lightweight numbers to watch: sessions run, checks re-run here, output rejected for shape, work sent back to a session, AI working time per change, cost per change that passed. Under them every check with its exit code and its log, where the work went, progress against the counted list, what it cost, and the log itself |
 | **Devin · Sessions** | every session: the ticket, what it was for, its status, cost, whether the checks passed, when it started and how long it took. Click a row for its timeline, the checks and what it claimed |
@@ -276,7 +331,7 @@ data/inventory/    the measured inventory and the tickets drafted from it
 data/replay/       the recorded run, redacted
 templates/         the app
 static/            htmx, served by the app so the dashboard works with no internet
-tests/             163 tests; the checks are tested against a real git fixture
+tests/             198 tests; the checks are tested against a real git fixture
 ```
 
 ## Development
