@@ -17,7 +17,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6", "pytest-asyncio>=0.23"]
+# ruff is pinned: CI fails the build on formatting, so an unpinned formatter means a
+# commit that passed today can fail tomorrow with nothing in the repository changed
+dev = ["pytest>=8", "ruff==0.16.6", "pytest-asyncio>=0.23"]
 
 [tool.ruff]
 line-length = 100

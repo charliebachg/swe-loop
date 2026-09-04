@@ -230,8 +230,8 @@ class Store:
             "SELECT id FROM tickets WHERE number IS NULL ORDER BY created_at, rowid"
         ).fetchall()
         start = (
-            self.conn.execute("SELECT COALESCE(MAX(number), 0) FROM tickets").fetchone()[0]
-        ) + 1
+            (self.conn.execute("SELECT COALESCE(MAX(number), 0) FROM tickets").fetchone()[0]) + 1
+        )
         for i, r in enumerate(rows, start=start):
             self.conn.execute("UPDATE tickets SET number=? WHERE id=?", (i, r[0]))
         self.conn.commit()

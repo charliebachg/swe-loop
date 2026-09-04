@@ -306,11 +306,7 @@ def adopt(
         fresh = file_findings(store, cfg, current, limit)
         if fresh["new"] or fresh["known"]:
             row = next(
-                (
-                    c
-                    for c in store.list_scan_sessions()
-                    if c["devin_session_id"] == sid_scan
-                ),
+                (c for c in store.list_scan_sessions() if c["devin_session_id"] == sid_scan),
                 None,
             )
             store.log(
