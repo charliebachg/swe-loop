@@ -469,6 +469,18 @@ def _cost_help(sp: dict[str, Any]) -> str:
     )
 
 
+def _spent_caption(sp: dict[str, Any]) -> str:
+    """Under the spend figure: what the number leaves out, so nobody reads it as the whole bill.
+    Two gaps can exist, a session of ours nobody priced and sessions Devin ran on its own, and each
+    is named only when it is there."""
+    gaps = []
+    if sp.get("n_unpriced"):
+        gaps.append(f"{plural(sp['n_unpriced'], 'session')} we cannot price")
+    if sp.get("n_devin_own"):
+        gaps.append(f"{plural(sp['n_devin_own'], 'session')} Devin ran on its own, not priced")
+    return "spent · " + " · ".join(gaps) if gaps else "spent, every session counted"
+
+
 def usd_label(sp: dict[str, Any]) -> str:
     if sp["usd"] is None:
         return ""
@@ -764,13 +776,7 @@ def frame(settings: Settings, cfg: TargetConfig, store: Store, active: str) -> d
         else (_pct(sp["usd"], usd_cap) if usd_cap and sp["usd"] is not None else "0"),
         "costUnit": "ACU" if sp["metered"] else "",
         "spentLabel": (
-            f"ACU spent · cap {per_label} per session"
-            if sp["metered"]
-            else (
-                f"spent · {plural(sp['n_unpriced'], 'session')} we cannot price"
-                if sp.get("n_unpriced")
-                else "spent, every session counted"
-            )
+            f"ACU spent · cap {per_label} per session" if sp["metered"] else _spent_caption(sp)
         ),
         "costHead": "ACU of cap" if sp["metered"] else "cost · AI minutes",
         "perSession": f"{b['per_session_cap']:.0f}"
@@ -2384,6 +2390,17 @@ def _took(a: str | None, b: str | None) -> str:
     return f"{int(secs // 60)} min {int(secs % 60)} s" if secs >= 60 else f"{int(secs)} s"
 
 
+def _run_kind(status: str) -> str:
+    """The pill colour for a run: ours by outcome, Devin's own in Devin's colour."""
+    if status == "running":
+        return "run"
+    if status == "failed":
+        return "bad"
+    if status == "observed":
+        return "devin"
+    return "ok"
+
+
 def _run_line(res: dict[str, Any]) -> str:
     if not res:
         return "no result recorded"
@@ -2561,12 +2578,8 @@ def automations(
                         "when": run["started_at"][:16].replace("T", " "),
                         "took": _took(run["started_at"], run.get("finished_at")),
                         "line": _run_line(run["result"]),
-                        **pill(
-                            "run"
-                            if run["status"] == "running"
-                            else ("bad" if run["status"] == "failed" else "ok")
-                        ),
-                        "status": run["status"],
+                        **pill(_run_kind(run["status"])),
+                        "status": "Devin's" if run["status"] == "observed" else run["status"],
                     }
                     for run in runs
                 ],

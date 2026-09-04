@@ -309,11 +309,13 @@ def observe_scheduled_runs(store: Store, client: Any, aid: str, *, log: Any = pr
             "state": f"{s.get('status')}/{s.get('status_detail')}",
             "title": s.get("title") or "",
         }
+        # "observed", never "running": the restart sweep marks running rows as cut short by our
+        # restart, and a run on Devin's side was not
         store.record_observed_run(
             aid,
             started_at=started,
             result=result,
-            status="done" if terminal else "running",
+            status="observed",
             finished_at=_when(s.get("updated_at")) if terminal else None,
         )
         store.log(

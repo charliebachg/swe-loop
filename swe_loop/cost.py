@@ -151,6 +151,17 @@ def observed_rate(store: Store) -> float | None:
     return (secs["rep"] / 60.0 * rs["rep"] + secs["tri"] / 60.0 * rs["tri"]) / total_min
 
 
+def devin_own_sessions(store: Store) -> int:
+    """How many sessions Devin's own schedule has run. They are recorded as observed runs of an
+    automation, each carrying the size of the swarm it spawned."""
+    import json as _json
+
+    n = 0
+    for r in store._all("SELECT result_json FROM automation_runs WHERE status='observed'"):
+        n += int((_json.loads(r["result_json"] or "{}")).get("sessions") or 0)
+    return n
+
+
 def spend(store: Store) -> dict[str, Any]:
     """The one cost picture: reported ACU (0 on self-serve plans), measured active minutes, and
     dollars: the console's figure per session where a person entered it, an estimate at the
@@ -197,6 +208,9 @@ def spend(store: Store) -> dict[str, Any]:
         "usd_console": round(usd_console, 2),
         "n_console": n_console,
         "n_unpriced": unpriced,
+        # sessions Devin ran on its own, from the schedule. We know they happened and how many;
+        # the console does not itemise them, so they are counted and never priced
+        "n_devin_own": devin_own_sessions(store),
         "console_read_at": (store.get_setting("cost.console_read_at") or "")[:16].replace("T", " "),
         "n_sessions": len(sessions) + len(tri) + len(scn),
         "rate": rate,

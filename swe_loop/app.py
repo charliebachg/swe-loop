@@ -73,7 +73,15 @@ def build_app(
                 tickets_json=INVENTORY / "tickets.json",
                 replay_dir=settings.replay_dir,
             )
+        # the app looks for Devin's schedule by itself; nobody has to remember a terminal
+        from swe_loop.watch import Watcher
+
+        app.state.watcher = Watcher(
+            settings, cfg, app.state.store, app.state.client, app.state.run_lock
+        )
+        app.state.watcher.start()
         yield
+        app.state.watcher.stop()
 
     app = FastAPI(title="swe-loop", lifespan=lifespan)
 
@@ -257,9 +265,22 @@ def build_app(
         if not devin_id:
             return escape(f"native Automation {a.get('id') or a.get('automation_id')}")
         on = bool(a.get("enabled"))
+        from swe_loop.watch import status as watch_status
+
+        w = watch_status(st)
+        looking = (
+            f"this app is looking, last at {w['last_look'][11:]} UTC"
+            if w["watching"] and w["last_look"]
+            else ("this app is looking" if w["watching"] else "nothing here is looking")
+        )
         text = (
             f"Devin runs this one: Automation {a['automation_id']}, "
-            f"{_rrule_words(row.get('schedule'))}, " + ("switched on" if on else "switched off")
+            f"{_rrule_words(row.get('schedule'))}, "
+            + (
+                f"switched on. Each run is several sessions Devin prices itself; {looking}."
+                if on
+                else f"switched off; {looking}."
+            )
         )
         btn = "Switch it off" if on else "Switch it on"
         return (
@@ -308,6 +329,10 @@ def build_app(
             f"Devin's schedule for {row['name']} " + ("switched on" if want else "switched off"),
             detail=row["devin_automation_id"],
         )
+        if want:
+            # on means Devin runs this every hour whether or not anyone is here. Make sure
+            # something here is looking, or the runs land on nothing.
+            request.app.state.watcher.start()
         pages._NATIVE.pop("all", None)  # the next page load must read Devin, not the cache
         return HTMLResponse(
             '<span style="text-wrap:pretty;min-width:0;overflow-wrap:anywhere">'
