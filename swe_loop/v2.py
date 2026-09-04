@@ -837,6 +837,7 @@ def _pos(pat: str) -> int:
 
 # ---------------------------------------------------------------------------- home
 def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
+    hide_sec = codescan.masked(store)
     h = pages.home(store)
     counts = h["counts"]
     tickets = store.list_tickets()
@@ -928,7 +929,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                     "bg": d["dotBg"],
                     "fg": d["dotFg"],
                     "ring": d["color"],
-                    "title": f"{d['ref']} {clip(t.get('title', ''), 70)} · {state}"
+                    "title": f"{d['ref']} {clip(codescan.safe_title(t, hide_sec), 70)} · {state}"
                     + (f" · issue #{issue}" if issue else ""),
                     "go": url("/tickets-page", open=t["id"]),
                 }
@@ -1037,7 +1038,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
     for n in needs:
         tid = n["ticket"]
         t = store.get_ticket(tid) or {}
-        what = clip(t.get("title") or "", 64)
+        what = clip(codescan.safe_title(t, hide_sec) or "", 64)
         if n["kind"] == "ready to merge":
             mn = reduce_mod.merge_notes(store, tid)
             what = " · ".join(mn["reviews"]) + (
@@ -1122,7 +1123,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                 **dot(store, e["ticket_id"], False),
                 "kind": KIND_PLAIN.get(e["kind"], e["kind"]),
                 **pill("bad"),
-                "what": clip(plain(t.get("title") or e["reason"]), 70),
+                "what": clip(plain(codescan.safe_title(t, hide_sec) or e["reason"]), 70),
                 "hover": plain(e["reason"]),
                 "age": _age(e["created_at"]),
                 "go": url("/tickets-page", open=e["ticket_id"]),

@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from swe_loop import connect, ops
+from swe_loop import codescan, connect, ops
 from swe_loop import reduce as reduce_mod
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.devin import DevinClient
@@ -162,7 +162,8 @@ def _ticket_row(store: Store, t: dict[str, Any]) -> dict[str, Any]:
         "number": t.get("number"),
         "issue": num,
         "issue_url": url,
-        "title": t["title"],
+        # a finding nobody has confirmed does not put its detail on a shared screen
+        "title": codescan.safe_title(t, codescan.masked(store)),
         "classes": [c for c in (t["class"] or "").split(",") if c],
         "files": files,
         "sites": sites,
