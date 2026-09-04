@@ -33,7 +33,7 @@
                 <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:#626b78;margin-top:5px;align-items:baseline"><span>{{ r.count }}</span><span>{{ r.nSessions }}</span><span>{{ r.age }}</span>{% if r.sessionUrl %}<a href="{{ r.sessionUrl }}" target="_blank" onclick="event.stopPropagation()" style="color:#7a4fb5">{{ r.sessionLabel }} ↗</a>{% endif %}{% if r.prLabel %}<a href="{{ r.prUrl }}" target="_blank" onclick="event.stopPropagation()">{{ r.prLabel }} ↗</a>{% endif %}</div>
               </div>
               <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end">
-                <span style="{{ PILL }};background:{% if r.route == 'devin' %}#f1eafa{% elif r.route %}#fff3d6{% else %}#e9e7e1{% endif %};color:{% if r.route == 'devin' %}#7a4fb5{% elif r.route %}#b8862a{% else %}#8f97a3{% endif %}">{% if r.route == 'devin' %}Devin{% elif r.route %}a person{% else %}not scoped yet{% endif %}</span>
+                <span style="{{ PILL }};background:{% if r.route == 'devin' %}#f1eafa{% elif r.route == 'refuse' %}#e9e7e1{% elif r.route %}#fff3d6{% else %}#e9e7e1{% endif %};color:{% if r.route == 'devin' %}#7a4fb5{% elif r.route == 'refuse' %}#8f97a3{% elif r.route %}#b8862a{% else %}#8f97a3{% endif %}">{% if r.route == 'devin' %}Devin{% elif r.route == 'refuse' %}nobody{% elif r.route %}your team{% else %}not scoped yet{% endif %}</span>
                 <span style="{{ PILL }};background:{{ r.stBg }};color:{{ r.stFg }}">{{ r.status }}</span>
               </div>
               <span style="color:#8f97a3;font-size:11px;text-align:right;padding-top:4px">{{ r.chev }}</span>
@@ -59,7 +59,7 @@
                 <span style="display:flex;gap:8px;align-items:center;min-width:0"><span style="height:20px;padding:0 6px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font:600 11px/1 'JetBrains Mono',monospace;white-space:nowrap;flex:none;background:{{ r.dotBg }};color:{{ r.dotFg }};box-shadow:inset 0 0 0 1.5px {{ r.color }}">{{ r.ref }}</span><a href="{{ r.issueUrl }}" target="_blank" onclick="event.stopPropagation()" style="font:11px/1.3 'JetBrains Mono',monospace;color:#8f97a3">issue {{ r.issue }}</a></span>
                 <span style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">{% for c in r.cells %}<span title="{{ c.title }}" style="height:{{ c.h }};border-radius:3px;background:{{ c.bg }};box-shadow:{{ c.shadow }};color:{{ c.fg }};font:500 10px/1 'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap;padding:0 4px">{{ c.label }}</span>{% endfor %}</span>
                 <span style="min-width:0;font-size:12.5px;color:#14181f;text-wrap:pretty">{{ r.summary }}</span>
-                <span style="display:flex;gap:4px;flex-wrap:wrap"><span style="{{ PILL }};background:{{ r.stBg }};color:{{ r.stFg }}">{{ r.status }}</span>{% if r.isEscalated %}<span style="{{ PILL }};background:#fff3d6;color:#b8862a">a person</span>{% endif %}</span>
+                <span style="display:flex;gap:4px;flex-wrap:wrap"><span style="{{ PILL }};background:{{ r.stBg }};color:{{ r.stFg }}">{{ r.status }}</span>{% if r.isEscalated %}<span style="{{ PILL }};background:#fff3d6;color:#b8862a">your team</span>{% endif %}</span>
                 <span style="color:#8f97a3;font-size:11px;text-align:right">{{ r.chev }}</span>
               </div>
               {% if r.open %}{% include "v2/_ticket_run.html" %}{% endif %}

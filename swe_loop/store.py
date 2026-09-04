@@ -822,7 +822,17 @@ class Store:
             "INSERT INTO escalations VALUES (?,?,?,?,?,?,?)",
             (eid, ticket_id, session_id, kind, reason, now(), None),
         )
-        self.log("escalate", kind, ticket_id=ticket_id, session_id=session_id, detail=reason)
+        # the log is read by people, so it says what happened rather than the internal name
+        said = {
+            "human_only": "handed to your team",
+            "router_refused": "put on hold",
+            "oracle_touched": "a test changed, so someone has to look",
+            "review_blocked": "the review did not finish",
+            "waiting_for_user": "the AI asked a question",
+            "usage_limit": "too big for one run",
+            "detector_still_fires": "the problem is still there",
+        }.get(kind, kind.replace("_", " "))
+        self.log("escalate", said, ticket_id=ticket_id, session_id=session_id, detail=reason)
         return eid
 
     def resolve_escalation(self, eid: str, note: str | None = None) -> dict[str, Any] | None:

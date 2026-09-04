@@ -30,8 +30,8 @@ def test_home_shows_now_needs_you_and_recent(client):
     assert r.status_code == 200
     html = r.text
     assert "Needs you" in html and "What just happened" in html
-    assert "tkt_E" in html and "needs your team" in html  # the escalation
-    assert "ready to ship" in html  # C and D passed and were reviewed
+    assert "tkt_E" in html and "needs you" in html  # the escalation
+    assert "ready to merge" in html  # C and D passed and were reviewed
     assert "RECORDED RUN" not in html and "charliebachg/superset" in html and "Backstop" in html
     assert "\u2014" not in html  # no em dashes
 

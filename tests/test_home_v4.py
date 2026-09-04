@@ -36,7 +36,7 @@ def test_home_tiles_inbox_and_next_trigger(client):
         "Needs you" in html
         and ">Merge<" in html
         and ">Dismiss<" in html
-        and "ready to ship" in html
+        and "ready to merge" in html
     )
     assert "the AI is idle" not in html and "scoped by the AI" in html and "verified" in html
     assert html.count('class="bar"') >= 24  # the trends live inside the tiles as bars

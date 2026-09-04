@@ -59,7 +59,7 @@ def home(store: Store) -> dict[str, Any]:
     for e in store.list_escalations():
         needs.append(
             {
-                "kind": e["kind"],
+                "kind": v2_kind(e["kind"]),
                 "ticket_id": e["ticket_id"],
                 "reason": e["reason"],
                 "since": e["created_at"],
@@ -424,6 +424,13 @@ def _said(review: str) -> str:
     for a, b in (("comment(s)", "comments"), ("remark(s)", "comments"), ("no issues", "nothing")):
         out = out.replace(a, b)
     return out.replace("1 comments", "1 comment")
+
+
+def v2_kind(kind: str) -> str:
+    """An escalation's internal name, in the words the pages use."""
+    from swe_loop.v2 import KIND_PLAIN
+
+    return KIND_PLAIN.get(kind, kind.replace("_", " "))
 
 
 def _when(ts: str | None) -> str:

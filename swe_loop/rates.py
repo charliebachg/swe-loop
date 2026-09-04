@@ -266,9 +266,9 @@ def system(store: Store) -> list[dict[str, Any]]:
             "each on a clean copy the session could not write to",
         ),
         m(
-            "Output rejected for shape",
+            "Answers in the wrong format",
             str(rejected),
-            "a session that answers off-contract is a failure, not a pass",
+            "a session whose answer does not fit the agreed format has failed, whatever it says",
         ),
         m(
             "Sent back to the session",

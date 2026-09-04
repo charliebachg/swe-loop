@@ -130,15 +130,24 @@ HUMAN_HELP = (
     "nothing more, so read it as a rough scale, not as time saved."
 )
 KIND_PLAIN = {
-    "human_only": "needs your team",
-    "refuse": "not for the AI",
-    "waiting_for_user": "the AI has a question",
+    "human_only": "needs you",
+    "refuse": "on hold",
+    "waiting_for_user": "the AI asked a question",
     "review_blocked": "did not finish",
     "usage_limit": "too big for one run",
-    "oracle_touched": "confirm the test change",
-    "ready to merge": "ready to ship",
+    "oracle_touched": "check the test change",
+    "ready to merge": "ready to merge",
+    "router_refused": "on hold",
+    "detector_still_fires": "the problem is still there",
+    "missing_evidence": "could not be checked",
 }
 EVENT_PLAIN = {
+    # written by an older version, which logged the internal name
+    "human_only": "handed to your team",
+    "router_refused": "put on hold",
+    "oracle_touched": "a test changed, so someone has to look",
+    "review_blocked": "the review did not finish",
+    "detector_still_fires": "the problem is still there",
     "new/-": "queued",
     "claimed/-": "picked up",
     "running/-": "started",
@@ -149,16 +158,16 @@ EVENT_PLAIN = {
     "error/-": "errored",
 }
 STATUS_PLAIN = {
-    "new": "not looked at",
-    "triaged": "scoped",
+    "new": "not started",
+    "triaged": "planned",
     "routed": "ready to start",
     "dispatched": "AI working",
     "running": "AI working",
     "gated": "checked",
     "reviewed": "ready for you",
     "merged": "merged",
-    "escalated": "with your team",
-    "refused": "not taken on",
+    "escalated": "needs you",
+    "refused": "on hold",
 }
 LAYER_PLAIN = {
     "intake": "received",
@@ -278,6 +287,11 @@ def _bad_event(event: str, detail: str = "") -> bool:
 
 def _hhmmss(iso: str | None) -> str:
     return (iso or "")[11:19]
+
+
+def _said(event: str) -> str:
+    """One logged event in the words the pages use, wherever it is shown."""
+    return EVENT_PLAIN.get(event, plain(event or ""))
 
 
 def ev(e: dict[str, Any], nums: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -1191,8 +1205,10 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                     else _usd_or_min(store, x, "tri", kind_rates_home),
                     "cap": f"{TRIAGE_ACU_CAP}" if sp_home["metered"] else "",
                     "pct": _pct(x["acus_consumed"], TRIAGE_ACU_CAP) if sp_home["metered"] else "0",
-                    "last": (store.timeline(ticket_id=x["ticket_id"], limit=1) or [{}])[0].get(
-                        "event", ""
+                    "last": _said(
+                        (store.timeline(ticket_id=x["ticket_id"], limit=1) or [{}])[0].get(
+                            "event", ""
+                        )
                     ),
                     "needsInput": x["status_detail"] == "waiting_for_user",
                     "go": url("/tickets-page", open=x["ticket_id"]),
@@ -1219,7 +1235,9 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                 "pct": _pct(x["acus_consumed"], b.get("per_session_cap"))
                 if sp_home["metered"]
                 else "0",
-                "last": (store.timeline(session_id=x["id"], limit=1) or [{}])[0].get("event", ""),
+                "last": _said(
+                    (store.timeline(session_id=x["id"], limit=1) or [{}])[0].get("event", "")
+                ),
                 "needsInput": x["status_detail"] in ("waiting_for_user", "waiting_for_approval")
                 and not x.get("pull_request_url"),
                 "go": url("/tickets-page", open=tid),
@@ -1591,7 +1609,7 @@ def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
         return plain(f"Merged by your team. Every check passed on a clean copy; {review_txt}.")
     if st == "refused" or route == "refuse":
         # a refusal is a decision the loop already took, not one waiting on anybody
-        return plain("Not taken on: " + clip(t.get("router_reason") or "it is out of bounds", 150))
+        return plain("On hold. " + clip(t.get("router_reason") or "the loop set it aside", 150))
     if st == "escalated" or (route and route != "devin"):
         return plain(
             "For your team to decide: " + clip(t.get("router_reason") or "a person decides", 150)
@@ -2041,7 +2059,7 @@ def tracker(
                 "routeReason": r.get("reason") or "",
                 "escalations": [
                     {
-                        "kind": e["kind"],
+                        "kind": KIND_PLAIN.get(e["kind"], e["kind"].replace("_", " ")),
                         **pill("bad" if not e.get("resolved_at") else "na"),
                         "reason": e["reason"],
                         "time": _hhmmss(e["created_at"]),
@@ -2167,12 +2185,16 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
                 "prUrl": s.get("pr_url") or url("/tickets-page", open=s["ticket"]),
                 "gate": (
                     {
-                        "triaged": "scoped",
+                        "triaged": "planned",
                         "invalid": "output rejected",
                         "no_output": "no answer",
                     }.get(s.get("outcome") or "", s.get("outcome") or "scoping")
                     if is_triage
-                    else (gate or "not run")
+                    else {
+                        "pass": "passed",
+                        "fail": "failed",
+                        "missing_evidence": "could not be checked",
+                    }.get(gate or "", gate or "not run")
                 ),
                 "gateBg": PL["gate"][1]
                 if (gate == "pass" or s.get("outcome") == "triaged")
