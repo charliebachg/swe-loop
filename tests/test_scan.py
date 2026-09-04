@@ -580,3 +580,35 @@ def test_a_remediation_is_scoped_by_the_finding_not_by_its_own_pull_request(tmp_
     assert ses["pull_request_url"] == "https://github.com/o/r/pull/91"
     assert ses["devin_session_id"] == "dev-remediation-1"
     assert "lint" in wo["acceptance"]
+
+
+def test_waiting_is_a_state_work_passes_through_not_where_it_dies(tmp_path):
+    """A ticket set aside because another change had that file open goes back in the queue when
+    that change lands. Without this it waits for good and somebody has to notice and push it,
+    which is the sort of quiet chore this loop exists to remove."""
+    from swe_loop import scan as scan_mod
+
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    where = "superset/utils/excel.py"  # free ground, not in the seam's reserved list
+
+    # something else has that file open, so the finding is set aside
+    st.upsert_ticket(id="tkt_open", source="github", title="in flight", status="routed")
+    st.insert_work_order(ticket_id="tkt_open", shard_id="A", files=[where], tests=[], acceptance={})
+    st.upsert_ticket(id="tkt_wait", source="scan", title="found later", status="new")
+    st.insert_event("scan", {"file": where, "line": 3}, ticket_id="tkt_wait")
+    st.set_router_decision("tkt_wait", "refuse", f"waiting for the change open on {where}")
+    assert st.get_ticket("tkt_wait")["status"] == "refused"
+    assert scan_mod.release_waiting(st, cfg) == []  # still blocked
+
+    # the change lands, and the next run picks the waiting ticket up
+    st.set_ticket_status("tkt_open", "merged")
+    assert scan_mod.release_waiting(st, cfg) == ["tkt_wait"]
+    freed = st.get_ticket("tkt_wait")
+    assert freed["status"] == "new" and not freed["router_decision"]
+    assert any(e["event"] == "back in the queue" for e in st.timeline(ticket_id="tkt_wait"))
+    # a file the seam holds back is never released, however quiet the board goes
+    st.upsert_ticket(id="tkt_res", source="scan", title="reserved", status="new")
+    st.insert_event("scan", {"file": cfg.scan["reserved_paths"][0], "line": 1}, ticket_id="tkt_res")
+    st.set_router_decision("tkt_res", "refuse", "held back")
+    assert scan_mod.release_waiting(st, cfg) == []

@@ -259,6 +259,10 @@ def run_automation(
         # A ticket in a file another change owns is refused before anything is spent on it.
         from swe_loop import scan as scan_mod
 
+        freed = scan_mod.release_waiting(store, cfg)
+        if freed:
+            result["released"] = len(freed)
+            log(f"{plural(len(freed), 'ticket')} back in the queue, nothing blocks them now")
         held = scan_mod.refuse_reserved(store, cfg)
         if held:
             result["refused_reserved"] = len(held)

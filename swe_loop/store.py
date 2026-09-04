@@ -367,6 +367,22 @@ class Store:
         )
         self.log("ticket", status, ticket_id=ticket_id)
 
+    def clear_router_decision(self, ticket_id: str) -> None:
+        """Forget a routing decision and put the ticket back where a new one starts.
+
+        Used when the reason for setting work aside has gone: the ticket is ordinary work again
+        and goes through scoping and routing like anything else."""
+        self.conn.execute(
+            "UPDATE tickets SET router_decision=NULL, router_reason=NULL, status='new', "
+            "updated_at=? WHERE id=?",
+            (now(), ticket_id),
+        )
+        self.conn.execute(
+            "UPDATE escalations SET resolved_at=? WHERE ticket_id=? AND resolved_at IS NULL",
+            (now(), ticket_id),
+        )
+        self.conn.commit()
+
     def set_router_decision(self, ticket_id: str, decision: str, reason: str) -> None:
         _must(decision in ROUTES, f"unknown route: {decision}")
         status = {"devin": "routed", "human_only": "escalated", "refuse": "refused"}[decision]

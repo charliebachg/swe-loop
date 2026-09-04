@@ -206,6 +206,40 @@ def file_findings(
     }
 
 
+def release_waiting(store: Store, cfg: TargetConfig) -> list[str]:
+    """Put a waiting ticket back in the queue once nothing is in its way any more.
+
+    Waiting is a state work passes through, not somewhere it goes to die. A ticket is set aside
+    because another change already has that file open; when that change lands, or the file stops
+    being held back, the reason is gone and the ticket is ordinary work again. Without this it
+    would sit there for good and a person would have to notice and push it, which is the sort of
+    quiet chore this whole loop exists to remove. Returns the ticket ids released."""
+    reserved = set(cfg.scan.get("reserved_paths") or ())
+    claimed: set[str] = set()
+    for t in store.list_tickets():
+        if t["status"] in ("merged", "refused"):
+            continue
+        for w in store.work_orders_for(t["id"]):
+            claimed.update(w.get("files") or [])
+    out = []
+    for t in store.list_tickets("refused"):
+        ev = store._one("SELECT payload_json FROM events WHERE ticket_id=?", t["id"])
+        if not ev:
+            continue
+        where = str(json.loads(ev["payload_json"]).get("file") or "")
+        if not where or where in reserved or where in claimed:
+            continue
+        store.clear_router_decision(t["id"])
+        store.log(
+            "route",
+            "back in the queue",
+            ticket_id=t["id"],
+            detail=f"nothing has {where} open any more, so this can be worked on",
+        )
+        out.append(t["id"])
+    return out
+
+
 def refuse_reserved(store: Store, cfg: TargetConfig) -> list[str]:
     """Refuse any scan ticket sitting in a file another change already owns.
 
