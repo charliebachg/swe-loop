@@ -10,14 +10,21 @@ so a wrong finding costs someone real time.
 ## Required from User
 
 - The repository and the branch to read.
+- The area to search in, and what that area means here.
 - The library, the version in use and the version being moved to.
-- The classes of change to look for, and the paths to stay out of.
+- The places already on the board, and the paths to stay out of.
+
+Nobody will tell you which kinds of defect to look for. Working that out from the area, the
+library's own notes and the code in front of you is the job. A list of classes handed over in
+advance would make this a search for someone else's answer, and anything you found by matching
+that list was already known before you started.
 
 ## Procedure
 
 1. Read the library's own upgrade notes for the two versions named. Work from what they say
    changes, not from memory.
-2. Search the repository for call sites that match those changes. Prefer running the project's
+2. Work out for yourself what changes in this area look like in this code, then search for
+   them. Prefer running the project's
    own tests with warnings promoted to errors, because a warning the library itself emits is
    evidence and a guess is not.
 3. For each site, read the surrounding function. Decide whether behaviour actually changes here,

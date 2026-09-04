@@ -319,3 +319,35 @@ def test_a_ticket_in_a_file_another_change_owns_is_refused_without_a_session(tmp
     assert st.get_ticket("tkt_free")["status"] == "new"
     # and it is idempotent: a second pass finds nothing left to refuse
     assert scan.refuse_reserved(st, cfg) == []
+
+
+def test_the_prompt_names_an_area_and_never_the_defects_to_look_for():
+    """Handing a scan the classes we already know about turns it into a grep for our own answer
+    sheet. A finder that can only rediscover the inventory has found nothing."""
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    p = scan.build_prompt(cfg, 5, ["superset/a.py:1"])
+    assert "in the migration area" in p
+    # the taxonomy our own inventory used must not appear anywhere in the instruction
+    for defect in (
+        "chained assignment",
+        "copy-on-write",
+        "string dtype",
+        "stack and pivot",
+        "downcasting on replace",
+        "mixed-offset",
+    ):
+        assert defect not in p, f"the prompt names the defect {defect!r}"
+    assert "Decide for yourself what kinds of thing to look for" in p
+    # it is told what is already claimed, so it can tell new ground from old
+    assert "superset/a.py:1" in p and "already on the board" in p
+
+
+def test_the_board_a_scan_is_shown_is_every_place_already_claimed(tmp_path):
+    st = Store(tmp_path / "s.sqlite")
+    st.upsert_ticket(id="tkt_x", source="scan", title="t", status="new")
+    st.insert_event("scan", {"file": "superset/a.py", "line": 12}, ticket_id="tkt_x")
+    st.upsert_ticket(id="tkt_y", source="github", title="t", status="new")
+    st.insert_work_order(
+        ticket_id="tkt_y", shard_id="A", files=["superset/b.py"], tests=[], acceptance={}
+    )
+    assert scan.known_sites(st) == ["superset/a.py:12", "superset/b.py"]

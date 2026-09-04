@@ -54,9 +54,14 @@ triage:
 
 scan:
   # A session reads the repository and files what it finds as tickets. It changes nothing.
-  look_for: >-
-    pandas 2 behaviour that changes under pandas 3: chained assignment and copy-on-write, the
-    string dtype, stack and pivot, mixed-offset datetime parsing, and downcasting on replace
+  # The scan is given an area to search, never the defects to search for. Naming the classes
+  # turns the session into a grep for an answer we already had, and a finder that can only
+  # rediscover our own inventory is not finding anything. Devin's own code scans take a
+  # scan_type from a fixed list of areas for the same reason.
+  area: migration
+  area_says: >-
+    behaviour that changes when this repository moves between the two library versions named
+    below. What that looks like in this code is the session's to work out
   max_findings: 5
   # Files another piece of work already owns. A scan may read them, but it may not file against
   # them: two open changes to one file collide at the merge, and these carry work already in

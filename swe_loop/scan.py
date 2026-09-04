@@ -53,20 +53,38 @@ def finding_id(f: dict[str, Any]) -> str:
     return "tkt_sc" + hashlib.sha256(key).hexdigest()[:8]
 
 
-def build_prompt(cfg: TargetConfig, limit: int) -> str:
-    look = cfg.scan.get("look_for") or f"behaviour that changes in the {cfg.name} upgrade"
+def build_prompt(cfg: TargetConfig, limit: int, known: list[str] | None = None) -> str:
+    """The instruction a scan session is given.
+
+    It names an area to search and never the defects to search for. Handing over the classes we
+    already know about turns the session into a grep for our own answer sheet, and a finder that
+    can only rediscover the inventory has found nothing. What it is given instead is the list of
+    sites already on the board, so it can tell a new place from one that is already someone's
+    job."""
+    area = cfg.scan.get("area", "")
+    says = cfg.scan.get("area_says") or f"behaviour that changes in the {cfg.name} upgrade"
     versions = cfg.session.get("version_range", "")
+    seen = "\n".join(f"  - {k}" for k in (known or []))
     return (
         "## What\n"
-        f"Read `{cfg.repo}` on branch `{cfg.base_branch}` and find places where {look}. "
+        f"Read `{cfg.repo}` on branch `{cfg.base_branch}` and find, in the {area} area, {says}. "
         "Report what you find. Do not change anything.\n\n"
         "## How\n"
         "Do:\n"
         f"- Work from the library's own upgrade notes for {versions or 'the two versions named'}.\n"
+        "- Decide for yourself what kinds of thing to look for in this area. Nobody is going to "
+        "hand you a list of them, and a site nobody thought to look for is worth more than one "
+        "that was already suspected.\n"
         "- Prefer evidence a command produced over a pattern you recognise. The project's own "
         "tests with warnings promoted to errors are the best evidence available.\n"
         "- Read the surrounding function before deciding a site is affected.\n"
-        f"- Report at most {limit} findings, and fewer if that is the honest answer. Put the most "
+        + (
+            "- These places are already on the board and are somebody's job already. Reporting "
+            "one again is not a finding:\n" + seen + "\n"
+            if seen
+            else ""
+        )
+        + f"- Report at most {limit} findings, and fewer if that is the honest answer. Put the most "
         "important first, in this order: places that break outright before places that only warn; "
         "then what a command demonstrated before what you recognised by eye; then places covered "
         "by an existing test before places that are not.\n"
@@ -91,9 +109,23 @@ def build_prompt(cfg: TargetConfig, limit: int) -> str:
     )
 
 
-def build_spec(cfg: TargetConfig, limit: int, playbook_id: str | None) -> SessionSpec:
+def known_sites(store: Store) -> list[str]:
+    """Every place already filed as a ticket, so a scan can tell new ground from old."""
+    out = []
+    for e in store._all("SELECT payload_json FROM events WHERE source='scan'"):
+        f = json.loads(e["payload_json"])
+        if f.get("file"):
+            out.append(f"{f['file']}:{f.get('line', '')}".rstrip(":"))
+    for w in store._all("SELECT files_json FROM work_orders"):
+        out.extend(json.loads(w["files_json"] or "[]"))
+    return sorted(set(out))
+
+
+def build_spec(
+    cfg: TargetConfig, limit: int, playbook_id: str | None, known: list[str] | None = None
+) -> SessionSpec:
     return SessionSpec(
-        prompt=build_prompt(cfg, limit),
+        prompt=build_prompt(cfg, limit, known),
         tags=(cfg.session.get("tags_prefix", "swe-loop"), "scan"),
         repos=(cfg.repo,),
         max_acu_limit=min(SCAN_ACU_CAP, cfg.max_acu_limit),
@@ -335,7 +367,7 @@ def run_scan(
         if getattr(client, "is_fake", False)
         else _time.sleep
     )
-    spec = build_spec(cfg, limit, playbook_id)
+    spec = build_spec(cfg, limit, playbook_id, known_sites(store))
     state = client.start(spec)
     sid = _record(store, state, spec.tags, playbook_id)
     store.log(
