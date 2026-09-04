@@ -569,8 +569,13 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
             notes=DEFAULT_NOTE,
         )
     sc = store.get_automation("auto_scan")
-    if sc and (sc.get("notes") or "").startswith(("v1:", "Next version.")):
-        store.set_automation("auto_scan", notes=None)
+    if sc and sc["availability"] == "next":
+        # a store written before the scan existed: the row becomes the real thing
+        store.conn.execute(
+            "UPDATE automations SET name=?, availability='live', playbook=?, max_acu=?, notes=NULL "
+            "WHERE id='auto_scan'",
+            ("Scan the repository", "scan-pandas3 then triage and repair", 4),
+        )
     if store.get_automation("auto_repair") is not None:
         a = store.get_automation("auto_repair")
         if a and a["name"] == "Repair":  # a store from before the rename
