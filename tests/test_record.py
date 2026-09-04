@@ -1,5 +1,6 @@
 """Recording a run captures every table the pages read and leaves no local path behind."""
 
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -56,3 +57,17 @@ def test_record_covers_triage_and_redacts_local_paths(tmp_path):
     restore(st2, out)
     assert st2.get_triage_session(tid)["ticket_id"] == "tkt_D"
     assert st2.timeline(ticket_id="tkt_D", limit=5)
+
+
+def test_a_session_can_be_given_its_structured_output_by_name(tmp_path):
+    """update_session offers `structured_output` as a convenience and stores it as JSON. The
+    name check used to run before the conversion, so the convenience could never be used: the
+    caller-facing name is not in the allow-list and every call with it was rejected."""
+    st = Store(tmp_path / "s.sqlite")
+    st.upsert_ticket(id="tkt_A", source="github", title="t", status="new")
+    wo = st.insert_work_order(
+        ticket_id="tkt_A", shard_id="A", files=["a.py"], tests=[], acceptance={}
+    )
+    sid = st.reserve_session(work_order_id=wo, playbook_id=None, tags=[])
+    st.update_session(sid, structured_output={"pr_url": "u", "self_reported_done": True})
+    assert json.loads(st.get_session(sid)["structured_output_json"])["pr_url"] == "u"

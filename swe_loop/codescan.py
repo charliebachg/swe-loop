@@ -361,3 +361,62 @@ def remediate(
     store.log("dispatch", "a pull request was opened", ticket_id=ticket_id, detail=pr)
     log(f"remediation pull request: {pr}")
     return {"kind": "opened", "ticket": ticket_id, "session": sess, "pr": pr, "finding": fid}
+
+
+def gate_remediation(
+    settings: Settings,
+    cfg: TargetConfig,
+    store: Store,
+    ticket_id: str,
+    pr_url: str,
+    devin_session_id: str,
+    *,
+    log: Any = print,
+) -> str:
+    """Put Devin's own fix through the same checks as anything else, and return the session id.
+
+    The work order is built from the file the *finding* named, not from the file the pull request
+    happens to touch. Building it from the pull request would make the scope check pass by
+    construction, which is not a check. Built from the finding, a fix that wandered into other
+    files is caught, exactly as it would be for work the loop dispatched itself.
+    """
+    ev = store._one("SELECT payload_json FROM events WHERE ticket_id=?", ticket_id)
+    f = json.loads(ev["payload_json"]) if ev else {}
+    where = where_of(f)
+    files = [where] if where else []
+    root = Path(__file__).resolve().parents[1] / cfg.gate.get("repo_root", "../superset-fork")
+    acceptance = acceptance_for(files, root)
+    wo = store.insert_work_order(
+        ticket_id=ticket_id,
+        shard_id="remediation",
+        files=files,
+        tests=[],
+        acceptance=acceptance,
+        est_size="XS",
+    )
+    sid = store.reserve_session(
+        work_order_id=wo, playbook_id=None, tags=[cfg.session.get("tags_prefix", "swe-loop")]
+    )
+    store.bind_devin_session(
+        sid,
+        devin_session_id=devin_session_id,
+        url=f"https://app.devin.ai/sessions/{devin_session_id}",
+        status="exit",
+    )
+    store.update_session(
+        sid,
+        status="exit",
+        status_detail="finished",
+        pull_request_url=pr_url,
+        self_reported_done=1,
+        structured_output={"pr_url": pr_url, "files_changed": files, "self_reported_done": True},
+    )
+    store.log(
+        "gate",
+        "checking a fix Devin wrote for its own finding",
+        ticket_id=ticket_id,
+        session_id=sid,
+        detail=f"{plural(len(acceptance), 'command')} on {where or 'no file named'}",
+    )
+    log(f"gating {pr_url} against {where or 'no file named by the finding'}")
+    return sid

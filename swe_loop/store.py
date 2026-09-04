@@ -492,10 +492,12 @@ class Store:
             "pull_request_url",
             "rejected_output_digest",
         }
-        bad = set(fields) - allowed
-        _must(not bad, f"unknown session fields: {bad}")
+        # this convenience has to come first: checked before converting, the caller-facing name
+        # is never in the allow-list and the conversion below could never run
         if "structured_output" in fields:
             fields["structured_output_json"] = json.dumps(fields.pop("structured_output"))
+        bad = set(fields) - allowed
+        _must(not bad, f"unknown session fields: {bad}")
         sets = ", ".join(f"{k}=?" for k in fields)
         self.conn.execute(f"UPDATE sessions SET {sets} WHERE id=?", (*fields.values(), sid))
 

@@ -550,3 +550,33 @@ def test_a_fix_with_no_test_behind_it_is_not_called_verified(tmp_path):
     assert codescan.acceptance_for([], root) == {}
     with_test = codescan.acceptance_for(["superset/databases/api.py"], root)
     assert any(k.startswith("tests ") for k in with_test)
+
+
+def test_a_remediation_is_scoped_by_the_finding_not_by_its_own_pull_request(tmp_path):
+    """Building the work order from the pull request would make the scope check pass by
+    construction, which is not a check. It is built from the file the finding named, so a fix
+    that wandered somewhere else is caught the same as any other."""
+    from swe_loop import codescan
+
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    client = DevinClient(FakeTransport())
+    codescan.run(Settings.from_env(), cfg, st, client, log=lambda _m: None)
+    tid = st.list_tickets("escalated")[0]["id"]
+
+    sid = codescan.gate_remediation(
+        Settings.from_env(),
+        cfg,
+        st,
+        tid,
+        "https://github.com/o/r/pull/91",
+        "dev-remediation-1",
+        log=lambda _m: None,
+    )
+    ses = st.get_session(sid)
+    wo = st.get_work_order(ses["work_order_id"])
+    # the fixture finding points at superset/views/base.py, and that is the whole scope
+    assert wo["files"] == ["superset/views/base.py"]
+    assert ses["pull_request_url"] == "https://github.com/o/r/pull/91"
+    assert ses["devin_session_id"] == "dev-remediation-1"
+    assert "lint" in wo["acceptance"]
