@@ -315,7 +315,7 @@ def test_a_ticket_in_a_file_another_change_owns_is_refused_without_a_session(tmp
     assert scan.refuse_reserved(st, cfg) == ["tkt_held"]
     held = st.get_ticket("tkt_held")
     assert held["status"] == "refused" and held["router_decision"] == "refuse"
-    assert "already has a change open against it" in held["router_reason"]
+    assert "waiting for the change already open on" in held["router_reason"]
     # the one on free ground is untouched and still waiting to be scoped
     assert st.get_ticket("tkt_free")["status"] == "new"
     # and it is idempotent: a second pass finds nothing left to refuse

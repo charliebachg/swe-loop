@@ -825,7 +825,7 @@ class Store:
         # the log is read by people, so it says what happened rather than the internal name
         said = {
             "human_only": "handed to your team",
-            "router_refused": "put on hold",
+            "router_refused": "put behind another change",
             "oracle_touched": "a test changed, so someone has to look",
             "review_blocked": "the review did not finish",
             "waiting_for_user": "the AI asked a question",

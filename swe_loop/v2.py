@@ -131,20 +131,20 @@ HUMAN_HELP = (
 )
 KIND_PLAIN = {
     "human_only": "needs you",
-    "refuse": "on hold",
+    "refuse": "waiting",
     "waiting_for_user": "the AI asked a question",
     "review_blocked": "did not finish",
     "usage_limit": "too big for one run",
     "oracle_touched": "check the test change",
     "ready to merge": "ready to merge",
-    "router_refused": "on hold",
+    "router_refused": "waiting",
     "detector_still_fires": "the problem is still there",
     "missing_evidence": "could not be checked",
 }
 EVENT_PLAIN = {
     # written by an older version, which logged the internal name
     "human_only": "handed to your team",
-    "router_refused": "put on hold",
+    "router_refused": "put behind another change",
     "oracle_touched": "a test changed, so someone has to look",
     "review_blocked": "the review did not finish",
     "detector_still_fires": "the problem is still there",
@@ -167,7 +167,7 @@ STATUS_PLAIN = {
     "reviewed": "ready for you",
     "merged": "merged",
     "escalated": "needs you",
-    "refused": "on hold",
+    "refused": "waiting",
 }
 LAYER_PLAIN = {
     "intake": "received",
@@ -1609,7 +1609,8 @@ def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
         return plain(f"Merged by your team. Every check passed on a clean copy; {review_txt}.")
     if st == "refused" or route == "refuse":
         # a refusal is a decision the loop already took, not one waiting on anybody
-        return plain("On hold. " + clip(t.get("router_reason") or "the loop set it aside", 150))
+        why = t.get("router_reason") or "the loop set it aside"
+        return plain(clip(why[0].upper() + why[1:] if why else why, 170))
     if st == "escalated" or (route and route != "devin"):
         return plain(
             "For your team to decide: " + clip(t.get("router_reason") or "a person decides", 150)
@@ -1717,10 +1718,13 @@ def tickets(store: Store, cfg: TargetConfig, q: dict[str, str], note: str = "") 
         sd = r.get("sd")
         files = i.get("files") or []
         sites = i.get("sites") or 0
+        # Nothing has been read yet, so the size of the work is not zero, it is unknown. A row
+        # of noughts reads as a broken page rather than as a ticket nobody has opened.
         r["count"] = (
-            f"{len(files)} file{'s' if len(files) != 1 else ''} · {sites} site{'s' if sites != 1 else ''}"
+            f"{len(files)} file{'s' if len(files) != 1 else ''} · "
+            f"{sites} site{'s' if sites != 1 else ''}"
             if files
-            else f"{sites} site{'s' if sites != 1 else ''}"
+            else (f"{sites} site{'s' if sites != 1 else ''}" if sites else "size not known yet")
         )
         r["summary"] = _summary(t, r)
         r["source"] = t.get("source") or ""
@@ -1729,7 +1733,7 @@ def tickets(store: Store, cfg: TargetConfig, q: dict[str, str], note: str = "") 
         r["withheld"] = hide_sec and codescan.is_unverified_security(t)
         r["age"] = _age(t.get("created_at"))
         n_s = i.get("sessions", 0)
-        r["nSessions"] = f"{n_s} session{'s' if n_s != 1 else ''}"
+        r["nSessions"] = plural(n_s, "session") if n_s else "no session yet"
         tri = store.list_triage_sessions(r["id"])
         live_url = (sd or {}).get("url") or (tri[-1].get("url") if tri else None)
         r["sessionUrl"] = live_url or ""

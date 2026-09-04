@@ -226,9 +226,18 @@ def refuse_reserved(store: Store, cfg: TargetConfig) -> list[str]:
         where = str(json.loads(ev["payload_json"]).get("file") or "")
         if where not in reserved:
             continue
+        # name the ticket it is waiting for: "on hold" on its own tells a reader nothing they
+        # can act on, and the thing they can act on is the change that is in the way
+        blocker = ""
+        for other in store.list_tickets():
+            if other["id"] == t["id"] or other["status"] in ("merged", "refused"):
+                continue
+            if any(where in (w.get("files") or []) for w in store.work_orders_for(other["id"])):
+                blocker = f" (#{other['number']:05d})" if other.get("number") else ""
+                break
         reason = (
-            f"{where} already has a change open against it. Two changes to one file collide at "
-            "the merge, so this one waits until that work has landed."
+            f"waiting for the change already open on {where}{blocker}. Two changes to one file "
+            "collide when they merge, so this one starts when that one has landed."
         )
         store.set_router_decision(t["id"], "refuse", reason)
         store.set_ticket_status(t["id"], "refused")
