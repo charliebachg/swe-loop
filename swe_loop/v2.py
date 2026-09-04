@@ -2122,11 +2122,22 @@ def _drawer(store: Store, sid: str, cap: float) -> dict[str, Any]:
 
 # ---------------------------------------------------------------------------- automations
 def _took(a: str | None, b: str | None) -> str:
+    """How long a run took. A row written by hand, or by an older version, may carry a timestamp
+    without a timezone; that is not a reason for the page to fall over."""
     if not a or not b:
         return "running"
-    from datetime import datetime
+    from datetime import UTC, datetime
 
-    secs = (datetime.fromisoformat(b) - datetime.fromisoformat(a)).total_seconds()
+    try:
+        lo, hi = datetime.fromisoformat(a), datetime.fromisoformat(b)
+    except ValueError:
+        return "unknown"
+    if (lo.tzinfo is None) != (hi.tzinfo is None):
+        lo = lo.replace(tzinfo=lo.tzinfo or UTC)
+        hi = hi.replace(tzinfo=hi.tzinfo or UTC)
+    secs = (hi - lo).total_seconds()
+    if secs < 0:
+        return "unknown"
     return f"{int(secs // 60)} min {int(secs % 60)} s" if secs >= 60 else f"{int(secs)} s"
 
 
