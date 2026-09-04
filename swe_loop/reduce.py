@@ -132,6 +132,37 @@ def detect_conflicts(store: Store) -> list[dict[str, Any]]:
     return found
 
 
+def pr_files(pr_url: str, github_token: str = "", fetch: Any = None) -> list[dict[str, Any]]:
+    """The change itself: every file, and the lines that differ.
+
+    Whoever merges should be able to read what they are merging without leaving the page."""
+    import httpx
+
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "swe-loop"}
+    if github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
+    n = pr_url.rsplit("/", 1)[-1]
+    api = pr_url.replace("github.com/", "api.github.com/repos/", 1).replace(
+        f"/pull/{n}", f"/pulls/{n}/files?per_page=50"
+    )
+    get = fetch or (lambda url: httpx.get(url, headers=headers, timeout=25).json())
+    try:
+        d = get(api)
+    except Exception as ex:  # noqa: BLE001 - shown in place of the change
+        return [{"error": f"{type(ex).__name__}: {ex}"[:160]}]
+    if not isinstance(d, list):
+        return [{"error": str((d or {}).get("message", "the change could not be read"))[:160]}]
+    return [
+        {
+            "name": f.get("filename", ""),
+            "added": f.get("additions", 0),
+            "removed": f.get("deletions", 0),
+            "patch": f.get("patch") or "",
+        }
+        for f in d
+    ]
+
+
 def set_pr_draft(pr_url: str, token: str, draft: bool, post: Any = None) -> str:
     """While the AI reviewer is reading a pull request, it is a draft, so nobody on the team
     mistakes it for something waiting on them. It becomes ready for review only once the checks

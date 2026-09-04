@@ -149,3 +149,27 @@ def test_a_refused_merge_is_reported_and_changes_nothing(tmp_path):
     assert out[0]["merged"] is False and "not mergeable" in out[0]["why"]
     assert st.get_ticket("tkt_D")["status"] != "merged"
     assert not st._all("SELECT * FROM human_actions WHERE ticket_id='tkt_D'")
+
+
+def test_the_change_itself_is_readable_before_merging(tmp_path):
+    """Whoever merges should see the lines, not just that the checks passed."""
+    from swe_loop import reduce as rd
+
+    payload = [
+        {
+            "filename": "superset/models/helpers.py",
+            "additions": 5,
+            "deletions": 2,
+            "patch": "@@ -1 +1 @@\n-old\n+new",
+        }
+    ]
+    seen = []
+    files = rd.pr_files(
+        "https://github.com/o/r/pull/7", "tok", fetch=lambda u: (seen.append(u), payload)[1]
+    )
+    assert seen[0] == "https://api.github.com/repos/o/r/pulls/7/files?per_page=50"
+    assert files[0]["name"].endswith("helpers.py") and files[0]["added"] == 5
+    assert "+new" in files[0]["patch"]
+    # a refusal is shown, never swallowed
+    bad = rd.pr_files("https://github.com/o/r/pull/7", "", fetch=lambda u: {"message": "Not Found"})
+    assert bad[0]["error"] == "Not Found"

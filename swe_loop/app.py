@@ -664,6 +664,57 @@ def build_app(
     def next_page(request: Request) -> HTMLResponse:
         return _render(request, "next.html", "next", nx=pages.next_page())
 
+    @app.get("/tickets/{ticket_id}/changes", response_class=HTMLResponse)
+    def ticket_changes(ticket_id: str, request: Request) -> HTMLResponse:
+        """What the change actually does, line by line, for whoever is about to merge it."""
+        st: Store = request.app.state.store
+        prs = reduce_mod.readiness(st, ticket_id).pr_urls
+        if not prs:
+            return HTMLResponse(
+                '<div style="font-size:12.5px;color:#8f97a3">No pull request yet.</div>'
+            )
+        out = []
+        for pr in prs:
+            files = reduce_mod.pr_files(pr, settings.github_token)
+            for f in files:
+                if f.get("error"):
+                    out.append(
+                        '<div style="font-size:12.5px;color:#b4452e">'
+                        + escape(f["error"])
+                        + f' · <a href="{escape(pr)}" target="_blank">read it on GitHub</a></div>'
+                    )
+                    continue
+                lines = []
+                for ln in (f["patch"] or "").splitlines()[:400]:
+                    if ln.startswith("@@"):
+                        col, bg = "#8f97a3", "#f3f1ec"
+                    elif ln.startswith("+"):
+                        col, bg = "#2e7d4f", "#e9f5ee"
+                    elif ln.startswith("-"):
+                        col, bg = "#b4452e", "#fbeae6"
+                    else:
+                        col, bg = "#626b78", "transparent"
+                    lines.append(
+                        f'<div style="color:{col};background:{bg};padding:0 8px;white-space:pre-wrap;'
+                        f'word-break:break-word">{escape(ln) or "&nbsp;"}</div>'
+                    )
+                out.append(
+                    '<div style="border:1px solid #e2dfd8;border-radius:8px;overflow:hidden;margin-top:10px">'
+                    '<div style="display:flex;gap:10px;align-items:baseline;padding:7px 10px;'
+                    'background:#faf9f6;border-bottom:1px solid #e2dfd8">'
+                    f"<span style=\"font:12px/1.5 'JetBrains Mono',monospace\">{escape(f['name'])}</span>"
+                    f"<span style=\"font:11px/1.5 'JetBrains Mono',monospace;color:#2e7d4f\">+{f['added']}</span>"
+                    f"<span style=\"font:11px/1.5 'JetBrains Mono',monospace;color:#b4452e\">-{f['removed']}</span>"
+                    f'<a href="{escape(pr)}/files" target="_blank" style="margin-left:auto;font-size:12px">on GitHub ↗</a>'
+                    "</div>"
+                    "<div style=\"font:11.5px/1.6 'JetBrains Mono',monospace;max-height:420px;overflow:auto\">"
+                    + "".join(lines)
+                    + "</div></div>"
+                )
+        return HTMLResponse(
+            "".join(out) or '<div style="font-size:12.5px;color:#8f97a3">Nothing changed.</div>'
+        )
+
     @app.get("/evidence/{eid}")
     def evidence_log(eid: str) -> PlainTextResponse:
         """The log of one check, exactly as it was written when the command ran."""
