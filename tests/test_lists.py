@@ -32,13 +32,13 @@ def test_automations_seeded_as_a_list(client):
     c, st, _ = client
     html = c.get("/automations").text
     ids = [a["id"] for a in st.list_automations()]
-    assert ids == ["auto_repair", "auto_scan"]
+    assert ids == ["auto_repair", "auto_scan", "auto_codescan"]
     assert "Issues from the fork" in html and "files what it finds" in html
     assert "Add automation" in html and ">Run<" in html
     assert "\u2014" not in html
     # seeding is idempotent
     c.get("/automations")
-    assert len(st.list_automations()) == 2
+    assert len(st.list_automations()) == 3
 
 
 def test_automation_add_toggle_delete(client):
@@ -65,7 +65,7 @@ def test_automation_add_toggle_delete(client):
     c.post("/automations/auto_scan/toggle")  # back off again
     assert c.post("/automations/auto_repair/delete").status_code == 409  # built in
     assert c.post(f"/automations/{a['id']}/delete").status_code == 200
-    assert len(st.list_automations()) == 2
+    assert len(st.list_automations()) == 3
     r = c.post("/automations", content="name=", headers=FORM)
     assert r.status_code == 200 and "name is required; nothing was saved" in r.text
     assert c.post("/automations/nope/toggle").status_code == 404

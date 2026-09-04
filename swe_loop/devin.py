@@ -150,6 +150,12 @@ class Transport(Protocol):
     def get_pr_review(self, pr_url: str) -> dict[str, Any]: ...
     def create_playbook(self, payload: dict[str, Any]) -> dict[str, Any]: ...
     def create_knowledge_note(self, payload: dict[str, Any]) -> dict[str, Any]: ...
+    def start_code_scan(self, payload: dict[str, Any]) -> dict[str, Any]: ...
+    def list_code_scans(self) -> list[dict[str, Any]]: ...
+    def list_code_scan_findings(
+        self, scan_id: str | None = None, repo_name: str | None = None
+    ) -> list[dict[str, Any]]: ...
+    def list_code_scan_profiles(self) -> list[dict[str, Any]]: ...
 
 
 # ---------------------------------------------------------------------------- HTTP
@@ -259,6 +265,27 @@ class HttpTransport:
 
     def create_pr_review(self, pr_url: str) -> dict[str, Any]:
         return self._req("POST", "/pr-reviews", json={"pr_url": pr_url})
+
+    # ---- Devin's own code scans. A scan is not a session: it is started, it runs its own
+    # orchestrator session, and its findings are read back from the organisation.
+    def start_code_scan(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._req("POST", "/code-scans", json=payload)
+
+    def list_code_scans(self) -> list[dict[str, Any]]:
+        return self._paged("/code-scans/scans", {})
+
+    def list_code_scan_findings(
+        self, scan_id: str | None = None, repo_name: str | None = None
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {}
+        if scan_id:
+            params["scan_id"] = scan_id
+        if repo_name:
+            params["repo_name"] = repo_name
+        return self._paged("/code-scans/findings", params)
+
+    def list_code_scan_profiles(self) -> list[dict[str, Any]]:
+        return self._paged("/code-scans/profiles", {})
 
     def get_pr_review(self, pr_url: str) -> dict[str, Any]:
         """Verified live 2026-09-03: status (running | completed), repo_path, pr_number,
@@ -497,6 +524,67 @@ class FakeTransport:
         self.calls.append(("create_knowledge_note", payload))
         return {"note_id": f"kn-{len(self.calls)}", **payload}
 
+    # ---- code scans. The fake answers one scan that completes with the findings in the
+    # fixture, so the whole chain can be exercised with no key and no money.
+    def start_code_scan(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.calls.append(("start_code_scan", payload))
+        self._scan = {
+            "scan_id": "fake-scan-001",
+            "org_id": "fake-org",
+            "repo_name": payload.get("repo_name", ""),
+            "host": "github.com",
+            "status": "running",
+            "profile": None,
+            "scan_type": payload.get("scan_type") or "security",
+            "created_at": 0,
+        }
+        self._scan_polls = 0
+        return dict(self._scan)
+
+    def list_code_scans(self) -> list[dict[str, Any]]:
+        self.calls.append(("list_code_scans", None))
+        sc = getattr(self, "_scan", None)
+        if not sc:
+            return []
+        self._scan_polls = getattr(self, "_scan_polls", 0) + 1
+        if self._scan_polls >= 2:
+            sc["status"] = "completed"
+        return [dict(sc)]
+
+    def list_code_scan_findings(
+        self, scan_id: str | None = None, repo_name: str | None = None
+    ) -> list[dict[str, Any]]:
+        self.calls.append(("list_code_scan_findings", scan_id))
+        sc = getattr(self, "_scan", None)
+        if not sc or sc["status"] != "completed":
+            return []
+        return [
+            {
+                "finding_id": "fake-finding-001",
+                "scan_id": sc["scan_id"],
+                "repo_name": sc["repo_name"],
+                "title": "Unvalidated redirect in the login flow",
+                "description": "The next parameter is used without checking the host.",
+                "recommendation": "Reject an absolute URL whose host is not the application's.",
+                "note": None,
+                "code_owners": [],
+                "reference_snippets": [
+                    {"file_path": "superset/views/base.py", "start_line": 120, "end_line": 124}
+                ],
+                "severity": "high",
+                "category": "open-redirect",
+                "pr_url": None,
+                "session_id": None,
+                "orchestrator_session_id": "fake-orchestrator-001",
+                "status": "open",
+                "created_at": 0,
+            }
+        ]
+
+    def list_code_scan_profiles(self) -> list[dict[str, Any]]:
+        self.calls.append(("list_code_scan_profiles", None))
+        return []
+
 
 # ---------------------------------------------------------------------------- Client
 class DevinClient:
@@ -548,3 +636,12 @@ class DevinClient:
 
     def review_pr(self, pr_url: str) -> dict[str, Any]:
         return self.t.create_pr_review(pr_url)
+
+    def start_code_scan(self, **payload: Any) -> dict[str, Any]:
+        return self.t.start_code_scan({k: v for k, v in payload.items() if v is not None})
+
+    def code_scan(self, scan_id: str) -> dict[str, Any] | None:
+        return next((s for s in self.t.list_code_scans() if s["scan_id"] == scan_id), None)
+
+    def code_scan_findings(self, scan_id: str) -> list[dict[str, Any]]:
+        return self.t.list_code_scan_findings(scan_id=scan_id)

@@ -658,6 +658,29 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
             schedule="every weekday at 06:00",
             notes=None,
         )
+    if store.get_automation("auto_codescan") is None:
+        store.upsert_automation(
+            id="auto_codescan",
+            name="Devin's scanner",
+            kind="code_scan",
+            enabled=True,
+            availability="live",
+            trigger={"source": "schedule", "event": "recurring"},
+            target=cfg.repo,
+            playbook=f"Devin's own code scan, {cfg.scan.get('devin_area', 'security')}",
+            max_acu=0,
+            max_findings=int(cfg.scan.get("max_findings", 5)),
+            concurrency=1,
+            schedule="every weekday at 06:00",
+            notes=(
+                "Devin ships a scanner and this runs it rather than describing one. A scan is "
+                "started against the repository with an area to look in, never a defect to look "
+                "for, and its findings arrive as tickets. Every security finding goes to a "
+                "person: this repository requires such a finding to name the capability row in "
+                "SECURITY.md it violates and the principal the attacker holds, and to be filed "
+                "as a question when it cannot."
+            ),
+        )
 
 
 _NATIVE: dict[str, tuple[float, dict[str, Any]]] = {}

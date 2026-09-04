@@ -351,3 +351,81 @@ def test_the_board_a_scan_is_shown_is_every_place_already_claimed(tmp_path):
         ticket_id="tkt_y", shard_id="A", files=["superset/b.py"], tests=[], acceptance={}
     )
     assert scan.known_sites(st) == ["superset/a.py:12", "superset/b.py"]
+
+
+# ---------------------------------------------------------------- Devin's own scanner
+def test_devins_scanner_is_started_with_an_area_and_its_findings_become_tickets(tmp_path):
+    """Devin ships a scanner. This runs it rather than describing one: the loop starts a scan
+    with an area, waits, and files what came back."""
+    from swe_loop import codescan
+
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    settings = Settings.from_env()
+    client = DevinClient(FakeTransport())
+
+    out = codescan.run(settings, cfg, st, client, log=lambda _m: None)
+    assert out["kind"] == "filed" and out["findings"] == 1
+    started = [c for c in client.t.calls if c[0] == "start_code_scan"]
+    assert started and started[0][1] == {
+        "repo_name": cfg.repo,
+        "scan_type": "security",
+    }, "an area, never a defect"
+
+    t = st.get_ticket(out["new"][0])
+    assert t["source"] == "code_scan"
+    assert t["title"] == "Unvalidated redirect in the login flow"
+    # the scan is on the board as a session, with the orchestrator session it ran under
+    sc = st.list_scan_sessions()[0]
+    assert sc["outcome"] == "filed" and sc["devin_session_id"] == "fake-scan-001"
+
+
+def test_a_security_finding_is_a_question_for_a_person_not_a_job_for_a_session(tmp_path):
+    """Superset requires an automated security finding to name the SECURITY.md capability row
+    and the principal, and says one that cannot name both is a question, not a vulnerability.
+    Devin's scanner returns neither, so none of these is handed to a session."""
+    from swe_loop import codescan
+
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    out = codescan.run(
+        Settings.from_env(), cfg, st, DevinClient(FakeTransport()), log=lambda _m: None
+    )
+    tid = out["new"][0]
+    assert out["questions"] == [tid]
+    t = st.get_ticket(tid)
+    assert t["router_decision"] == "human_only" and t["status"] == "escalated"
+    assert "SECURITY.md" in t["router_reason"] and "question" in t["router_reason"]
+    assert st.list_escalations()
+
+
+def test_devins_findings_respect_the_same_boundaries_as_our_own(tmp_path):
+    """A finding in a forbidden path or a file another change owns never reaches the board,
+    whichever scanner found it."""
+    from swe_loop import codescan
+
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+
+    def f(path, fid):
+        return {
+            "finding_id": fid,
+            "title": path,
+            "severity": "high",
+            "category": "x",
+            "reference_snippets": [{"file_path": path, "start_line": 1}],
+        }
+
+    out = codescan.file_findings(
+        st,
+        cfg,
+        [
+            f("tests/unit_tests/a_test.py", "a"),
+            f(cfg.scan["reserved_paths"][0], "b"),
+            f("superset/views/base.py", "c"),
+        ],
+        limit=5,
+    )
+    assert out["refused"] == ["tests/unit_tests/a_test.py"]
+    assert out["taken"] == [cfg.scan["reserved_paths"][0]]
+    assert len(out["new"]) == 1

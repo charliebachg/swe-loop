@@ -63,6 +63,10 @@ scan:
     behaviour that changes when this repository moves between the two library versions named
     below. What that looks like in this code is the session's to work out
   max_findings: 5
+  # Devin ships its own scanner. It takes an area from a fixed list and never a defect:
+  # security, performance, db-queries, test-coverage, dead-code, code-quality, telemetry,
+  # accessibility, general, migration-docs. Only security runs without a profile.
+  devin_area: security
   # Files another piece of work already owns. A scan may read them, but it may not file against
   # them: two open changes to one file collide at the merge, and these carry work already in
   # flight. The loop refuses such a finding rather than trusting the session to remember.

@@ -175,7 +175,21 @@ def run_automation(
     result: dict[str, Any] = {"issues": 0, "new_tickets": [], "known": 0, "triaged": 0}
     try:
         live = bool(settings.live and not getattr(client, "is_fake", False))
-        if a["kind"] == "scan":
+        if a["kind"] == "code_scan":
+            from swe_loop import codescan
+
+            found = codescan.run(settings, cfg, store, client, limit=a.get("max_findings"), log=log)
+            result["scan"] = found.get("kind")
+            result["scan_id"] = found.get("scan", "")
+            result["area"] = found.get("area", "")
+            result["questions"] = len(found.get("questions") or [])
+            got = {
+                "issues": found.get("findings", 0),
+                "new": found.get("new", []),
+                "known": len(found.get("known", [])),
+                "skipped": len(found.get("refused", [])) + len(found.get("taken", [])),
+            }
+        elif a["kind"] == "scan":
             from swe_loop import scan as scan_mod
 
             found = scan_mod.run_scan(
