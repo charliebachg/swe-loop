@@ -71,12 +71,7 @@ def home(store: Store) -> dict[str, Any]:
         mn = reduce_mod.merge_notes(store, tid)
         reason = "every part of it passed the checks on a clean copy, and nothing conflicts"
         if mn["reviews"]:
-            reason += "; the AI reviewer left " + ", ".join(
-                r.replace(": ", " on ").replace("comment(s)", "comments").replace(
-                    "1 comments", "1 comment"
-                )
-                for r in mn["reviews"]
-            )
+            reason += "; the AI reviewer left " + ", ".join(_said(r) for r in mn["reviews"])
         if mn["notes"]:
             n_notes = len(mn["notes"])
             reason += (
@@ -419,6 +414,14 @@ def _fmt(secs: float | None) -> str:
     if secs < 5400:
         return f"{secs // 60}m"
     return f"{secs // 3600}h {(secs % 3600) // 60:02d}m"
+
+
+def _said(review: str) -> str:
+    """What the AI reviewer left on one pull request, in the words the rest of the app uses."""
+    out = review.replace(": ", " on ")
+    for a, b in (("comment(s)", "comments"), ("remark(s)", "comments"), ("no issues", "nothing")):
+        out = out.replace(a, b)
+    return out.replace("1 comments", "1 comment")
 
 
 def _when(ts: str | None) -> str:
