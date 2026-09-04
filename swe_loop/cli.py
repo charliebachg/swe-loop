@@ -107,10 +107,15 @@ def cmd_watch(args: argparse.Namespace) -> int:
         out = runner.run_automation(
             settings, cfg, store, client, args.id, log=print, only_if_scheduled=True
         )
-        if out.get("scan") != "nothing scheduled":
+        if out.get("scan") == "ran, nothing new":
+            # the schedule fired and Devin found nothing to add. That is a result, recorded on
+            # the board, and the watch continues: the next run may find something.
+            print(f"tick {tick}: the schedule ran, nothing new to file", flush=True)
+        elif out.get("scan") != "nothing scheduled":
             print(json.dumps(out))
             return 0
-        print(f"tick {tick}: nothing from the schedule yet", flush=True)
+        else:
+            print(f"tick {tick}: nothing from the schedule yet", flush=True)
         _time.sleep(args.every)
     print("the schedule did not fire in the time given", file=sys.stderr)
     return 2

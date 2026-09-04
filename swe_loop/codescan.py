@@ -43,6 +43,18 @@ AREAS = (
     "general",
     "migration-docs",
 )
+TERMINAL_DETAIL = frozenset(
+    {
+        "finished",
+        "inactivity",
+        "usage_limit_exceeded",
+        "out_of_credits",
+        "terminated",
+        "error",
+        "waiting_for_user",
+        "waiting_for_approval",
+    }
+)
 TERMINAL = ("completed", "failed", "cancelled")
 
 
@@ -253,6 +265,68 @@ def follow(
     return {"kind": "filed", "scan": scan_id, "area": area, "findings": len(found), **filed}
 
 
+def _when(epoch: Any) -> str:
+    from datetime import UTC, datetime
+
+    if isinstance(epoch, (int, float)):
+        return datetime.fromtimestamp(epoch, tz=UTC).isoformat()
+    return str(epoch or now())
+
+
+def observe_scheduled_runs(store: Store, client: Any, aid: str, *, log: Any = print) -> list[dict]:
+    """Record the runs Devin's schedule made on its own, so the board can say when it ran.
+
+    A schedule fires on Devin's side and spawns its sessions there. Nothing about that reaches
+    this store unless something looks. Scans and findings are the wrong place to look: a run that
+    extends a finished scan and turns up nothing new changes neither, so a schedule that ran and
+    cleared the repository is indistinguishable from one that never fired. The evidence is the
+    sessions themselves: origin "automation", carrying the automation id Devin gave us, and the one
+    with no parent is the run. Its children are the swarm it spawned.
+    """
+    row = store.get_automation(aid) or {}
+    devin_id = row.get("devin_automation_id")
+    if not devin_id:
+        return []
+    seen = store.observed_run_orchestrators(aid)
+    out = []
+    for s in client.t.list_sessions():
+        if s.get("origin") != "automation" or s.get("automation_id") != devin_id:
+            continue
+        if s.get("parent_session_id"):
+            continue  # a child of the run, not the run
+        sid = s.get("session_id") or ""
+        if not sid or sid in seen:
+            continue
+        started = _when(s.get("created_at"))
+        terminal = (
+            str(s.get("status")) in ("exit", "error", "suspended")
+            or str(s.get("status_detail")) in TERMINAL_DETAIL
+        )
+        result = {
+            "started_by": "Devin's schedule",
+            "orchestrator": sid,
+            "sessions": 1 + len(s.get("child_session_ids") or []),
+            "state": f"{s.get('status')}/{s.get('status_detail')}",
+            "title": s.get("title") or "",
+        }
+        store.record_observed_run(
+            aid,
+            started_at=started,
+            result=result,
+            status="done" if terminal else "running",
+            finished_at=_when(s.get("updated_at")) if terminal else None,
+        )
+        store.log(
+            "scan",
+            "Devin's schedule ran",
+            detail=f"{started[11:16]} UTC · {plural(result['sessions'], 'session')} · "
+            + result["state"],
+        )
+        log(f"Devin's schedule ran at {started[11:16]} UTC: {result['sessions']} sessions")
+        out.append(result)
+    return out
+
+
 def adopt(
     settings: Settings,
     cfg: TargetConfig,
@@ -263,6 +337,7 @@ def adopt(
     sleep: Any = None,
     wall_clock: float = 3600.0,
     log: Any = print,
+    aid: str | None = None,
 ) -> dict[str, Any]:
     """Pick up scans Devin started without being asked.
 
@@ -279,6 +354,10 @@ def adopt(
         if getattr(client, "is_fake", False)
         else _time.sleep
     )
+    # first, whether Devin's schedule ran at all. This is the signal the scans and findings below
+    # cannot give: a run that turns up nothing new changes neither of them.
+    ran = observe_scheduled_runs(store, client, aid, log=log) if aid else []
+
     ours = {c["devin_session_id"] for c in store.list_scan_sessions()}
     on_org = [s for s in client.t.list_code_scans() if s.get("repo_name") == cfg.repo]
     theirs = [s for s in on_org if s.get("scan_id") not in ours]
@@ -319,8 +398,17 @@ def adopt(
             again.append({"kind": "filed", "scan": sid_scan, "area": s.get("scan_type"), **fresh})
 
     if not theirs and not again:
+        if ran:
+            when = ", ".join(r["orchestrator"][:8] for r in ran)
+            store.log(
+                "scan",
+                "Devin's schedule ran and found nothing new",
+                detail=f"{plural(len(ran), 'run')} · {when}",
+            )
+            log(f"Devin's schedule ran ({len(ran)}) and found nothing new to file")
+            return {"kind": "ran_nothing_new", "adopted": [], "runs": ran}
         log("no scan on the organisation that this loop did not start, and nothing new on ours")
-        return {"kind": "none", "adopted": []}
+        return {"kind": "none", "adopted": [], "runs": []}
 
     out = list(again)
     for scan in theirs:
@@ -344,7 +432,7 @@ def adopt(
         out.append(
             follow(store, cfg, client, scan_id, sid, area, limit, scan, sleep, wall_clock, log)
         )
-    return {"kind": "adopted", "adopted": out}
+    return {"kind": "adopted", "adopted": out, "runs": ran}
 
 
 def summarise(store: Store) -> dict[str, Any]:

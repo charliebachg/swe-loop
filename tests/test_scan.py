@@ -812,3 +812,115 @@ def test_a_finding_we_read_before_is_not_reported_as_the_schedules_work(tmp_path
     out2 = codescan.adopt(settings, cfg, st, client, limit=5, log=lambda _m: None)
     assert out2["kind"] == "adopted"
     assert len(st.list_tickets()) > 1
+
+
+def test_a_schedule_that_ran_and_found_nothing_is_recorded_not_silent(tmp_path, monkeypatch):
+    """A run that extends a finished scan and turns up nothing new changes no scan and no finding.
+
+    So watching scans and findings cannot tell "the schedule ran and cleared the repository" from
+    "the schedule never fired". For ninety minutes the board said nothing while Devin had run
+    twice. The evidence is the sessions: origin automation, carrying the automation id Devin gave
+    us, the one with no parent being the run. Those have to be recorded, and the quiet outcome
+    has to be named.
+    """
+    from swe_loop import codescan, pages, runner
+
+    monkeypatch.setenv("SWE_LOOP_MODE", "replay")
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    settings = Settings.from_env()
+    client = DevinClient(FakeTransport())
+    pages.seed_automations(st, cfg)
+    codescan.run(settings, cfg, st, client, log=lambda _m: None)  # the scan the schedule extends
+    st.set_automation("auto_codescan", devin_automation_id="auto-theirs")
+
+    # the schedule fired: an orchestrator and three children, all Devin's, none ours
+    client.t.foreign_sessions = [
+        {
+            "session_id": "orch-2100",
+            "origin": "automation",
+            "automation_id": "auto-theirs",
+            "parent_session_id": None,
+            "child_session_ids": ["c1", "c2", "c3"],
+            "status": "running",
+            "status_detail": "waiting_for_user",
+            "title": "Incremental security re-scan",
+            "created_at": 1788555626,
+        },
+        *[
+            {
+                "session_id": c,
+                "origin": "automation",
+                "automation_id": "auto-theirs",
+                "parent_session_id": "orch-2100",
+                "child_session_ids": [],
+                "status": "running",
+                "status_detail": "working",
+                "created_at": 1788555700,
+            }
+            for c in ("c1", "c2", "c3")
+        ],
+        # a session from some other automation entirely: not ours to record
+        {
+            "session_id": "someone-elses",
+            "origin": "automation",
+            "automation_id": "auto-not-ours",
+            "parent_session_id": None,
+            "child_session_ids": [],
+            "status": "exit",
+            "status_detail": "finished",
+            "created_at": 1788555000,
+        },
+    ]
+
+    out = runner.run_automation(
+        settings, cfg, st, client, "auto_codescan", log=lambda _m: None, only_if_scheduled=True
+    )
+    assert out["scan"] == "ran, nothing new", out
+    assert out["scheduled_runs"] == 1
+
+    runs = st.list_automation_runs("auto_codescan")
+    theirs = [r for r in runs if r["result"].get("started_by") == "Devin's schedule"]
+    assert len(theirs) == 1, "one run per orchestrator, children are not runs"
+    assert theirs[0]["result"]["orchestrator"] == "orch-2100"
+    assert theirs[0]["result"]["sessions"] == 4
+    assert theirs[0]["started_at"].startswith("2026-09-04T21:00"), (
+        "started when Devin says, not when we looked"
+    )
+    assert not [r for r in runs if r["result"].get("orchestrator") == "someone-elses"]
+
+    # and it is written once, not once per tick
+    runner.run_automation(
+        settings, cfg, st, client, "auto_codescan", log=lambda _m: None, only_if_scheduled=True
+    )
+    again = [
+        r
+        for r in st.list_automation_runs("auto_codescan", limit=50)
+        if r["result"].get("orchestrator") == "orch-2100"
+    ]
+    assert len(again) == 1
+
+    # the log says it plainly
+    events = [e["event"] for e in st.timeline(limit=50)]
+    assert "Devin's schedule ran" in events
+    assert "Devin's schedule ran and found nothing new" in events
+
+
+def test_a_quiet_watcher_tick_leaves_no_run_behind(tmp_path, monkeypatch):
+    """A watcher looks every minute. If each look that found nothing wrote a row, eighty five
+    identical rows would bury the two runs that mattered. Looking is not a run."""
+    from swe_loop import pages, runner
+
+    monkeypatch.setenv("SWE_LOOP_MODE", "replay")
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    settings = Settings.from_env()
+    client = DevinClient(FakeTransport())
+    pages.seed_automations(st, cfg)
+    before = len(st.list_automation_runs("auto_codescan", limit=100))
+    for _ in range(3):
+        out = runner.run_automation(
+            settings, cfg, st, client, "auto_codescan", log=lambda _m: None, only_if_scheduled=True
+        )
+        assert out["scan"] == "nothing scheduled"
+    assert len(st.list_automation_runs("auto_codescan", limit=100)) == before

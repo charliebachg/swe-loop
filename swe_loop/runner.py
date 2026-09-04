@@ -183,7 +183,7 @@ def run_automation(
             # a schedule on Devin fires on Devin's side and there is no webhook out, so before
             # asking for another scan, look for one their schedule already started
             taken = codescan.adopt(
-                settings, cfg, store, client, limit=a.get("max_findings"), log=log
+                settings, cfg, store, client, limit=a.get("max_findings"), log=log, aid=aid
             )
             if taken["adopted"]:
                 found = taken["adopted"][-1]
@@ -191,8 +191,16 @@ def run_automation(
             elif only_if_scheduled:
                 # a watcher tick: the schedule is the trigger, so with nothing from it there is
                 # nothing to do. Starting a scan here would make the timer beside the point.
-                result["scan"] = "nothing scheduled"
-                store.finish_automation_run(rid, result)
+                # The two quiet outcomes are different facts and are treated as such.
+                if taken["kind"] == "ran_nothing_new":
+                    # the schedule fired and found nothing: that is a result, and it is kept
+                    result["scan"] = "ran, nothing new"
+                    result["scheduled_runs"] = len(taken.get("runs") or [])
+                    store.finish_automation_run(rid, result)
+                else:
+                    # nothing happened anywhere. Looking is not a run; leave no row behind.
+                    result["scan"] = "nothing scheduled"
+                    store.discard_automation_run(rid)
                 return result
             else:
                 found = codescan.run(

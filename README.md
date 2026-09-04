@@ -164,7 +164,11 @@ the Automations page moves Devin's, then shows what Devin answered. Devin has no
 webhook, so `swe-loop watch` polls: a tick that finds nothing does nothing, and never starts a
 scan of its own, because that would make the timer beside the point. Because it reads state
 rather than events, stopping the watcher loses nothing; the next tick picks up whatever the
-schedule did meanwhile. Sub-hourly recurrences need a Teams plan, so on a self-serve plan hourly
+schedule did meanwhile. A run that extends a finished scan and finds nothing new changes no scan
+and no finding, so the watcher also reads Devin's own sessions: one with `origin: automation`,
+carrying the automation id Devin gave us and no parent, is one scheduled run, and it goes into the
+run history with the time Devin says it started and finished. Otherwise a schedule that ran and
+cleared the repository is indistinguishable from one that never fired. Sub-hourly recurrences need a Teams plan, so on a self-serve plan hourly
 is the floor.
 
 **Two Devin features this deliberately does not use, and why.** Devin Review with Autofix has no

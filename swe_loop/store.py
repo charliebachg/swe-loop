@@ -1078,6 +1078,48 @@ class Store:
             (now(), status, json.dumps(result), rid),
         )
 
+    def record_observed_run(
+        self,
+        aid: str,
+        *,
+        started_at: str,
+        result: dict[str, Any],
+        status: str = "done",
+        finished_at: str | None = None,
+    ) -> str:
+        """A run that happened on Devin's side, seen after the fact. It started and finished when
+        Devin says it did, not when we noticed: the gap until we looked is not how long it took."""
+        rid = new_id("run")
+        self.conn.execute(
+            "INSERT INTO automation_runs (id, automation_id, started_at, finished_at, status, "
+            "result_json) VALUES (?,?,?,?,?,?)",
+            (
+                rid,
+                aid,
+                started_at,
+                finished_at if status == "done" else None,
+                status,
+                json.dumps(result),
+            ),
+        )
+        self.conn.commit()
+        return rid
+
+    def discard_automation_run(self, rid: str) -> None:
+        """A run that did nothing and found nothing is not a run. A watcher looking every minute
+        would otherwise write a row per look and bury the runs that mattered under them."""
+        self.conn.execute("DELETE FROM automation_runs WHERE id=?", (rid,))
+        self.conn.commit()
+
+    def observed_run_orchestrators(self, aid: str) -> set[str]:
+        """The Devin sessions already recorded as runs of this automation, so a run is written once."""
+        out: set[str] = set()
+        for r in self._all("SELECT result_json FROM automation_runs WHERE automation_id=?", aid):
+            sid = (json.loads(r["result_json"] or "{}")).get("orchestrator")
+            if sid:
+                out.add(sid)
+        return out
+
     def list_automation_runs(self, aid: str, limit: int = 10) -> list[dict[str, Any]]:
         out = []
         for r in self._all(

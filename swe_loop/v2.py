@@ -2389,6 +2389,13 @@ def _run_line(res: dict[str, Any]) -> str:
         return "no result recorded"
     if res.get("error"):
         return f"failed: {res['error']}"
+    if res.get("started_by") == "Devin's schedule" and "orchestrator" in res:
+        # a run Devin's schedule made on its own, seen after the fact
+        return f"Devin's schedule · {plural(res.get('sessions', 1), 'session')}" + (
+            f" · {res['title']}" if res.get("title") else ""
+        )
+    if res.get("scan") == "ran, nothing new":
+        return f"the schedule ran ({res.get('scheduled_runs', 1)}), nothing new to file"
     parts = []
     if "issues" in res:
         n_new = len(res.get("new_tickets") or [])

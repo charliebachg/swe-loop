@@ -472,11 +472,14 @@ class FakeTransport:
     def list_sessions(self, tags: list[str] | None = None) -> list[dict[str, Any]]:
         self.calls.append(("list_sessions", tags))
         want = set(tags or [])
-        return [
+        ours = [
             self._state(sid, advance=False)
             for sid, s in self._sessions.items()
             if want <= set(s["created"].get("tags", []))
         ]
+        # sessions Devin made on its own, the way a schedule does; a test sets these directly
+        theirs = [] if tags else list(getattr(self, "foreign_sessions", []))
+        return ours + theirs
 
     def send_message(self, session_id: str, text: str) -> dict[str, Any]:
         self.calls.append(("send_message", (session_id, text)))
