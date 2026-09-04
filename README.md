@@ -32,7 +32,7 @@ and the app cannot drift apart. It is the current state, not a highlight reel.
 | #00002 | [#2](https://github.com/charliebachg/superset/issues/2) | `pivot.py` and 2 more | Devin | [0f160096](https://app.devin.ai/sessions/0f1600968c9c47c18012fe8476f4f1e7) | passed | 4 comments | merged, [#8](https://github.com/charliebachg/superset/pull/8) |
 | #00003 | [#3](https://github.com/charliebachg/superset/issues/3) | `aggregate.py` and 2 more | Devin | [38e2b6e7](https://app.devin.ai/sessions/38e2b6e7d3994aa980d7379031b9117c) | passed | 3 comments | merged, [#9](https://github.com/charliebachg/superset/pull/9) |
 | #00004 | [#5](https://github.com/charliebachg/superset/issues/5) | not scoped | a person | none | not run | not requested | with the team |
-| #00009 | filed by a scan | `core.py` | Devin | [5308ec47](https://app.devin.ai/sessions/5308ec47521f4fd68d0c85ab09e6aece) | passed | 0 comments | waiting for a person, [#14](https://github.com/charliebachg/superset/pull/14) |
+| #00009 | filed by a scan | `core.py` | Devin | [5308ec47](https://app.devin.ai/sessions/5308ec47521f4fd68d0c85ab09e6aece) | passed | 0 comments | merged, [#14](https://github.com/charliebachg/superset/pull/14) |
 | #00010 | filed by a scan | `result_set.py` | Devin | [03f72c31](https://app.devin.ai/sessions/03f72c310aa7448b890a96377eae5edd) | passed | no issues | merged, [#15](https://github.com/charliebachg/superset/pull/15) |
 | #00011 | filed by a scan | `dataframe_utils.py` | Devin | [0b92cade](https://app.devin.ai/sessions/0b92cadef9fe4cb792270c54bc57f47b) | passed | no issues | merged, [#16](https://github.com/charliebachg/superset/pull/16) |
 | #00012 | filed by a scan | `api.py` | a person | [61fb977b](https://app.devin.ai/sessions/61fb977bc53d4f72bfcdfede83171e3f) | passed | 0 comments | merged, [#17](https://github.com/charliebachg/superset/pull/17) |
@@ -40,12 +40,12 @@ and the app cannot drift apart. It is the current state, not a highlight reel.
 | #00016 | filed by a scan | `csv.py` | Devin | [dcdde9fa](https://app.devin.ai/sessions/dcdde9fa3d904261a66506391986bb8c) | passed | 1 comment | merged, [#19](https://github.com/charliebachg/superset/pull/19) |
 | #00017 | filed by a scan | `slack_mixin.py` | Devin | [c6e85826](https://app.devin.ai/sessions/c6e858267bc54d3ea633c664fcfe37f6) | passed | see the pull request | merged, [#20](https://github.com/charliebachg/superset/pull/20) |
 | #00018 | filed by a scan | `boxplot.py` | Devin | [1e7ba413](https://app.devin.ai/sessions/1e7ba41345b1442bb37aaf8e671afcf4) | passed | see the pull request | merged, [#21](https://github.com/charliebachg/superset/pull/21) |
-| #00019 | filed by a scan | `compare.py` | Devin | [b9ee6224](https://app.devin.ai/sessions/b9ee6224f7864b04bc8ffe1199037d4b) | failed | not requested | with the team |
+| #00019 | filed by a scan | `compare.py` | Devin | [b9ee6224](https://app.devin.ai/sessions/b9ee6224f7864b04bc8ffe1199037d4b) | passed | no issues | merged, [#22](https://github.com/charliebachg/superset/pull/22) |
 
 Nineteen tickets from three ways in, which is the point of the shape rather than a count: four
 from the fork's own issues, ten from a session pointed at the repository, five from Devin's own
-scanner. Twelve changes were written and checked; eleven passed. Nine were merged by a person,
-two are waiting on one, and three tickets were refused before anything was spent on them.
+scanner. Twelve changes were written and checked; twelve passed. 11 were merged by a person,
+1 is waiting on one, and 3 tickets were refused before anything was spent on them.
 
 The one to read is `#00001`. Its scoping session read the ticket and declined: the three places
 sat behind tests that encode pandas 2 behaviour, and a session may not edit tests, so it returned
@@ -59,9 +59,13 @@ kept the conversation.
 whether a test or the code is wrong is a product decision. A session may not edit tests, so it
 said so and stopped rather than making the tests agree with itself.
 
-`#00019` is the one that failed. Its acceptance command was malformed, so nothing ran. The gate
-records that as work it could not verify, never as a pass, and the ticket went to a person. A
-check that cannot run is not a check that passed.
+`#00019` is the one that could not be checked, which is more useful than one that failed. Its
+scoping session wrote `-W error::PerformanceWarning`, and `-W` takes a builtin name or a dotted
+path: the class lives at `pandas.errors.PerformanceWarning`, so pytest rejected the filter and
+nothing ran. The gate recorded that as work it could not verify, never as a pass, and the ticket
+went to a person. A person corrected the command, the checks were re-run on the same change and
+passed on both versions, and it merged. The change had been right the whole time; the instrument
+was broken, and the system said so rather than guessing either way.
 
 `#00012` and `#00013` came from Devin's scanner and were fixed by Devin's own remediation, one
 call per finding. Both still went to a person first, because this repository requires an
