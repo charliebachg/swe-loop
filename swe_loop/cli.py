@@ -338,6 +338,7 @@ def plan_config(client: DevinClient | None) -> dict[str, Any]:
     for name, schema in (
         ("triage-pandas3", "triage_verdict.schema.json"),
         ("repair-pandas3", "repair_result.schema.json"),
+        ("scan-pandas3", "scan_findings.schema.json"),
     ):
         pb = load_playbook(ROOT / "playbooks" / f"{name}.md", ROOT / "schemas" / schema)
         payload = pb.to_payload()
@@ -437,6 +438,7 @@ def apply_config(settings: Settings, cfg: TargetConfig, store: Store, client: De
     for name, schema in (
         ("triage-pandas3", "triage_verdict.schema.json"),
         ("repair-pandas3", "repair_result.schema.json"),
+        ("scan-pandas3", "scan_findings.schema.json"),
     ):
         pb = load_playbook(ROOT / "playbooks" / f"{name}.md", ROOT / "schemas" / schema)
         if pb.name in existing_pb:

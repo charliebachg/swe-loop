@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "scan_findings",
+  "description": "What a scan session found in a repository. It reads and reports; it changes nothing.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["searched", "findings"],
+  "properties": {
+    "searched": {
+      "type": "string",
+      "description": "What was actually looked at: the paths, the pattern, the command run. One or two sentences."
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "file", "line", "class", "why"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "One line naming the problem and where it is, as an issue title would."
+          },
+          "file": {"type": "string"},
+          "line": {"type": "integer"},
+          "class": {
+            "type": "string",
+            "description": "The kind of change, using the same words the detector uses."
+          },
+          "why": {
+            "type": "string",
+            "description": "The evidence: the library's own message, or the behaviour that differs, and how you know."
+          },
+          "tests": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "The tests that cover this site, if any cover it."
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["certain", "likely", "unsure"],
+            "description": "certain when a command demonstrated it, likely when the code plainly matches a documented change, unsure otherwise."
+          }
+        }
+      }
+    }
+  }
+}

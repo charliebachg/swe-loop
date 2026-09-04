@@ -10,7 +10,7 @@ def test_plan_config_reads_files_and_creates_nothing():
     t = FakeTransport()
     plan = plan_config(DevinClient(t))
     names = [p["file"] for p in plan["playbooks"]]
-    assert names == ["triage-pandas3", "repair-pandas3"]
+    assert names == ["triage-pandas3", "repair-pandas3", "scan-pandas3"]
     assert all(p["action"] == "would create" for p in plan["playbooks"])
     assert all("Forbidden Actions" in p["sections"] for p in plan["playbooks"])
     assert "self_reported_done" in plan["playbooks"][1]["schema_fields"]
@@ -92,7 +92,8 @@ def test_apply_config_creates_only_what_is_missing(tmp_path, monkeypatch, capsys
         out["already_on_the_org"]["repair-pandas3"] == "pb-old"
         and out["already_on_the_org"][note0] == "kn-old"
     )
-    assert note0 not in out["created"] and len(out["created"]) == 1 + len(load_notes()) - 1
+    # two playbooks and every note but the one already there
+    assert note0 not in out["created"] and len(out["created"]) == 2 + len(load_notes()) - 1
     st = Store(db)
     assert st.get_setting("playbook_id.repair-pandas3") == "pb-old"
     assert st.get_setting("playbook_id.triage-pandas3", "").startswith("pb-")

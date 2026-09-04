@@ -171,12 +171,31 @@ def run_automation(
     result: dict[str, Any] = {"issues": 0, "new_tickets": [], "known": 0, "triaged": 0}
     try:
         live = bool(settings.live and not getattr(client, "is_fake", False))
-        issues = (
-            fetch_issues(repo, label, settings.github_token, fetch)
-            if live or fetch
-            else drafted_issues(repo, label)
-        )
-        got = intake_issues(store, cfg, issues, source_repo=repo)
+        if a["kind"] == "scan":
+            from swe_loop import scan as scan_mod
+
+            found = scan_mod.run_scan(
+                settings,
+                cfg,
+                store,
+                client,
+                playbook_id=store.get_setting("playbook_id.scan-pandas3"),
+                log=log,
+            )
+            result["scan"] = found.get("kind")
+            got = {
+                "issues": len(found.get("new", [])) + len(found.get("known", [])),
+                "new": found.get("new", []),
+                "known": len(found.get("known", [])),
+                "skipped": len(found.get("refused", [])),
+            }
+        else:
+            issues = (
+                fetch_issues(repo, label, settings.github_token, fetch)
+                if live or fetch
+                else drafted_issues(repo, label)
+            )
+            got = intake_issues(store, cfg, issues, source_repo=repo)
         result.update(
             {
                 "issues": got["issues"],

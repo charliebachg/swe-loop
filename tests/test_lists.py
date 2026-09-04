@@ -61,7 +61,8 @@ def test_automation_add_toggle_delete(client):
     assert a["trigger"]["issue_label"] == "swe-loop"
     assert c.post(f"/automations/{a['id']}/toggle").status_code == 200
     assert st.get_automation(a["id"])["enabled"] == 1
-    assert c.post("/automations/auto_scan/toggle").status_code == 409  # next, not live
+    assert c.post("/automations/auto_scan/toggle").status_code == 200  # the scan runs now
+    c.post("/automations/auto_scan/toggle")  # back off again
     assert c.post("/automations/auto_repair/delete").status_code == 409  # built in
     assert c.post(f"/automations/{a['id']}/delete").status_code == 200
     assert len(st.list_automations()) == 2

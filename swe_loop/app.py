@@ -576,10 +576,8 @@ def build_app(
         a = st.get_automation(aid)
         if not a:
             raise HTTPException(status_code=404)
-        if a["kind"] not in ("repair", "custom") or a["availability"] != "live":
-            raise HTTPException(
-                status_code=409, detail="a scan automation is for the next version; nothing runs"
-            )
+        if a["availability"] != "live":
+            raise HTTPException(status_code=409, detail="not available yet; nothing runs")
         if not a["enabled"]:
             raise HTTPException(status_code=409, detail="the automation is disabled")
         lock: threading.Lock = request.app.state.run_lock

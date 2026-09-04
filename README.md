@@ -97,6 +97,7 @@ while it works. Without `DEVIN_API_KEY` the mode is forced to replay. No key, no
 event (GitHub webhook: a dependency bot's PR, a labelled issue, a failed check)
   │
   ▼ intake            code      any event becomes one ticket; one adapter per source
+  ▼ scan session      Devin     the other way in: reads the repository and files what it finds
   ▼ triage session    Devin     reads the ticket, decides one session or several, or asks
   ▼ ticket store      SQLite    the row exists before any session does
   ▼ route             code      policy from configs/*.yaml: refuse, human-only, or Devin, with the reason
@@ -129,7 +130,7 @@ agent: each step says who does it, the AI or a person, and every session is pric
 | page | shows |
 |---|---|
 | **Home** | the last run in five steps, what needs a person now with the buttons to answer, merge or dismiss, what is running, and what just happened |
-| **Automations** | how work enters and what happens when it runs. The default one, Issues from the fork, is on: Run pulls the repository's open issues with the label, makes a ticket of each new one, starts one triage session per ticket, routes them, starts the repair sessions, checks every pull request from a clean copy and asks Devin Review; the page follows along and keeps each run's history |
+| **Automations** | how work enters and what happens when it runs. Issues from the fork is on: Run pulls the repository's open issues with the label, makes a ticket of each new one, starts one triage session per ticket, routes them, starts the repair sessions, checks every pull request from a clean copy and asks Devin Review. Scan the repository is the other way in: a session reads the repository itself, finds places the upgrade changes behaviour, and files each as a ticket that goes through the same loop. Both keep a run history, and you can add your own |
 | **Tickets** | every ticket, named by a number, in two views. The list groups them by source and gives each a one-line account of what it is doing right now. The pipeline view shows four steps per ticket: scoped, fixed, verified, merged. Open a ticket for what it covers, the sessions, the checks, the review and the merge button |
 | **Report** | three counts over stated denominators: how many changes passed checks re-run here, how many jobs ran without a person, and how many changes your team merged rather than turned down. Under them every check with its exit code and its log, where the work went, progress against the counted list, what it cost, and the log itself |
 | **Devin · Sessions** | every session: the ticket, what it was for, its status, cost, whether the checks passed, when it started and how long it took. Click a row for its timeline, the checks and what it claimed |
@@ -177,7 +178,7 @@ swe_loop/          one module per step: intake, triage, router, shard, dispatch,
   charts.py        inline SVG: bars, funnel, dot strip, squares, stacked bar, histogram
   detect/          the pandas warning detector that built the inventory
 configs/           the seams
-playbooks/         triage and repair playbooks
+playbooks/         the triage, repair and scan playbooks
 schemas/           structured output contracts (draft-07, self-contained)
 knowledge/         repo-pinned Knowledge notes with trigger descriptions
 fork_files/        the skill and the PR template committed to the target fork

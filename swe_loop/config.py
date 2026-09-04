@@ -65,6 +65,7 @@ class TargetConfig:
     triage: dict[str, Any] = field(default_factory=dict)
     rerun: dict[str, Any] = field(default_factory=dict)
     review: dict[str, Any] = field(default_factory=dict)
+    scan: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path | str) -> TargetConfig:

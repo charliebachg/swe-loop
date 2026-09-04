@@ -305,6 +305,22 @@ class FakeTransport:
         repo = (payload.get("repos") or ["owner/repo"])[0]
         tags = payload.get("tags", [])
         shard = next((t.split(":", 1)[1] for t in tags if t.startswith("shard:")), "X")
+        if "scan" in tags:
+            out = {
+                "searched": "synthesised by FakeTransport; no repository was read",
+                "findings": [
+                    {
+                        "title": "pandas 3: synthesised finding in superset/synthesised.py",
+                        "file": "superset/synthesised.py",
+                        "line": 1,
+                        "class": "synthesised",
+                        "why": "synthesised by FakeTransport; replace with a recorded fixture",
+                        "tests": ["tests/unit_tests/synthesised_test.py"],
+                        "confidence": "unsure",
+                    }
+                ],
+            }
+            return self._timeline(sid, out, pr_url=None)
         if "triage" in tags:
             ticket_id = next((t for t in tags if t.startswith("tkt_")), "tkt_X")
             out: dict[str, Any] = {

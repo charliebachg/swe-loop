@@ -534,7 +534,7 @@ TRIGGER_CHOICES = [
 ]
 KIND_NOTES = {
     "repair": "Run pulls the open issues with the label, makes a ticket of each new one, starts one triage session per ticket, routes them, starts the repair sessions, checks every PR from a clean checkout and asks Devin Review. You merge.",
-    "scan": "Next version: a scan session reads the repository for one class of problem and files what it finds as tickets. The same loop takes them from there.",
+    "scan": "Run points a session at the repository itself. It reads, finds places the upgrade changes behaviour, and files each one as a ticket. From there they go through the same scoping, checks and review as anything else. The session changes nothing.",
     "custom": "Run does the same as the default: issues to tickets, triage, route, repair, gate, review. You merge.",
 }
 
@@ -586,14 +586,14 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
     if store.get_automation("auto_scan") is None:
         store.upsert_automation(
             id="auto_scan",
-            name="Scan",
+            name="Scan the repository",
             kind="scan",
             enabled=False,
-            availability="next",
+            availability="live",
             trigger={"source": "schedule", "event": "recurring"},
             target=cfg.repo,
-            playbook="triage-pandas3",
-            max_acu=3,
+            playbook="scan-pandas3 then triage and repair",
+            max_acu=4,
             concurrency=1,
             schedule="every weekday at 06:00",
             notes=None,
@@ -653,7 +653,7 @@ def automations(
                 ),
                 "kind_note": KIND_NOTES.get(a["kind"], KIND_NOTES["custom"]),
                 "native": native.get(a["name"]),
-                "runnable": a["kind"] in ("repair", "custom") and a["availability"] == "live",
+                "runnable": a["availability"] == "live",
                 "running": running and store.get_setting("automation.running") == a["id"],
             }
         )
@@ -768,16 +768,20 @@ def seed_playbooks(store: Store, cfg: TargetConfig) -> None:
             source="file",
             availability=avail,
         )
-    if store.get_playbook("pb_scan") is None:
+    from swe_loop.scan import SCAN_ACU_CAP
+    from swe_loop.scan import load_schema as load_scan_schema
+
+    scan_pb = _R / "playbooks" / "scan-pandas3.md"
+    if scan_pb.exists():
         store.upsert_playbook(
             id="pb_scan",
-            name="scan (triage, investigative mode)",
+            name="scan-pandas3",
             agent="scan session",
-            body="# Scan a repository for the work a dependency bot cannot finish\n\n## Overview\n\nThe triage playbook pointed at a repository instead of a ticket. Same six sections, same verdict schema; the verdict becomes the tickets.\n\n## Required from User\n\n- The repository and branch.\n- The library and the two versions.\n",
-            schema=load_schema(),
-            max_acu=3,
+            body=scan_pb.read_text(),
+            schema=load_scan_schema(),
+            max_acu=SCAN_ACU_CAP,
             source="file",
-            availability="next",
+            availability="live",
         )
 
 

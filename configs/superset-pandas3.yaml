@@ -52,6 +52,14 @@ triage:
   # what the triage session reads besides the ticket: the measured inventory, published with this repository
   inventory_url: https://raw.githubusercontent.com/charliebachg/swe-loop/main/data/inventory/2026-09-03/inventory.json
 
+scan:
+  # A session reads the repository and files what it finds as tickets. It changes nothing.
+  look_for: >-
+    pandas 2 behaviour that changes under pandas 3: chained assignment and copy-on-write, the
+    string dtype, stack and pivot, mixed-offset datetime parsing, and downcasting on replace
+  max_findings: 3
+  playbook: playbooks/scan-pandas3.md
+
 review:
   # After the gate passes a PR, Devin Review is requested. One run waits this long for it to finish
   # and reads the result back, so the ticket reaches "ready for you" in the same run.
