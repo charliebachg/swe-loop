@@ -56,6 +56,12 @@ read the pandas-importing modules and filed three findings as tickets in its own
 matched places the measured inventory already knew about, which is the check on it; one, at
 `client_processing.py:754`, it found on its own.
 
+Measured, not asserted: 25 unit tests failed on pandas 3.0.5 before any of this ran. With the
+loop's four changes merged, 11 of them pass. Every one of the 14 that still fail is in a test
+file, which is the ticket the system refused to take and handed to a person. It fixed what it
+took on and nothing it declined. The test ids, the command and the three commits are in
+`data/inventory/2026-09-04-closing/`; run it yourself and you get the same numbers.
+
 Cost so far: $14.97 across nine sessions, 48 minutes of active AI work, five of the nine priced
 from the console and the rest at the rate those five imply. Every session counts, including the
 ones that only read a ticket and the one that went to a person.
