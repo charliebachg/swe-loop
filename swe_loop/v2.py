@@ -1504,9 +1504,14 @@ def _passes(row: dict[str, Any], f: str) -> bool:
 SOURCE_GROUPS = [
     ("General", {"inventory", "fork", "github", "manual", "issues", "webhook"}, ""),
     (
-        "Scan Agent",
+        "Found by a session",
         {"scan"},
-        "Next version. A scan session reads the repository for one class of problem and files what it finds here; the loop takes it from there.",
+        "A session reads the repository for one area of problem and files what it finds here; the loop takes it from there.",
+    ),
+    (
+        "Found by Devin's scanner",
+        {"code_scan"},
+        "Devin's own code scan, started against the repository with an area to look in. Every security finding goes to a person: this repository requires such a finding to name the capability row in SECURITY.md it violates and the principal the attacker holds, and to be filed as a question when it cannot.",
     ),
     (
         "Others",
@@ -2138,6 +2143,7 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
                 "did": {
                     "triage": "read the ticket and wrote the plan",
                     "scan": "read the repository and filed what it found",
+                    "code_scan": "Devin's scanner read the repository",
                 }.get(s.get("kind"), "wrote the fix and opened a pull request"),
                 "size": size or "·",
                 "sizeBg": PL["bad"][1]
@@ -2351,7 +2357,11 @@ def automations(
             )
             how = "by webhook"
         elif src == "schedule":
-            trig = f"reads {r['target']} itself and files what it finds"
+            trig = (
+                f"Devin's own scanner reads {r['target']} and reports what it finds"
+                if r["kind"] == "code_scan"
+                else f"reads {r['target']} itself and files what it finds"
+            )
             how = "on click" + (
                 f"; a native Automation would run it {r['schedule']}" if r.get("schedule") else ""
             )
@@ -2370,6 +2380,7 @@ def automations(
         kind_label = {
             "repair": "event-based · default",
             "scan": "finds the work itself",
+            "code_scan": "Devin's own scanner",
             "custom": "event-based",
         }.get(r["kind"], r["kind"])
         autos.append(
@@ -2384,8 +2395,15 @@ def automations(
                 "stFg": PL[state_kind][0],
                 "trigger": trig,
                 "how": how,
+                # a code scan runs on Devin's side: it has no playbook of ours and no ACU
+                # ceiling we set, so the row says what it is instead of an empty parameter
                 "playbook": r["playbook"] or "none",
-                "limit": f"{int(r['max_acu'])} ACU" if r.get("max_acu") else "none",
+                "playbookLabel": "runs" if r["kind"] == "code_scan" else "playbook",
+                "limit": (
+                    f"{int(r['max_acu'])} ACU"
+                    if r.get("max_acu")
+                    else ("set on Devin's side" if r["kind"] == "code_scan" else "none")
+                ),
                 "conc": str(r["concurrency"]),
                 "lastRun": (
                     f"last run {r['last_run'][:16].replace('T', ' ')}"

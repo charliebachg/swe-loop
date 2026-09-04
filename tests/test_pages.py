@@ -92,7 +92,9 @@ def test_settings_store_helpers(tmp_path):
 def test_tickets_page_groups_by_source(client):
     c, _ = client
     html = c.get("/tickets-page").text
-    assert "General" in html and "Scan Agent" in html and "Others" in html
+    # the board says who found a ticket, and Devin's own scanner is its own source
+    for group in ("General", "Found by a session", "Found by Devin", "Others"):
+        assert group in html, group  # the apostrophe is escaped in the markup
     assert "For your team to decide" in html and "never edits tests" in html
     assert "oracle" not in html and "site(s)" not in html  # no internal vocabulary
     assert 'href="https://github.com/charliebachg/superset/issues/4"' in html

@@ -130,11 +130,12 @@ SOURCE_LABELS = {
     ),
     "inventory": ("Issues on the fork", "filed from the measured inventory"),
     "manual": ("Posted directly", "replay and simulation"),
-    "scan": ("Scan", "found by a scan session; next"),
+    "scan": ("Scan", "found by a session reading the repository"),
+    "code_scan": ("Devin's scanner", "found by Devin's own code scan"),
     "gmail": ("Gmail", "next"),
     "slack": ("Slack", "next"),
 }
-SOURCE_ORDER = ["github", "inventory", "manual", "scan", "gmail", "slack"]
+SOURCE_ORDER = ["github", "inventory", "manual", "scan", "code_scan", "gmail", "slack"]
 TICKET_PILL = ops.TICKET_PILL
 
 
@@ -582,6 +583,7 @@ TRIGGER_CHOICES = [
 KIND_NOTES = {
     "repair": "Run pulls the open issues with the label, makes a ticket of each new one, starts one session per ticket to scope it, routes them, starts the sessions that write the fix, checks every pull request from a clean copy and asks Devin Review. You merge.",
     "scan": "Run points a session at the repository itself. It reads, finds places the upgrade changes behaviour, and files each one as a ticket. From there they go through the same scoping, checks and review as anything else. The session changes nothing.",
+    "code_scan": "Run starts one of Devin's own code scans. Devin ships a scanner, so this does not describe one: the scan is started against the repository with an area to look in, never a defect to look for, it runs its own session, and its findings arrive here as tickets. Every security finding goes to a person, because this repository requires such a finding to name the capability row in SECURITY.md it violates and the principal the attacker holds, and Devin's scanner returns neither.",
     "custom": "Run does the same as the default: issues to tickets, triage, route, repair, gate, review. You merge.",
 }
 
