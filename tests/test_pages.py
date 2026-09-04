@@ -156,7 +156,7 @@ def test_sessions_page_eta_parent_and_drawer(client):
 def test_automations_run_now_dispatches_a_routed_ticket(client):
     c, st = client
     html = c.get("/automations").text
-    assert "Issues from the fork" in html and "Scan" in html and "Add automation" in html
+    assert "Issues from repo" in html and "Scan" in html and "Add automation" in html
     assert ">Run<" in html and "replay" in html
     # a fresh routed ticket, then run now dispatches it on the fake transport
     st.upsert_ticket(

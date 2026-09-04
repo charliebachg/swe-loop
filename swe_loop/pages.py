@@ -606,7 +606,7 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
     if store.get_automation("auto_repair") is None:
         store.upsert_automation(
             id="auto_repair",
-            name="Issues from the fork",
+            name="Issues from repo",
             kind="repair",
             enabled=True,
             availability="live",
@@ -626,19 +626,28 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
             "UPDATE automations SET name=?, availability='live', playbook=?, max_acu=?, "
             "max_findings=?, notes=NULL WHERE id='auto_scan'",
             (
-                "Scan the repository",
+                "Scan agent",
                 "scan-pandas3 then triage and repair",
                 4,
                 int(cfg.scan.get("max_findings", 3)),
             ),
         )
+    for aid, was, now_name in (
+        ("auto_repair", ("Repair", "Issues from the fork"), "Issues from repo"),
+        ("auto_scan", ("Scan the repository",), "Scan agent"),
+        ("auto_codescan", ("Devin's scanner",), "Devin security scan"),
+    ):
+        a = store.get_automation(aid)
+        if a and a["name"] in was:  # a store written before the rename
+            store.conn.execute("UPDATE automations SET name=? WHERE id=?", (now_name, aid))
+            store.conn.commit()
     if store.get_automation("auto_repair") is not None:
         a = store.get_automation("auto_repair")
         if a and a["name"] == "Repair":  # a store from before the rename
             store.conn.execute(
                 "UPDATE automations SET name=?, trigger_json=?, playbook=?, notes=? WHERE id='auto_repair'",
                 (
-                    "Issues from the fork",
+                    "Issues from repo",
                     json.dumps(DEFAULT_TRIGGER(cfg), sort_keys=True),
                     "triage-pandas3 then repair-pandas3",
                     DEFAULT_NOTE,
@@ -647,7 +656,7 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
     if store.get_automation("auto_scan") is None:
         store.upsert_automation(
             id="auto_scan",
-            name="Scan the repository",
+            name="Scan agent",
             kind="scan",
             enabled=False,
             availability="live",
@@ -663,7 +672,7 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
     if store.get_automation("auto_codescan") is None:
         store.upsert_automation(
             id="auto_codescan",
-            name="Devin's scanner",
+            name="Devin security scan",
             kind="code_scan",
             enabled=True,
             availability="live",
@@ -677,10 +686,12 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
             notes=(
                 "Devin ships a scanner and this runs it rather than describing one. A scan is "
                 "started against the repository with an area to look in, never a defect to look "
-                "for, and its findings arrive as tickets. Every security finding goes to a "
-                "person: this repository requires such a finding to name the capability row in "
-                "SECURITY.md it violates and the principal the attacker holds, and to be filed "
-                "as a question when it cannot."
+                "for, and its findings arrive as tickets. Devin offers ten areas; security is "
+                "the only one that runs without a scan profile, and a profile can only be made "
+                "in the Devin console, so security is what this runs. Every finding goes to a "
+                "person: this repository requires an automated security finding to name the "
+                "capability row in SECURITY.md it violates and the principal the attacker "
+                "holds, and to be filed as a question when it cannot name both."
             ),
         )
 

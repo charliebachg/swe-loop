@@ -2383,7 +2383,7 @@ def automations(
         kind_label = {
             "repair": "event-based · default",
             "scan": "finds the work itself",
-            "code_scan": "Devin's own scanner",
+            "code_scan": "Devin's own scanner · security only here",
             "custom": "event-based",
         }.get(r["kind"], r["kind"])
         autos.append(

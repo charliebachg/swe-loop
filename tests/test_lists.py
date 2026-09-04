@@ -33,7 +33,7 @@ def test_automations_seeded_as_a_list(client):
     html = c.get("/automations").text
     ids = [a["id"] for a in st.list_automations()]
     assert ids == ["auto_repair", "auto_scan", "auto_codescan"]
-    assert "Issues from the fork" in html and "files what it finds" in html
+    assert "Issues from repo" in html and "files what it finds" in html
     assert "Add automation" in html and ">Run<" in html
     assert "\u2014" not in html
     # seeding is idempotent
