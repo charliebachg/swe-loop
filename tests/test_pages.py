@@ -197,7 +197,10 @@ def test_capability_pages_render_real_state(client):
     assert "lower bound" in html and "not sent yet" in html
     assert "not yet used" not in html
     html = c.get("/devin/insights").text
-    assert "How big the pieces were" in html and "Minutes the AI was working" in html
+    # Insights mirrors Devin's own record; with no insights fetched it says so rather
+    # than inventing numbers of ours
+    assert "what Devin says about its own sessions" in html
+    assert "No insights stored yet" in html
     body = html.split("<main", 1)[-1]
     assert "ACU per session" not in body and ">ACU<" not in body  # nothing this plan cannot report
     for path in (
@@ -206,3 +209,50 @@ def test_capability_pages_render_real_state(client):
         "/devin/insights",
     ):
         assert "\u2014" not in c.get(path).text
+
+
+def test_insights_mirrors_devin_and_invents_nothing(tmp_path):
+    """The Insights page reads Devin's own record. With a payload stored it shows the fields
+    that vary and states the ones that do not; with none it says so rather than filling in."""
+    from swe_loop import insights as ins
+
+    st = Store(tmp_path / "s.sqlite")
+    st.put_insight(
+        "abc123def456",
+        {
+            "session_id": "abc123def456",
+            "url": "https://app.devin.ai/sessions/abc123def456",
+            "title": "scope a ticket",
+            "session_size": "xs",
+            "num_user_messages": 1,
+            "num_devin_messages": 2,
+            "playbook_id": None,
+            "origin": "api",
+            "analysis_status": "completed",
+            "analysis": {
+                "issues": [],
+                "action_items": [],
+                "suggested_prompt": None,
+                "note_usage": None,
+                "classification": {
+                    "category": "migrations_and_upgrades",
+                    "confidence": 0.95,
+                    "tools_and_frameworks": ["pytest", "pandas"],
+                },
+            },
+        },
+    )
+    rows = st.insights()
+    assert ins.turns(rows) == {
+        "one": 1,
+        "total": 1,
+        "replies": [{"n": 2, "sessions": 1}],
+    }
+    assert ins.tools(rows) == [{"name": "pandas", "n": 1}, {"name": "pytest", "n": 1}]
+    # a session with no playbook is a configuration gap the page must surface
+    assert [s["session"] for s in ins.no_playbook(rows)] == ["abc123de"]
+    # empty analysis is reported as empty, never filled with a number of ours
+    adv = ins.advice(rows)
+    assert adv["issues"] == [] and adv["actions"] == [] and adv["analysed"] == 1
+    # a field with one value everywhere is stated once, not given a column
+    assert {"field": "origin", "value": "api"} in ins.constants(rows)

@@ -672,6 +672,19 @@ def build_app(
             k=pages.knowledge(request.app.state.store, settings, cfg),
         )
 
+    @app.post("/devin/insights/refresh", response_class=HTMLResponse)
+    def insights_refresh(request: Request) -> HTMLResponse:
+        """Read Session Insights from the organisation now, rather than waiting for a run."""
+        st: Store = request.app.state.store
+        client = request.app.state.client
+        from swe_loop import insights as ins
+
+        try:
+            ins.refresh(st, client, ins.known_ids(st))
+        except Exception as ex:  # noqa: BLE001 - shown on the page, never a stack trace
+            st.log("automation", "insights could not be read", detail=f"{type(ex).__name__}: {ex}")
+        return _render(request, "insights.html", "insights", i=v2.insights(request.app.state.store))
+
     @app.get("/devin/insights", response_class=HTMLResponse)
     def insights_page(request: Request) -> HTMLResponse:
         return _render(request, "insights.html", "insights", i=v2.insights(request.app.state.store))

@@ -308,6 +308,13 @@ def run_once(
     if not fast:
         out["reviews"] = settle_reviews(settings, cfg, store, client, log=log)
         refresh_pr_states(store, settings.github_token)
+        # what Devin makes of the sessions it just ran, for the Insights page
+        try:
+            from swe_loop import insights as ins
+
+            out["insights"] = ins.refresh(store, client, ins.known_ids(store))
+        except Exception as ex:  # noqa: BLE001 - a run must not fail over a reporting read
+            log(f"insights not refreshed: {type(ex).__name__}: {ex}")
     store.set_setting("automation.repair.last_run", now())
     store.set_setting("automation.repair.last_result", json.dumps(out))
     log(json.dumps(summary(store)))

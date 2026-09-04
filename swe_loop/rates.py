@@ -209,3 +209,71 @@ def window(store: Store) -> str:
         return datetime.fromisoformat(s).astimezone(UTC).strftime("%d %b %H:%M")
 
     return f"{fmt(row['lo'])} to {fmt(row['hi'])} UTC"
+
+
+def system(store: Store) -> list[dict[str, Any]]:
+    """The lightweight ones: small numbers a person can watch on a board without reading prose.
+
+    Each is a count or a duration this app can source from a query, never a ratio dressed up as
+    a score. Where a figure would be a rate over too few observations, the count is shown."""
+    from swe_loop import cost as cost_mod
+
+    ev = store._all("SELECT tier, passed FROM evidence")
+    latest = _latest_verdicts(store)
+    tri = store.list_triage_sessions()
+    sess = store._all("SELECT * FROM sessions")
+    scans = store.list_scan_sessions()
+    sp = cost_mod.spend(store)
+    passed = [v for v in latest if v["gate_result"] == "pass"]
+
+    # Working time, not wall clock. A session sits idle while it waits for the poller or for a
+    # person, and counting that would say more about our polling than about the AI.
+    waits = sorted(
+        cost_mod.repair_active_seconds(store, s) / 60.0
+        for v in passed
+        if (s := store.get_session(v["session_id"]))
+    )
+
+    rejected = sum(t["outcome"] in ("invalid", "no_output") for t in tri)
+    retried = sum(v["decision"] == "retry" for v in latest)
+    # the loop feeding review comments back without anyone retyping them
+    fed_back = len(
+        store._all("SELECT id FROM timeline WHERE event LIKE '%sent back to the session%'")
+    )
+    per_change = (sp["usd"] / len(passed)) if sp.get("usd") and passed else None
+
+    def m(k: str, v: str, note: str) -> dict[str, Any]:
+        return {"k": k, "v": v, "note": note}
+
+    return [
+        m("Sessions run", str(len(sess) + len(tri) + len(scans)), "every kind, all counted"),
+        m(
+            "Checks re-run here",
+            f"{sum(1 for e in ev if e['passed'])} of {len(ev)}",
+            "each on a clean copy the session could not write to",
+        ),
+        m(
+            "Output rejected for shape",
+            str(rejected),
+            "a session that answers off-contract is a failure, not a pass",
+        ),
+        m(
+            "Sent back to the session",
+            str(retried + fed_back),
+            "a failed check or a review comment, returned without anyone retyping it",
+        ),
+        m(
+            "AI working time per change",
+            (f"{waits[len(waits) // 2]:.0f} min" if waits else "no change yet"),
+            (
+                f"middle of {len(waits)}, from {waits[0]:.0f} to {waits[-1]:.0f}"
+                if len(waits) > 1
+                else "one change, so no spread"
+            ),
+        ),
+        m(
+            "Cost per change that passed",
+            (f"${per_change:.2f}" if per_change else "not priced yet"),
+            "every session in the numerator, including the ones that only read",
+        ),
+    ]

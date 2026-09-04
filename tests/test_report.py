@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -62,9 +63,9 @@ def test_dashboard_renders_and_shows_sql_on_request(tmp_path, monkeypatch):
         assert r.status_code == 200
         html = r.text
         for must in (
-            "Checks passed",
-            "Ran without you",
-            "Merged by your team",
+            "Verification pass rate",
+            "Human intervention rate",
+            "Acceptance rate",
             "Checks we ran ourselves",
             "Where the work went",
             "The log",
@@ -72,8 +73,12 @@ def test_dashboard_renders_and_shows_sql_on_request(tmp_path, monkeypatch):
             "<svg",
         ):
             assert must in html
-        # the three rates read as counts over a denominator
-        assert "of 4" in html and "of 5" in html
+        # the three rates read as a count over its denominator, never a bare percentage
+        assert ">4</span>" in html and ">5</span>" in html
+        visible = re.sub(
+            r"(?s)<[^>]+>", " ", re.sub(r"(?is)<(script|style|svg).*?</\1>", " ", html)
+        )
+        assert "%" not in visible  # percentages live in the CSS, never in the reader's text
         # the checks are one click away, with the log behind each one
         opened = c.get("/report?checks=1").text
         assert "code it ran on" in opened and "log fingerprint" in opened
@@ -141,7 +146,7 @@ def test_ops_page_lists_sessions_and_the_feed(tmp_path, monkeypatch):
     with TestClient(app) as c:
         html = c.get("/devin/sessions").text
         assert "Sessions" in html and "Cost is what the console charged" in html and "fake-" in html
-        assert "Checks passed" in c.get("/report").text
+        assert "Verification pass rate" in c.get("/report").text
         sid = o["sessions"][0]["id"]
         det = c.get(f"/sessions/{sid}").json()
         assert det["timeline"] and det["work_order"]["files"]

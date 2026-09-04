@@ -13,12 +13,14 @@
           {% for c in cards %}
           <div style="{{ CARD }};padding:16px 18px 14px">
             <div style="{{ LBL }}">{{ c.title }}</div>
-            <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px">
-              <span style="font:600 34px/1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ c.color }}">{{ c.n }}</span>
-              <span style="font-size:14px;color:#626b78">{{ c.of }}</span>
+            <div style="display:flex;align-items:baseline;gap:3px;margin-top:8px">
+              <span style="font:600 40px/1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ c.color }}">{{ c.n }}</span>
+              <span style="font:400 24px/1 'Instrument Sans',system-ui,sans-serif;color:#c9c5bb">/</span>
+              <span style="font:400 24px/1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:#626b78">{{ c.of }}</span>
             </div>
-            <div style="font-size:12px;color:#8f97a3;margin-top:2px">{{ c.unit }}</div>
-            <div style="margin-top:12px;display:flex;flex-direction:column;gap:5px">
+            <div style="font-size:12px;color:#8f97a3;margin-top:6px;text-wrap:pretty">{{ c.unit }}</div>
+            <div style="height:4px;border-radius:2px;background:#ecebe6;margin-top:10px;overflow:hidden"><span style="display:block;height:100%;width:{{ c.pct }}%;background:{{ c.color }}"></span></div>
+            <div style="margin-top:11px;display:flex;flex-direction:column;gap:5px;border-top:1px solid #f0efe9;padding-top:10px">
               {% for r in c.rows %}
               <div style="display:grid;grid-template-columns:1fr 34px;gap:8px;align-items:center;font-size:12.5px">
                 <span style="min-width:0;color:#626b78;text-wrap:pretty">{{ r.label }}</span>
@@ -27,6 +29,16 @@
               {% endfor %}
             </div>
             <div style="font-size:11.5px;color:#8f97a3;margin-top:10px;text-wrap:pretty">{{ c.note }}</div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#e2dfd8;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden;margin-bottom:20px">
+          {% for m in systemMetrics %}
+          <div style="background:#fff;padding:13px 16px" title="{{ m.note }}">
+            <div style="{{ LBL }};font-size:9.5px">{{ m.k }}</div>
+            <div style="font:600 19px/1.2 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;margin-top:5px">{{ m.v }}</div>
+            <div style="font-size:11px;color:#8f97a3;margin-top:3px;text-wrap:pretty">{{ m.note }}</div>
           </div>
           {% endfor %}
         </div>

@@ -452,23 +452,69 @@ def _usd_or_min(store: Store, row: dict[str, Any], kind: str, rates: dict[str, f
 
 
 def insights(store: Store) -> dict[str, Any]:
-    """The two charts and the table under them."""
-    i = pages.insights(store)
-    for r in i["rows"]:
-        r["ref"] = ref(r["number"]) if r["ticket"] else "none"
-        r["color"] = tk_color(r["ticket"])
-    mins = [r["minutes"] for r in i["rows"]]
+    """Devin's own read on the sessions it ran, mirrored here so the behaviour can be watched
+    and the instructions improved. Everything on this page comes from Session Insights; nothing
+    on it is our own measurement, which is the point of keeping it separate from the Report."""
+    from swe_loop import insights as ins
+
+    rows = store.insights()
+    started = ins.known_ids(store)
+    t = ins.turns(rows)
+    adv = ins.advice(rows)
+    sizes = ins.by_size(rows)
+    tools = ins.tools(rows)
+    nopb = ins.no_playbook(rows)
+
+    nums = {tk["id"]: tk.get("number") for tk in store.list_tickets()}
+    which: dict[str, tuple[str, str]] = {}
+    for r in store._all("SELECT * FROM sessions"):
+        wo = store.get_work_order(r["work_order_id"]) or {}
+        which[r["devin_session_id"]] = ("wrote the fix", ref(nums.get(wo.get("ticket_id"))))
+    for r in store.list_triage_sessions():
+        which[r["devin_session_id"]] = ("scoped the ticket", ref(nums.get(r["ticket_id"])))
+    for r in store.list_scan_sessions():
+        which[r["devin_session_id"]] = ("read the repository", "none")
+
+    table = []
+    for r in rows:
+        sid = r.get("session_id") or ""
+        did, tk = which.get(sid, ("", "none"))
+        cl = (r.get("analysis") or {}).get("classification") or {}
+        conf = cl.get("confidence")
+        table.append(
+            {
+                "id": sid[:12],
+                "url": r.get("url", ""),
+                "did": did or clip(r.get("title", ""), 40),
+                "ref": tk,
+                "size": (r.get("session_size") or "").upper() or "not sized",
+                "big": (r.get("session_size") or "").lower() in ("l", "xl"),
+                "you": r.get("num_user_messages") or 0,
+                "devin": r.get("num_devin_messages") or 0,
+                "tools": ", ".join((cl.get("tools_and_frameworks") or [])[:3]) or "none named",
+                "sure": f"{float(conf) * 100:.0f}%" if conf is not None else "not given",
+                "playbook": "yes" if r.get("playbook_id") else "none",
+                "prs": len(r.get("pull_requests") or []),
+                "analysed": r.get("analysis_status") or "not analysed",
+            }
+        )
+
     return {
-        **i,
-        "sizeChart": charts.histogram(i["hist"], w=300),
-        "minutesChart": charts.bars(
-            mins,
-            [f"{r['ticket']} {r['devin_id'][:8]}" for r in i["rows"]],
-            PURPLE,
-            w=420,
-            h=64,
-            unit="min",
-        ),
+        "count": len(rows),
+        "started": len(started),
+        "missing": len(started) - len(rows),
+        "turns": t,
+        "turnsLabel": f"{t['one']} of {t['total']}",
+        "replies": t["replies"],
+        "repliesMax": max((r["sessions"] for r in t["replies"]), default=1),
+        "sizes": sizes,
+        "sizeChart": charts.histogram([(d["label"], d["n"], d["too_big"]) for d in sizes], w=300),
+        "tools": tools,
+        "constants": ins.constants(rows),
+        "noPlaybook": nopb,
+        "advice": adv,
+        "adviceEmpty": not (adv["issues"] or adv["actions"] or adv["prompts"] or adv["notes"]),
+        "rows": table,
     }
 
 
@@ -2592,8 +2638,9 @@ def report(
             "key": key,
             "title": title,
             "n": str(n),
-            "of": f"of {of}" if of else "",
+            "of": str(of) if of else "0",
             "unit": unit,
+            "pct": _pct(n, of) if of else "0",
             "color": colour if of and n == of else (INK if of else FAINT),
             "rows": [
                 {
@@ -2610,30 +2657,30 @@ def report(
     cards = [
         card(
             "verified",
-            "Checks passed",
+            "Verification pass rate",
             ver["changes_passed"],
             ver["changes"],
-            "changes the AI wrote",
+            "changes the AI wrote passed every check",
             ver["kinds"],
             _bound(ver["changes_passed"], ver["changes"]),
             PL["ok"][0],
         ),
         card(
             "hands-off",
-            "Ran without you",
+            "Human intervention rate",
             inter["untouched"],
             inter["tickets"],
-            "jobs taken on",
+            "jobs needed nobody, up to the merge",
             inter["rows"],
             "merging is yours by design and is not counted as stepping in",
             PL["gate"][0],
         ),
         card(
             "accepted",
-            "Merged by your team",
+            "Acceptance rate",
             acc["merged"],
             acc["offered"],
-            "changes offered",
+            "changes offered were merged, not rejected",
             acc["rows"],
             "read from the pull requests themselves, so one you close shows up here. "
             + (
@@ -2708,6 +2755,7 @@ def report(
             "dot": PL["run"][0] if live["running"] else PL["ok"][0],
         },
         "cards": cards,
+        "systemMetrics": rates.system(store),
         "checksLine": f"{sum(1 for r in receipts if r['passed'])} of {len(receipts)} checks passed, "
         f"each re-run by this app on a clean copy of the change",
         "checksOpen": checks_open,

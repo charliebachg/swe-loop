@@ -128,6 +128,9 @@ CREATE INDEX IF NOT EXISTS ix_timeline_session ON timeline(session_id);
 CREATE INDEX IF NOT EXISTS ix_tickets_status ON tickets(status);
 CREATE INDEX IF NOT EXISTS ix_sessions_wo ON sessions(work_order_id);
 CREATE INDEX IF NOT EXISTS ix_evidence_session ON evidence(session_id);
+CREATE TABLE IF NOT EXISTS insights (
+  devin_session_id TEXT PRIMARY KEY, fetched_at TEXT NOT NULL, payload_json TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS ix_timeline_ticket ON timeline(ticket_id, at);
 CREATE INDEX IF NOT EXISTS ix_timeline_at ON timeline(at);
 """
@@ -645,6 +648,27 @@ class Store:
         "outcome",
         "cost_usd",
     }
+
+    # ------------------------------------------------------------------ session insights
+    # The whole payload is kept, not a chosen few columns: Devin adds fields to this endpoint
+    # and a page that reads the payload picks them up without a migration.
+    def put_insight(self, devin_session_id: str, payload: dict[str, Any]) -> None:
+        self.conn.execute(
+            "INSERT INTO insights (devin_session_id, fetched_at, payload_json) VALUES (?,?,?) "
+            "ON CONFLICT(devin_session_id) DO UPDATE SET fetched_at=excluded.fetched_at, "
+            "payload_json=excluded.payload_json",
+            (devin_session_id, now(), json.dumps(payload)),
+        )
+        self.conn.commit()
+
+    def insights(self) -> list[dict[str, Any]]:
+        """Every stored insight, newest session first."""
+        out = []
+        for r in self._all("SELECT * FROM insights"):
+            d = json.loads(r["payload_json"])
+            d["_fetched_at"] = r["fetched_at"]
+            out.append(d)
+        return sorted(out, key=lambda d: d.get("created_at") or 0, reverse=True)
 
     def update_scan_session(self, sid: str, **fields: Any) -> None:
         if "findings" in fields:
