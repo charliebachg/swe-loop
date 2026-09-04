@@ -80,9 +80,18 @@ def verification(store: Store) -> dict[str, Any]:
 def intervention(store: Store) -> dict[str, Any]:
     """How often a person had to step in. Merging is not stepping in: it is the design.
 
-    The two that count are a question the AI could not answer for itself, and work it handed
-    back. Both are recorded when they happen, so neither can be quietly dropped."""
-    tickets = store.list_tickets()
+    The two that count are a question the AI could not answer for itself, and work it handed to
+    a person to decide. Both are recorded when they happen, so neither can be quietly dropped.
+
+    A refusal is neither. The loop declined the work on a rule it already had, nothing was asked
+    of anybody, and no time was spent. Counting it as intervention would make the loop look
+    needier the better its rules got, so a refused ticket leaves the denominator and is reported
+    on its own line."""
+    all_tickets = store.list_tickets()
+    refused = [
+        t for t in all_tickets if t["status"] == "refused" or t["router_decision"] == "refuse"
+    ]
+    tickets = [t for t in all_tickets if t not in refused]
     answered = {
         e["ticket_id"]
         for e in store.timeline(limit=5000)
@@ -94,18 +103,22 @@ def intervention(store: Store) -> dict[str, Any]:
         if (t["router_decision"] and t["router_decision"] != "devin") or t["status"] == "escalated"
     }
     merges = store._all("SELECT ticket_id FROM human_actions WHERE kind='merge'")
-    touched = answered | handed_back
+    touched = (answered & {t["id"] for t in tickets}) | handed_back
+    rows = [
+        {"label": "ran without you, up to the merge", "n": len(tickets) - len(touched)},
+        {"label": "asked you a question", "n": len(answered & {t["id"] for t in tickets})},
+        {"label": "handed to your team to decide", "n": len(handed_back)},
+    ]
+    if refused:
+        rows.append({"label": "refused, so never taken on", "n": len(refused)})
     return {
         "tickets": len(tickets),
-        "untouched": len([t for t in tickets if t["id"] not in touched]),
-        "asked": len(answered),
+        "untouched": len(tickets) - len(touched),
+        "asked": len(answered & {t["id"] for t in tickets}),
         "handed_back": len(handed_back),
+        "refused": len(refused),
         "merges": len({m["ticket_id"] for m in merges}),
-        "rows": [
-            {"label": "ran without you, up to the merge", "n": len(tickets) - len(touched)},
-            {"label": "asked you a question", "n": len(answered)},
-            {"label": "handed back to your team", "n": len(handed_back)},
-        ],
+        "rows": rows,
     }
 
 

@@ -1,0 +1,17 @@
+FFFFFFFF..........F.FFFFF                                                [100%]
+=========================== short test summary info ============================
+FAILED tests/unit_tests/commands/databases/columnar_reader_test.py::test_columnar_reader_file_to_dataframe[file3-options3-expected_cols3-expected_values3]
+FAILED tests/unit_tests/commands/databases/columnar_reader_test.py::test_excel_reader_wrong_columns_to_read
+FAILED tests/unit_tests/commands/databases/csv_reader_test.py::test_csv_reader_object_type_auto_inferring
+FAILED tests/unit_tests/commands/databases/csv_reader_test.py::test_csv_reader_successful_string_conversion_with_floats
+FAILED tests/unit_tests/commands/importers/v1/utils_test.py::TestConvertTemporalColumns::test_out_of_bounds_coerced_to_nat
+FAILED tests/unit_tests/commands/importers/v1/utils_test.py::TestConvertTemporalColumns::test_warning_count_excludes_preexisting_nulls
+FAILED tests/unit_tests/common/test_time_shifts.py::test_join_offset_dfs_no_time_grain_aligns_mixed_offset_temporal_strings
+FAILED tests/unit_tests/models/core_test.py::test_post_process_df_non_zero_based_index
+FAILED tests/unit_tests/pandas_postprocessing/test_sort.py::test_sort - KeyEr...
+FAILED tests/unit_tests/utils/excel_tests.py::test_apply_column_types_with_duplicate_column_labels
+FAILED tests/unit_tests/utils/excel_tests.py::test_quote_formulas - TypeError...
+FAILED tests/unit_tests/utils/excel_tests.py::test_quote_formulas_in_headers_and_index
+FAILED tests/unit_tests/utils/excel_tests.py::test_timezone_conversion - Type...
+FAILED tests/unit_tests/utils/test_date_parsing.py::test_epoch_format_invalid_values
+14 failed, 11 passed in 10.20s

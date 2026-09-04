@@ -99,3 +99,20 @@ def test_credits_calibrate_minutes_into_dollars(tmp_path, monkeypatch):
         assert "AI cost" in home and "$" in home and " est." not in home
         report = c.get("/report").text
         assert "58 min of AI work" in report or "min of AI work" in report
+
+
+def test_the_consoles_figure_for_a_scan_is_not_discarded(tmp_path):
+    """A scan is a session and is billed like one. It was left out of the lookup, so entering
+    its figure silently did nothing and the scan stayed priced at our own guess."""
+    st = Store(tmp_path / "s.sqlite")
+    sid = st.insert_scan_session(
+        devin_session_id="abc123def456",
+        url="",
+        playbook_id=None,
+        tags=["scan"],
+        status="running",
+        status_detail="working",
+    )
+    assert st.set_session_cost("abc123", 3.19) == "scan_sessions"
+    assert st.list_scan_sessions()[0]["cost_usd"] == 3.19
+    assert st.get_session(sid) is None  # it is not a repair session, and was never treated as one

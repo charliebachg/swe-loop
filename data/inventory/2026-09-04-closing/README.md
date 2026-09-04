@@ -18,7 +18,12 @@ PYTHONHASHSEED=0 SUPERSET_SECRET_KEY=not-a-secret \
 | `452817f2a1` | before any fix | 25 failed |
 | `9d5a9f4f29` | the four changes merged | 11 passed, 14 failed |
 | `7969faf635` | master with one change re-offered and one put back, for a walk through of the merge step | 10 passed, 15 failed |
+| `54db991916` | the same, plus two changes a scan found and a person merged | 11 passed, 14 failed |
 
 All 14 that still fail are in test files. They are the sites of the one ticket the system refused
 to take, because a session may not edit tests, and they are open on the fork for a person to
 decide. The loop fixed every product-code failure it took on, and none of what it declined.
+
+A scan reads the code; the inventory was built from what the suite already tests. Two of the
+three changes a scan found and a person merged fix files the inventory never listed, and no test
+in the 25 exercises them, so their value does not appear in this table at all.

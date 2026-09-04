@@ -685,9 +685,12 @@ class Store:
         return self._all("SELECT * FROM scan_sessions ORDER BY created_at DESC, rowid DESC")
 
     def set_session_cost(self, devin_session_id: str, usd: float) -> str | None:
-        """The console's dollar figure for one session, entered by a person. Matches a repair or a
-        triage session by its Devin id or an unambiguous prefix. Returns the table updated."""
-        for table in ("sessions", "triage_sessions"):
+        """The console's dollar figure for one session, entered by a person. Matches any session
+        this store started, by its Devin id or an unambiguous prefix. Returns the table updated.
+
+        A scan is a session and is billed like one, so it is searched here too; leaving it out
+        meant the console's figure for a scan was quietly discarded."""
+        for table in ("sessions", "triage_sessions", "scan_sessions"):
             rows = self._all(
                 f"SELECT id, devin_session_id FROM {table} WHERE devin_session_id LIKE ?",
                 devin_session_id + "%",

@@ -152,3 +152,26 @@ def test_ops_page_lists_sessions_and_the_feed(tmp_path, monkeypatch):
         assert det["timeline"] and det["work_order"]["files"]
         assert c.get("/timeline?limit=5").json()
         assert c.get("/devin/sessions").status_code == 200
+
+
+def test_a_refusal_is_not_counted_as_a_person_stepping_in(tmp_path):
+    """The loop declined the work on a rule it already had. Nobody was asked anything and no
+    time was spent, so counting it as intervention would make the loop look needier the better
+    its rules got."""
+    from swe_loop import rates
+    from swe_loop.store import Store as S
+
+    st = S(tmp_path / "s.sqlite")
+    st.upsert_ticket(id="t1", source="scan", title="ran clean", status="merged")
+    st.set_router_decision("t1", "devin", "took it on")
+    st.upsert_ticket(id="t2", source="scan", title="handed over", status="escalated")
+    st.set_router_decision("t2", "human_only", "a person decides")
+    st.upsert_ticket(id="t3", source="scan", title="declined", status="refused")
+    st.set_router_decision("t3", "refuse", "a change is already open on that file")
+
+    i = rates.intervention(st)
+    assert i["tickets"] == 2  # the refused one leaves the denominator
+    assert i["untouched"] == 1 and i["handed_back"] == 1 and i["refused"] == 3 - 2
+    labels = {r["label"]: r["n"] for r in i["rows"]}
+    assert labels["refused, so never taken on"] == 1
+    assert "handed back to your team" not in labels
