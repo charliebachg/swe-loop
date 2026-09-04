@@ -697,6 +697,9 @@ class Store:
             )
             if len(rows) == 1:
                 self.conn.execute(f"UPDATE {table} SET cost_usd=? WHERE id=?", (usd, rows[0]["id"]))
+                # A console figure is true at the moment it is read. A session that goes on
+                # working costs more afterwards, so the page says when these were last taken.
+                self.set_setting("cost.console_read_at", now())
                 self.conn.commit()
                 self.log(
                     "budget",

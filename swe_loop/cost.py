@@ -191,6 +191,7 @@ def spend(store: Store) -> dict[str, Any]:
         "usd": round(usd_total, 2) if any_usd else None,
         "usd_console": round(usd_console, 2),
         "n_console": n_console,
+        "console_read_at": (store.get_setting("cost.console_read_at") or "")[:16].replace("T", " "),
         "n_sessions": len(sessions) + len(tri) + len(scn),
         "rate": rate,
         "rates": kind_rates,
