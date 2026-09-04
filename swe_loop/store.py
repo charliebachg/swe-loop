@@ -208,6 +208,8 @@ class Store:
             ("tickets", "number", "INTEGER"),
             ("sessions", "pr_state", "TEXT"),
             ("automations", "max_findings", "INTEGER"),
+            # when Devin runs the recurrence itself, the id of the Automation it made for us
+            ("automations", "devin_automation_id", "TEXT"),
         ):
             cols = {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if col not in cols:
@@ -1004,6 +1006,7 @@ class Store:
             "max_acu": a.get("max_acu"),
             "concurrency": int(a.get("concurrency") or 4),
             "max_findings": a.get("max_findings"),
+            "devin_automation_id": a.get("devin_automation_id"),
             "schedule": a.get("schedule"),
             "notes": a.get("notes"),
             "created_at": now(),
@@ -1042,6 +1045,7 @@ class Store:
             "concurrency",
             "schedule",
             "playbook",
+            "devin_automation_id",
         }
         bad = set(fields) - allowed
         _must(not bad, f"unknown automation fields: {bad}")

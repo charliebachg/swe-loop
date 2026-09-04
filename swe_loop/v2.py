@@ -2418,6 +2418,7 @@ def automations(
     a = pages.automations(store, cfg, settings, client, running)
     add_open = q.get("add") == "1" or err
     mono = "'JetBrains Mono',monospace"
+    tk_numbers = {t["id"]: t.get("number") for t in store.list_tickets()}
     autos = []
     for r in a["rows"]:
         is_next = r["availability"] == "next"
@@ -2444,9 +2445,13 @@ def automations(
                 if r["kind"] == "code_scan"
                 else f"reads {r['target']} itself and files what it finds"
             )
-            how = "on click" + (
-                f"; a native Automation would run it {r['schedule']}" if r.get("schedule") else ""
-            )
+            if r.get("devin_automation_id"):
+                # Devin holds the recurrence; ours is the button that runs it out of turn
+                how = f"on click, and {r['schedule']} on a schedule Devin runs"
+            else:
+                how = "on click" + (
+                    f"; {r['schedule']} once a schedule is registered" if r.get("schedule") else ""
+                )
         elif src == "manual":
             trig = "on click only"
             how = "the Run button"
@@ -2529,15 +2534,16 @@ def automations(
                     ),
                     {
                         "k": "per session",
-                        "v": f"Devin's limit {int(r['max_acu'])} ACU · {r['concurrency']} sessions at once"
+                        "v": f"Devin's limit {int(r['max_acu'])} ACU · "
+                        + f"{plural(r['concurrency'], 'session')} at once"
                         if r.get("max_acu")
-                        else f"{r['concurrency']} sessions at once",
+                        else f"{plural(r['concurrency'], 'session')} at once",
                         "mono": False,
                     },
                     {
                         "k": "on the Devin org",
                         "v": "",
-                        "lazy": url("/automations/native", name=r["name"]) if a["live"] else "",
+                        "lazy": url("/automations/native", name=r["id"]) if a["live"] else "",
                         "mono": False,
                     },
                 ],
@@ -2557,7 +2563,11 @@ def automations(
                 ],
                 "hasRuns": bool(runs),
                 "produced": [
-                    {"id": tid, "go": url("/tickets-page", open=tid), "color": tk_color(tid)}
+                    {
+                        "id": ref(tk_numbers.get(tid)),
+                        "go": url("/tickets-page", open=tid),
+                        "color": tk_color(tid),
+                    }
                     for tid in produced
                 ],
             }

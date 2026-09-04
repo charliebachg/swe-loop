@@ -697,14 +697,10 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
             concurrency=1,
             schedule="every weekday at 06:00",
             notes=(
-                "Devin ships a scanner and this runs it rather than describing one. A scan is "
-                "started against the repository with an area to look in, never a defect to look "
-                "for, and its findings arrive as tickets. Devin offers ten areas; security is "
-                "the only one that runs without a scan profile, and a profile can only be made "
-                "in the Devin console, so security is what this runs. Every finding goes to a "
-                "person: this repository requires an automated security finding to name the "
-                "capability row in SECURITY.md it violates and the principal the attacker "
-                "holds, and to be filed as a question when it cannot name both."
+                "The recurrence is Devin's own. A schedule is registered against the scan and "
+                "Devin backs it with an Automation on the organisation, so the timer is theirs "
+                "and not a loop of ours. It is registered switched off; the row above says "
+                "which Automation it is and what state it is in."
             ),
         )
 
@@ -729,6 +725,9 @@ def _native_automations(client: DevinClient | None) -> dict[str, Any]:
     try:
         for a in client.t.list_automations():
             out[a.get("name", "")] = a
+            # also keyed by id, because a schedule Devin made for us carries a name of its own
+            if a.get("automation_id"):
+                out[a["automation_id"]] = a
     except Exception:  # noqa: BLE001 - context, never the page
         out = {}
     _NATIVE["all"] = (_time.monotonic(), out)

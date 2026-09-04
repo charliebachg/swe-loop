@@ -157,6 +157,8 @@ class Transport(Protocol):
     ) -> list[dict[str, Any]]: ...
     def list_code_scan_profiles(self) -> list[dict[str, Any]]: ...
     def remediate_finding(self, scan_id: str, finding_id: str) -> dict[str, Any]: ...
+    def create_auto_scan(self, scan_id: str, payload: dict[str, Any]) -> dict[str, Any]: ...
+    def delete_auto_scan(self, scan_id: str) -> dict[str, Any]: ...
 
 
 # ---------------------------------------------------------------------------- HTTP
@@ -290,6 +292,14 @@ class HttpTransport:
 
     def remediate_finding(self, scan_id: str, finding_id: str) -> dict[str, Any]:
         return self._req("POST", f"/code-scans/{scan_id}/findings/{finding_id}/remediate")
+
+    def create_auto_scan(self, scan_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Ask Devin to keep scanning this repository on a recurrence of its own. Devin backs the
+        schedule with an Automation, so the answer carries the id of the one it made."""
+        return self._req("POST", f"/code-scans/{scan_id}/auto-scan", json=payload)
+
+    def delete_auto_scan(self, scan_id: str) -> dict[str, Any]:
+        return self._req("DELETE", f"/code-scans/{scan_id}/auto-scan")
 
     def get_pr_review(self, pr_url: str) -> dict[str, Any]:
         """Verified live 2026-09-03: status (running | completed), repo_path, pr_number,
@@ -593,6 +603,23 @@ class FakeTransport:
         self.calls.append(("list_code_scan_profiles", None))
         return []
 
+    def create_auto_scan(self, scan_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        self.calls.append(("create_auto_scan", (scan_id, payload)))
+        made = {
+            "scan_id": scan_id,
+            "automation_id": f"auto-fake-{scan_id[-6:]}",
+            "rrule": payload.get("rrule", ""),
+            "enabled": bool(payload.get("enabled", True)),
+        }
+        self._auto_scans = getattr(self, "_auto_scans", {})
+        self._auto_scans[scan_id] = made
+        return made
+
+    def delete_auto_scan(self, scan_id: str) -> dict[str, Any]:
+        self.calls.append(("delete_auto_scan", scan_id))
+        getattr(self, "_auto_scans", {}).pop(scan_id, None)
+        return {}
+
     def remediate_finding(self, scan_id: str, finding_id: str) -> dict[str, Any]:
         self.calls.append(("remediate_finding", (scan_id, finding_id)))
         self._remediated = getattr(self, "_remediated", 0) + 1
@@ -663,3 +690,18 @@ class DevinClient:
 
     def remediate(self, scan_id: str, finding_id: str) -> dict[str, Any]:
         return self.t.remediate_finding(scan_id, finding_id)
+
+    def auto_scan(self, scan_id: str, rrule: str, *, enabled: bool = False) -> dict[str, Any]:
+        """Hand the recurrence to Devin instead of running one ourselves. Devin backs it with an
+        Automation of its own; created switched off, because a schedule that fires the morning of
+        a walk-through is not something to turn on by surprise."""
+        return self.t.create_auto_scan(scan_id, {"rrule": rrule, "enabled": enabled})
+
+    def stop_auto_scan(self, scan_id: str) -> dict[str, Any]:
+        return self.t.delete_auto_scan(scan_id)
+
+    def automation(self, automation_id: str) -> dict[str, Any] | None:
+        """One automation as Devin holds it, so a page can show the real state and not ours."""
+        return next(
+            (a for a in self.t.list_automations() if a.get("automation_id") == automation_id), None
+        )

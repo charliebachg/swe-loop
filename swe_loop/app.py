@@ -240,17 +240,28 @@ def build_app(
             ),
         )
 
+    def _rrule_words(schedule: str | None) -> str:
+        return schedule or "on a recurrence Devin holds"
+
     @app.get("/automations/native", response_class=HTMLResponse)
     def automations_native(name: str, request: Request) -> HTMLResponse:
         """One line about what the organisation itself holds, fetched after the row is drawn so a
-        call across the network never delays the page."""
+        call across the network never delays the page. `name` is our automation id when Devin
+        holds the recurrence for us, and the row's name otherwise."""
+        st = request.app.state.store
+        row = st.get_automation(name) or {}
         native = pages._native_automations(request.app.state.client)
-        a = native.get(name)
-        text = (
-            f"native Automation {a.get('id') or a.get('automation_id')}"
-            if a
-            else "no Automation of this name on the organisation; this one runs from here"
-        )
+        a = native.get(row.get("devin_automation_id") or "") or native.get(row.get("name") or name)
+        if a and row.get("devin_automation_id"):
+            state = "switched on" if a.get("enabled") else "switched off"
+            text = (
+                f"Devin runs this one: Automation {a['automation_id']}, "
+                f"named {a.get('name', '')}, {state}, {_rrule_words(row.get('schedule'))}"
+            )
+        elif a:
+            text = f"native Automation {a.get('id') or a.get('automation_id')}"
+        else:
+            text = "no Automation of this name on the organisation; this one runs from here"
         return HTMLResponse(
             f'<span style="text-wrap:pretty;min-width:0;overflow-wrap:anywhere">{escape(text)}</span>'
         )

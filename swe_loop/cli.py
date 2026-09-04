@@ -82,6 +82,41 @@ def cmd_seed(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_schedule(args: argparse.Namespace) -> int:
+    """Hand the code scan's recurrence to Devin, or take it back."""
+    from swe_loop import codescan
+
+    settings, _cfg, store, client = _ctx()
+    if not settings.live:
+        print("mode=replay: nothing is registered on the organisation", file=sys.stderr)
+        return 1
+    row = store.get_automation(args.id)
+    if row is None:
+        print(f"no automation {args.id}", file=sys.stderr)
+        return 1
+    scans = store.list_scan_sessions()
+    scan_id = args.scan or next(
+        (
+            c["devin_session_id"]
+            for c in reversed(scans)
+            if (c["devin_session_id"] or "").startswith("scan-")
+        ),
+        None,
+    )
+    if not scan_id:
+        print("no Devin code scan to attach a schedule to; run the scan first", file=sys.stderr)
+        return 1
+    if args.remove:
+        codescan.take_schedule_back(store, client, scan_id, aid=args.id)
+        print(json.dumps({"scan_id": scan_id, "schedule": "removed"}))
+        return 0
+    made = codescan.hand_schedule_to_devin(
+        store, client, scan_id, args.rrule, enabled=args.on, aid=args.id
+    )
+    print(json.dumps(made))
+    return 0
+
+
 def cmd_automation(args: argparse.Namespace) -> int:
     """The Run button, from a terminal: the same chain, the same code."""
     from swe_loop import pages, runner
@@ -644,6 +679,17 @@ def main(argv: list[str] | None = None) -> int:
         help="file the tickets and stop; nothing is scoped or repaired",
     )
     au.set_defaults(fn=cmd_automation)
+    sc = sub.add_parser("schedule", help="let Devin run the code scan on its own recurrence")
+    sc.add_argument("--id", default="auto_codescan", help="which automation the schedule backs")
+    sc.add_argument("--scan", help="the Devin code scan id; the most recent one by default")
+    sc.add_argument(
+        "--rrule",
+        default="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=6;BYMINUTE=0",
+        help="iCal recurrence Devin runs it on",
+    )
+    sc.add_argument("--on", action="store_true", help="start it switched on; off by default")
+    sc.add_argument("--remove", action="store_true", help="take the schedule off Devin")
+    sc.set_defaults(fn=cmd_schedule)
     rs = sub.add_parser("reset-shard")
     rs.add_argument("--shard", required=True, help="the shard letter, e.g. D")
     rs.add_argument("--no-push", action="store_true", help="restore in the local clone only")

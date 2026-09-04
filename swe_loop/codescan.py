@@ -290,6 +290,34 @@ def safe_title(t: dict[str, Any], hide: bool) -> str:
     return f"{kind}, detail withheld until someone confirms it"
 
 
+# ------------------------------------------------------------- Devin holds the recurrence
+def hand_schedule_to_devin(
+    store: Store, client: Any, scan_id: str, rrule: str, *, enabled: bool = False, aid: str
+) -> dict[str, Any]:
+    """Ask Devin to keep scanning on a recurrence of its own, rather than us running a timer.
+
+    Devin backs the schedule with an Automation on the organisation, so what comes back is the
+    id of a real thing that a person can see and switch on. It is created switched off: a scan
+    that starts by itself on the morning of a walk-through is not a surprise anyone wants.
+    """
+    made = client.auto_scan(scan_id, rrule, enabled=enabled)
+    store.set_automation(aid, devin_automation_id=made.get("automation_id"))
+    store.log(
+        "scan",
+        "Devin holds the schedule now",
+        detail=f"Automation {made.get('automation_id')} · {made.get('rrule')} · "
+        + ("switched on" if made.get("enabled") else "switched off"),
+    )
+    return made
+
+
+def take_schedule_back(store: Store, client: Any, scan_id: str, *, aid: str) -> None:
+    """Remove the recurrence from Devin and forget its id."""
+    client.stop_auto_scan(scan_id)
+    store.set_automation(aid, devin_automation_id=None)
+    store.log("scan", "the schedule was removed from Devin", detail=scan_id)
+
+
 # ---------------------------------------------------------------- Devin fixes its own finding
 def acceptance_for(files: list[str], root: Path) -> dict[str, str]:
     """What to re-run against a fix nobody wrote a ticket for.
