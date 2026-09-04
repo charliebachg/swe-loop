@@ -33,7 +33,7 @@
                 <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:#626b78;margin-top:5px;align-items:baseline"><span>{{ r.count }}</span><span>{{ r.nSessions }}</span><span>{{ r.age }}</span>{% if r.sessionUrl %}<a href="{{ r.sessionUrl }}" target="_blank" onclick="event.stopPropagation()" style="color:#7a4fb5">{{ r.sessionLabel }} ↗</a>{% endif %}{% if r.prLabel %}<a href="{{ r.prUrl }}" target="_blank" onclick="event.stopPropagation()">{{ r.prLabel }} ↗</a>{% endif %}</div>
               </div>
               <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end">
-                <span style="{{ PILL }};background:{% if r.route == 'devin' %}#f1eafa{% elif r.route == 'refuse' %}#e9e7e1{% elif r.route %}#fff3d6{% else %}#e9e7e1{% endif %};color:{% if r.route == 'devin' %}#7a4fb5{% elif r.route == 'refuse' %}#8f97a3{% elif r.route %}#b8862a{% else %}#8f97a3{% endif %}">{% if r.route == 'devin' %}Devin{% elif r.route == 'refuse' %}nobody{% elif r.route %}your team{% else %}not scoped yet{% endif %}</span>
+                {% if r.route != 'refuse' %}<span style="{{ PILL }};background:{% if r.route == 'devin' %}#f1eafa{% elif r.route %}#fff3d6{% else %}#e9e7e1{% endif %};color:{% if r.route == 'devin' %}#7a4fb5{% elif r.route %}#b8862a{% else %}#8f97a3{% endif %}">{% if r.route == 'devin' %}Devin{% elif r.route %}your team{% else %}not scoped yet{% endif %}</span>{% endif %}
                 <span style="{{ PILL }};background:{{ r.stBg }};color:{{ r.stFg }}">{{ r.status }}</span>
               </div>
               <span style="color:#8f97a3;font-size:11px;text-align:right;padding-top:4px">{{ r.chev }}</span>
