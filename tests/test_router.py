@@ -166,3 +166,58 @@ def test_human_only_reason_quotes_the_verdict(tmp_path):
         "2 site(s) need a person (+1 more)" in d.reason
         and "client_processing.py:639: Silent behaviour change" in d.reason
     )
+
+
+def test_a_note_asking_for_review_does_not_hand_the_ticket_over(tmp_path):
+    """A session saying "someone should sign this off" is not the same as a session being
+    forbidden to touch the file. The first gets written and reviewed; the second goes to a team."""
+    from swe_loop.router import blocking_notes, route_ticket
+
+    advisory = [
+        {
+            "site": "superset/models/helpers.py:345",
+            "reason": "Reviewer sign-off on semantics, not a blocker",
+        }
+    ]
+    forbidden = [{"site": "tests/unit_tests/x_test.py:41", "reason": "test expectation"}]
+    reserved = [{"site": "superset/a.py:1", "class": "chained-assignment", "reason": "context"}]
+    marked = [{"site": "superset/a.py:1", "reason": "must be a person", "blocking": True}]
+    assert blocking_notes(CFG, advisory) == []
+    assert blocking_notes(CFG, forbidden) == forbidden
+    assert blocking_notes(CFG, reserved) == reserved
+    assert blocking_notes(CFG, marked) == marked
+    assert blocking_notes(CFG, True) is True
+
+    st = Store(tmp_path / "t.sqlite")
+    st.upsert_ticket(
+        id="tkt_D",
+        source="inventory",
+        title="d",
+        status="triaged",
+        triage_verdict={
+            "split": "one",
+            "acceptance_cmd": {"p3": "true"},
+            "sites": [{"file": "superset/models/helpers.py", "line": 345}],
+            "needs_human": advisory,
+        },
+    )
+    st.insert_work_order(
+        ticket_id="tkt_D",
+        shard_id="D",
+        files=["superset/models/helpers.py"],
+        tests=["tests/unit_tests/common/test_time_shifts.py"],
+        acceptance={"p3": "true"},
+    )
+    d = route_ticket(st, "tkt_D", CFG)[0]
+    assert d.route == "devin" and d.review == "required"
+    assert "signs it off" in d.reason
+
+
+def test_a_note_about_another_file_does_not_block_this_piece(tmp_path):
+    from swe_loop.router import notes_for
+
+    shard = {"files": ["superset/a.py"]}
+    elsewhere = [{"site": "tests/unit_tests/x_test.py:1", "reason": "test"}]
+    assert notes_for(shard, elsewhere) == []
+    here = [{"site": "superset/a.py:9", "reason": "look at this"}]
+    assert notes_for(shard, here) == here

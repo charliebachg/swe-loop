@@ -4,24 +4,70 @@
   "description": "What a triage session returns. Encodes the three pre-task questions: can success be described (acceptance_cmd), is there enough context (context_sufficient, missing), would breaking it down help (split, shards).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["ticket_id", "summary", "acceptance_cmd", "context_sufficient", "split", "est_size", "needs_human", "sites"],
+  "required": [
+    "ticket_id",
+    "summary",
+    "acceptance_cmd",
+    "context_sufficient",
+    "split",
+    "est_size",
+    "needs_human",
+    "sites"
+  ],
   "properties": {
-    "ticket_id": {"type": "string", "minLength": 1},
-    "summary": {"type": "string", "minLength": 1, "maxLength": 2000},
-    "classes": {"type": "array", "items": {"type": "string"}},
+    "ticket_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "classes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "sites": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["file", "line", "class", "kind"],
+        "required": [
+          "file",
+          "line",
+          "class",
+          "kind"
+        ],
         "properties": {
-          "file": {"type": "string"},
-          "line": {"type": "integer", "minimum": 1},
-          "class": {"type": "string"},
-          "kind": {"type": "string", "enum": ["mechanical", "semantic"]},
-          "prescribed_fix": {"type": "string"},
-          "tests": {"type": "array", "items": {"type": "string"}}
+          "file": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "class": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "mechanical",
+              "semantic"
+            ]
+          },
+          "prescribed_fix": {
+            "type": "string"
+          },
+          "tests": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       }
     },
@@ -29,38 +75,118 @@
       "type": "object",
       "description": "Named commands. Each must exit 0 when the work is done.",
       "minProperties": 1,
-      "additionalProperties": {"type": "string", "minLength": 1}
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
     },
-    "context_sufficient": {"type": "boolean"},
-    "missing": {"type": "array", "items": {"type": "string"}},
-    "split": {"type": "string", "enum": ["one", "parallel"]},
+    "context_sufficient": {
+      "type": "boolean"
+    },
+    "missing": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "split": {
+      "type": "string",
+      "enum": [
+        "one",
+        "parallel"
+      ]
+    },
     "shards": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "files", "tests", "classes", "est_size"],
+        "required": [
+          "id",
+          "files",
+          "tests",
+          "classes",
+          "est_size"
+        ],
         "properties": {
-          "id": {"type": "string"},
-          "files": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-          "tests": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-          "classes": {"type": "array", "items": {"type": "string"}},
-          "est_size": {"type": "string", "enum": ["XS", "S", "M"]},
-          "acceptance_cmd": {"type": "object", "additionalProperties": {"type": "string"}},
-          "review": {"type": "string", "enum": ["normal", "required"]}
+          "id": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "tests": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "classes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "est_size": {
+            "type": "string",
+            "enum": [
+              "XS",
+              "S",
+              "M"
+            ]
+          },
+          "acceptance_cmd": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "review": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "required"
+            ]
+          }
         }
       }
     },
-    "est_size": {"type": "string", "enum": ["XS", "S", "M", "L", "XL"]},
+    "est_size": {
+      "type": "string",
+      "enum": [
+        "XS",
+        "S",
+        "M",
+        "L",
+        "XL"
+      ]
+    },
     "needs_human": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["site", "reason"],
+        "required": [
+          "site",
+          "reason"
+        ],
         "properties": {
-          "site": {"type": "string"},
-          "reason": {"type": "string", "minLength": 1}
+          "site": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "blocking": {
+            "type": "boolean",
+            "description": "true when a session must not do this work at all, for example the place is a test file or the change is one the repository reserves for a person. false when it is a note for whoever reviews the change, and the work can go ahead with review forced. Omit it and the loop decides from where the site is."
+          }
         }
       }
     }

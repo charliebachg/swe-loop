@@ -101,12 +101,15 @@ def build_triage_spec(
     )
 
 
-def apply_verdict(store: Store, ticket_id: str, verdict: dict[str, Any]) -> list[str]:
+def apply_verdict(
+    store: Store, ticket_id: str, verdict: dict[str, Any], cfg: TargetConfig | None = None
+) -> list[str]:
     """Record the verdict and create work orders. Returns the work order ids.
 
-    Routing is the router's job; this only turns shards into rows. If the verdict says the
-    whole ticket needs a person, no work order is created and the router will see needs_human.
-    """
+    Routing is the router's job; this only turns shards into rows. A note that forbids the work,
+    because of where it is or what kind of change it is, means no work order and the router hands
+    the ticket over. A note asking for a second opinion does not: the work goes ahead and the
+    review is forced."""
     problems = validate_verdict(verdict)
     if problems:
         raise ValueError("verdict rejected: " + "; ".join(problems))
@@ -143,8 +146,21 @@ def apply_verdict(store: Store, ticket_id: str, verdict: dict[str, Any]) -> list
     else:
         files = sorted({s["file"] for s in verdict["sites"]})
         tests = sorted({t_ for s in verdict["sites"] for t_ in s.get("tests", [])})
-        human_only = {h["site"] for h in verdict["needs_human"]}
-        if files and not all(f"{s['file']}:{s['line']}" in human_only for s in verdict["sites"]):
+        from swe_loop.router import blocking_notes
+
+        notes = (
+            blocking_notes(cfg, verdict.get("needs_human"))
+            if cfg is not None
+            else verdict["needs_human"]
+        )
+        blocked = (
+            set()
+            if notes is True
+            else {h.get("site") for h in notes if isinstance(h, dict)}
+            if isinstance(notes, list)
+            else set()
+        )
+        if files and not all(f"{s['file']}:{s['line']}" in blocked for s in verdict["sites"]):
             ids.append(
                 store.insert_work_order(
                     ticket_id=ticket_id,
@@ -300,7 +316,7 @@ def run_triage(
     if out.get("ticket_id") != ticket_id:
         out = {**out, "ticket_id": ticket_id}
     try:
-        ids = apply_verdict(store, ticket_id, out)
+        ids = apply_verdict(store, ticket_id, out, cfg)
     except ValueError as ex:
         store.update_triage_session(tid, terminal_at=now(), outcome="invalid", verdict=out)
         store.insert_escalation(ticket_id, None, "review_blocked", str(ex)[:300])

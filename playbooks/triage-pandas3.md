@@ -19,8 +19,12 @@ be split. The result is a structured verdict. You will not change any code.
    acceptance command. If not, split it and say why.
 6. Name the acceptance command for each group as a pytest invocation over the impacted tests
    only, with warnings promoted to errors, and a second invocation on the new library version.
-7. List anything that needs a person: semantics the upstream release notes say require manual
-   review, changes to tests or CI configuration, changes under paths with 100% coverage gates.
+7. List anything that needs a person under `needs_human`, and say which kind it is with
+   `blocking`. Set `blocking: true` when a session must not do the work at all: the site is a
+   test or CI file, or the change is one the repository reserves for a person. Set
+   `blocking: false` when the work can be done but someone should sign it off, for example a
+   semantic change the named tests would not catch. A note asking for a second opinion is not a
+   refusal: the change is still written, and the review is forced.
 8. Provide the structured output with `is_final=true`. The session is done when that call has
    been made. Do not open a pull request. Do not push.
 

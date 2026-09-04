@@ -77,21 +77,75 @@ def decide(shard: dict[str, Any], cfg: TargetConfig, verdict: dict[str, Any] | N
             f"class {sorted(bad)} is context-dependent per the upstream release notes; needs manual review",
             shard=shard,
         )
-    if verdict and verdict.get("needs_human") is True:
-        return Decision(
-            "human_only", "triage marked the whole ticket as needing a person", shard=shard
-        )
+    # only notes about this piece of work matter here; the others belong to another shard
+    mine = notes_for(shard, (verdict or {}).get("needs_human"))
+    blocking = blocking_notes(cfg, mine)
+    if blocking:
+        return Decision("human_only", _needs_human_reason(blocking), shard=shard)
 
     review = "normal"
     silent = [s for s in sites if s.get("warned") and not s.get("broke")]
-    if silent or (verdict or {}).get("review") == "required":
+    advisory = [h for h in (mine or []) if isinstance(h, dict)] if not blocking else []
+    if silent or advisory or (verdict or {}).get("review") == "required":
         review = "required"
     reason = f"{len(files)} file(s), {shard.get('site_count', len(files))} site(s), acceptance command present"
     if silent:
         reason += f"; {len(silent)} site(s) warned but did not break: silent behaviour change, review required"
-    if review == "required" and "review required" not in reason:
+    if advisory:
+        reason += (
+            f"; {len(advisory)} note(s) for whoever reviews it, so the change is written but a "
+            "person signs it off"
+        )
+    if review == "required" and "review" not in reason:
         reason += "; review required per the triage verdict"
     return Decision("devin", reason, review=review, shard=shard)
+
+
+def notes_for(shard: dict[str, Any], needs_human: Any) -> Any:
+    """The session's notes that are about the files this piece of work covers.
+
+    A note about a test file is not a reason to refuse a change to product code somewhere else."""
+    if needs_human is True or not isinstance(needs_human, list):
+        return needs_human
+    files = set(shard.get("files") or [])
+    if not files:
+        return needs_human
+    out = []
+    for h in needs_human:
+        if not isinstance(h, dict):
+            out.append(h)
+            continue
+        where = str(h.get("site") or "").rsplit(":", 1)[0] if h.get("site") else ""
+        if not where or where in files:
+            out.append(h)
+    return out
+
+
+def blocking_notes(cfg: TargetConfig, verdict: Any) -> Any:
+    """Which of the session's notes actually stop it from doing the work.
+
+    A note is blocking when the session says so, when the place it names is somewhere a session
+    may never edit, or when the kind of change is one the seam reserves for a person. Anything
+    else is a note for whoever reviews the change, and the work goes ahead with review forced.
+    A session asking for a second opinion is not the same as a session being forbidden."""
+    if verdict is True:
+        return True  # the whole ticket, in the verdict's own shorthand
+    if not isinstance(verdict, list):
+        return []
+    forbidden = tuple(cfg.forbidden_paths)
+    human_classes = {c.lower() for c in cfg.router.get("human_only_classes", [])}
+    out = []
+    for h in verdict:
+        if not isinstance(h, dict):
+            out.append({"site": "", "reason": str(h)[:200]})
+            continue
+        if h.get("blocking") is False:
+            continue
+        where = str(h.get("site") or "")
+        cls = str(h.get("class") or "").lower()
+        if h.get("blocking") is True or where.startswith(forbidden) or cls in human_classes:
+            out.append(h)
+    return out
 
 
 def _needs_human_reason(needs_human: Any) -> str:
@@ -116,10 +170,13 @@ def route_ticket(store: Store, ticket_id: str, cfg: TargetConfig) -> list[Decisi
     decisions: list[Decision] = []
 
     if not wos:
-        if verdict and verdict.get("needs_human"):
+        notes = (verdict or {}).get("needs_human")
+        if notes:
+            # nothing was scoped for a session, so it goes to a person whether the notes
+            # forbid the work or only ask about it
             d = Decision(
                 "human_only",
-                _needs_human_reason(verdict["needs_human"]),
+                _needs_human_reason(blocking_notes(cfg, notes) or notes),
                 shard={},
             )
         else:
