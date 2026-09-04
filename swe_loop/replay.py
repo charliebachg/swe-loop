@@ -81,6 +81,9 @@ def restore(store: Store, path: Path | str) -> dict[str, int]:
                 f"INSERT OR REPLACE INTO {t} ({cols}) VALUES ({qs})", tuple(r.values())
             )
         counts[t] = len(rows)
+    # the recording carries the columns that existed when it was made, so anything added since
+    # arrives empty. A ticket with no number shows as blanks on every badge in the app.
+    store.number_unnumbered_tickets()
     return counts
 
 

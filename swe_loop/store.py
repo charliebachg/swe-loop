@@ -214,18 +214,28 @@ class Store:
             cols = {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if col not in cols:
                 self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
-        # a store written before ticket numbers existed: number them in the order they arrived
-        for i, r in enumerate(
-            self.conn.execute(
-                "SELECT id FROM tickets WHERE number IS NULL ORDER BY created_at, rowid"
-            ).fetchall(),
-            start=(self.conn.execute("SELECT COALESCE(MAX(number), 0) FROM tickets").fetchone()[0])
-            + 1,
-        ):
-            self.conn.execute("UPDATE tickets SET number=? WHERE id=?", (i, r[0]))
+        self.number_unnumbered_tickets()
         for old, new in STEP_RENAMES.items():
             self.conn.execute("UPDATE timeline SET layer=? WHERE layer=?", (new, old))
         self.conn.commit()
+
+    def number_unnumbered_tickets(self) -> int:
+        """Give a number to any ticket that arrived without one, in the order they arrived.
+
+        Rows written before ticket numbers existed need this, and so does a replay restored from
+        a recording made then: it inserts the recorded columns verbatim, so the tickets land with
+        no number and every badge on the board reads as blanks until something fills them in.
+        """
+        rows = self.conn.execute(
+            "SELECT id FROM tickets WHERE number IS NULL ORDER BY created_at, rowid"
+        ).fetchall()
+        start = (
+            self.conn.execute("SELECT COALESCE(MAX(number), 0) FROM tickets").fetchone()[0]
+        ) + 1
+        for i, r in enumerate(rows, start=start):
+            self.conn.execute("UPDATE tickets SET number=? WHERE id=?", (i, r[0]))
+        self.conn.commit()
+        return len(rows)
 
     def _connect(self) -> sqlite3.Connection:
         c = sqlite3.connect(self.path, isolation_level=None, check_same_thread=False, timeout=30.0)

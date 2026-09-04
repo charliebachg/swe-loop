@@ -309,3 +309,21 @@ def test_our_switch_does_not_touch_devins_schedule(client):
     c.post("/automations/auto_codescan/toggle")
     after = len([x for x in transport.calls if x[0] == "update_automation"])
     assert after == before
+
+
+def test_a_replayed_store_has_numbered_tickets_before_a_page_is_drawn(tmp_path, monkeypatch):
+    """The recording carries the columns that existed when it was made.
+
+    Anything added since arrives empty, and a ticket with no number renders as "#-----" on every
+    badge in the app. Numbering on the next Store construction is too late: the container seeds
+    at startup and serves from that same store, so the first thing a reader saw was blanks.
+    """
+    monkeypatch.setenv("SWE_LOOP_MODE", "replay")
+    st = Store(tmp_path / "r.sqlite")
+    app = build_app(Settings.from_env(), st)
+    with TestClient(app) as c:
+        r = c.get("/")
+
+    numbers = [t.get("number") for t in st.list_tickets()]
+    assert numbers and all(n for n in numbers), f"a ticket arrived with no number: {numbers}"
+    assert "#-----" not in r.text
