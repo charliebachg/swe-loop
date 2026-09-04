@@ -159,6 +159,7 @@ class Transport(Protocol):
     def remediate_finding(self, scan_id: str, finding_id: str) -> dict[str, Any]: ...
     def create_auto_scan(self, scan_id: str, payload: dict[str, Any]) -> dict[str, Any]: ...
     def delete_auto_scan(self, scan_id: str) -> dict[str, Any]: ...
+    def update_automation(self, automation_id: str, patch: dict[str, Any]) -> dict[str, Any]: ...
 
 
 # ---------------------------------------------------------------------------- HTTP
@@ -300,6 +301,11 @@ class HttpTransport:
 
     def delete_auto_scan(self, scan_id: str) -> dict[str, Any]:
         return self._req("DELETE", f"/code-scans/{scan_id}/auto-scan")
+
+    def update_automation(self, automation_id: str, patch: dict[str, Any]) -> dict[str, Any]:
+        """Change one automation on the organisation. The spec calls this a merge patch: what is
+        not sent is kept, so sending {"enabled": ...} touches nothing else."""
+        return self._req("PATCH", f"/automations/{automation_id}", json=patch)
 
     def get_pr_review(self, pr_url: str) -> dict[str, Any]:
         """Verified live 2026-09-03: status (running | completed), repo_path, pr_number,
@@ -504,7 +510,7 @@ class FakeTransport:
 
     def list_automations(self) -> list[dict[str, Any]]:
         self.calls.append(("list_automations", None))
-        return []
+        return list(getattr(self, "automations", []))
 
     def list_playbooks(self) -> list[dict[str, Any]]:
         self.calls.append(("list_playbooks", None))
@@ -620,6 +626,18 @@ class FakeTransport:
         getattr(self, "_auto_scans", {}).pop(scan_id, None)
         return {}
 
+    def update_automation(self, automation_id: str, patch: dict[str, Any]) -> dict[str, Any]:
+        """Set `lag_automation_reads` to model the real thing: the answer to a change carries the
+        new state while a list read straight afterwards can still carry the old one."""
+        self.calls.append(("update_automation", (automation_id, patch)))
+        for a in getattr(self, "automations", []):
+            if a.get("automation_id") == automation_id:
+                if getattr(self, "lag_automation_reads", False):
+                    return {**a, **patch}
+                a.update(patch)
+                return dict(a)
+        return {"automation_id": automation_id, **patch}
+
     def remediate_finding(self, scan_id: str, finding_id: str) -> dict[str, Any]:
         self.calls.append(("remediate_finding", (scan_id, finding_id)))
         self._remediated = getattr(self, "_remediated", 0) + 1
@@ -699,6 +717,10 @@ class DevinClient:
 
     def stop_auto_scan(self, scan_id: str) -> dict[str, Any]:
         return self.t.delete_auto_scan(scan_id)
+
+    def set_automation_enabled(self, automation_id: str, enabled: bool) -> dict[str, Any]:
+        """Switch a Devin-held schedule on or off, so the button in this app moves the real one."""
+        return self.t.update_automation(automation_id, {"enabled": bool(enabled)})
 
     def automation(self, automation_id: str) -> dict[str, Any] | None:
         """One automation as Devin holds it, so a page can show the real state and not ours."""

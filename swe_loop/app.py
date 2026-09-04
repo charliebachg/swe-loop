@@ -243,27 +243,76 @@ def build_app(
     def _rrule_words(schedule: str | None) -> str:
         return schedule or "on a recurrence Devin holds"
 
+    def _schedule_line(request: Request, aid: str, known: dict[str, Any] | None = None) -> str:
+        """One line about the schedule Devin holds for a row. The state comes from Devin: either
+        the list, or, straight after a change, the answer Devin gave to that change. Re-reading
+        the list immediately after a write can still hand back the value from before it."""
+        st = request.app.state.store
+        row = st.get_automation(aid) or {}
+        devin_id = row.get("devin_automation_id")
+        native = {} if known else pages._native_automations(request.app.state.client)
+        a = known or native.get(devin_id or "") or native.get(row.get("name") or aid)
+        if not a:
+            return escape("no Automation of this name on the organisation; this one runs from here")
+        if not devin_id:
+            return escape(f"native Automation {a.get('id') or a.get('automation_id')}")
+        on = bool(a.get("enabled"))
+        text = (
+            f"Devin runs this one: Automation {a['automation_id']}, "
+            f"{_rrule_words(row.get('schedule'))}, " + ("switched on" if on else "switched off")
+        )
+        btn = "Switch it off" if on else "Switch it on"
+        return (
+            f"{escape(text)} "
+            f'<button hx-post="/automations/{escape(aid)}/schedule" '
+            f'hx-target="closest span" hx-swap="outerHTML" '
+            'style="margin-left:6px;border:1px solid #d8d4cb;background:#fff;border-radius:6px;'
+            "padding:1px 8px;font:12px/1.6 'Instrument Sans',system-ui,sans-serif;"
+            f'cursor:pointer">{escape(btn)}</button>'
+        )
+
     @app.get("/automations/native", response_class=HTMLResponse)
     def automations_native(name: str, request: Request) -> HTMLResponse:
-        """One line about what the organisation itself holds, fetched after the row is drawn so a
-        call across the network never delays the page. `name` is our automation id when Devin
-        holds the recurrence for us, and the row's name otherwise."""
-        st = request.app.state.store
-        row = st.get_automation(name) or {}
-        native = pages._native_automations(request.app.state.client)
-        a = native.get(row.get("devin_automation_id") or "") or native.get(row.get("name") or name)
-        if a and row.get("devin_automation_id"):
-            state = "switched on" if a.get("enabled") else "switched off"
-            text = (
-                f"Devin runs this one: Automation {a['automation_id']}, "
-                f"named {a.get('name', '')}, {state}, {_rrule_words(row.get('schedule'))}"
-            )
-        elif a:
-            text = f"native Automation {a.get('id') or a.get('automation_id')}"
-        else:
-            text = "no Automation of this name on the organisation; this one runs from here"
+        """Fetched after the row is drawn, so a call across the network never delays the page."""
         return HTMLResponse(
-            f'<span style="text-wrap:pretty;min-width:0;overflow-wrap:anywhere">{escape(text)}</span>'
+            '<span style="text-wrap:pretty;min-width:0;overflow-wrap:anywhere">'
+            + _schedule_line(request, name)
+            + "</span>"
+        )
+
+    @app.post("/automations/{aid}/schedule", response_class=HTMLResponse)
+    def automations_schedule_toggle(aid: str, request: Request) -> HTMLResponse:
+        """Switch the schedule Devin holds. This moves Devin, then re-reads Devin: what comes
+        back on the page is their state, never our guess at it."""
+        st = request.app.state.store
+        client = request.app.state.client
+        row = st.get_automation(aid)
+        if not row or not row.get("devin_automation_id"):
+            raise HTTPException(status_code=404, detail="no schedule on Devin for this one")
+        native = pages._native_automations(client)
+        current = native.get(row["devin_automation_id"]) or {}
+        want = not bool(current.get("enabled"))
+        try:
+            moved = client.set_automation_enabled(row["devin_automation_id"], want)
+        except Exception as ex:
+            st.log(
+                "automation",
+                f"could not switch Devin's schedule for {row['name']}",
+                detail=str(ex)[:200],
+            )
+            raise HTTPException(
+                status_code=502, detail="Devin did not accept the change; nothing moved"
+            ) from ex
+        st.log(
+            "automation",
+            f"Devin's schedule for {row['name']} " + ("switched on" if want else "switched off"),
+            detail=row["devin_automation_id"],
+        )
+        pages._NATIVE.pop("all", None)  # the next page load must read Devin, not the cache
+        return HTMLResponse(
+            '<span style="text-wrap:pretty;min-width:0;overflow-wrap:anywhere">'
+            + _schedule_line(request, aid, known={**current, **moved})
+            + "</span>"
         )
 
     @app.post("/automations", response_class=HTMLResponse)
@@ -596,6 +645,8 @@ def build_app(
         return aid
 
     def _toggle_automation(st: Store, aid: str) -> None:
+        """Our own switch: whether this app may run the automation. Devin's schedule is a
+        separate thing with a separate switch, because they answer different questions."""
         a = st.get_automation(aid)
         if not a:
             raise HTTPException(status_code=404)

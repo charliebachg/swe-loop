@@ -2475,6 +2475,8 @@ def automations(
                 "id": r["id"],
                 "name": r["name"],
                 "kindLabel": kind_label,
+                # ours says whether this app may run it; Devin's schedule is its own switch,
+                # shown and moved in the opened row where its live state is read
                 "state": "next version"
                 if is_next
                 else ("running" if r["running"] else ("on" if r["enabled"] else "off")),

@@ -716,7 +716,7 @@ def _native_automations(client: DevinClient | None) -> dict[str, Any]:
     the page: a call across the network on every render made this the slowest page in the app."""
     import time as _time
 
-    if client is None or client.is_fake:
+    if client is None:
         return {}
     hit = _NATIVE.get("all")
     if hit and _time.monotonic() - hit[0] < NATIVE_TTL:

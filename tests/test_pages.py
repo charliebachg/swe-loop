@@ -270,3 +270,42 @@ def test_a_designed_page_returns_the_content_block_to_htmx(client):
         fragment = c.get(path, headers={"HX-Request": "true"}).text
         assert "<aside" not in fragment, path
         assert "<!doctype html>" not in fragment.lower(), path
+
+
+def test_the_switch_on_a_devin_held_schedule_moves_devin_and_reads_back(client):
+    """A row that says Devin runs the schedule must not have a switch that only moves ours.
+
+    The page tells a reader "every weekday at 06:00 on a schedule Devin runs". The button beside
+    that sentence has to move Devin's automation, and what it then shows has to come from Devin
+    rather than from what we assumed the click did.
+    """
+    c, st = client
+    st.set_automation("auto_codescan", devin_automation_id="auto-abc123")
+    transport = c.app.state.client.t
+    transport.automations = [
+        {"automation_id": "auto-abc123", "name": "Scan new commits", "enabled": False}
+    ]
+
+    r = c.post("/automations/auto_codescan/schedule")
+    assert r.status_code == 200
+    assert ("update_automation", ("auto-abc123", {"enabled": True})) in transport.calls
+
+    assert "switched on" in r.text and "Switch it off" in r.text
+
+    # Devin can still answer a list read with the value from before the change, so the line has
+    # to come from what Devin said to the change itself
+    transport.lag_automation_reads = True
+    r2 = c.post("/automations/auto_codescan/schedule")
+    assert ("update_automation", ("auto-abc123", {"enabled": False})) in transport.calls
+    assert "switched off" in r2.text and "Switch it on" in r2.text
+
+
+def test_our_switch_does_not_touch_devins_schedule(client):
+    """The two switches answer different questions: ours is whether this app may run it."""
+    c, st = client
+    st.set_automation("auto_codescan", devin_automation_id="auto-abc123")
+    transport = c.app.state.client.t
+    before = len([x for x in transport.calls if x[0] == "update_automation"])
+    c.post("/automations/auto_codescan/toggle")
+    after = len([x for x in transport.calls if x[0] == "update_automation"])
+    assert after == before
