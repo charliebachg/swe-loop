@@ -124,10 +124,25 @@ class Workspace:
         return [ln.strip() for ln in out.splitlines() if ln.strip()]
 
 
+_LEADING_CD = re.compile(r"^\s*cd\s+(?:'[^']*'|\"[^\"]*\"|[^\s&|;]+)\s*&&\s*")
+
+
+def _drop_leading_cd(cmd: str) -> str:
+    """A session sometimes prefixes its command with `cd` into the checkout it worked in. That
+    path is on Devin's machine, not this one, and the check already runs in the worktree we made
+    for it. Left in place the `cd` fails, `&&` short-circuits, and the change is recorded as
+    failing for a reason that has nothing to do with the change."""
+    out = cmd
+    while m := _LEADING_CD.match(out):
+        out = out[m.end() :]
+    return out or cmd
+
+
 def absolutize_command(cmd: str, repo_root: Path) -> str:
     """Acceptance commands in tickets name interpreters relative to the target clone
     (`.venv-p3/bin/python ...`). In a worktree those paths do not exist; point them at the
     clone's environments."""
+    cmd = _drop_leading_cd(cmd)
     parts = shlex.split(cmd)
     parts = [str(repo_root / p) if p.startswith(".venv") else p for p in parts]
     if "swe_loop" in cmd:

@@ -196,3 +196,20 @@ def test_apply_pass_requests_review_and_fail_retries_then_escalates(tmp_path):
     assert (
         esc["kind"] == "detector_still_fires" and st2.get_ticket("tkt_D")["status"] == "escalated"
     )
+
+
+def test_a_command_that_cds_into_devins_own_checkout_still_runs_here():
+    """A session sometimes writes `cd /home/ubuntu/repos/... && pytest ...`, naming the checkout
+    it worked in. That path is not on this machine, and the check already runs in the worktree
+    made for it. Left in, the cd fails, && short-circuits, and a good change is recorded as
+    failing for a reason that has nothing to do with the change."""
+    root = Path("/repo")
+    got = absolutize_command(
+        "cd /home/ubuntu/repos/superset && .venv-p3/bin/python -m pytest a.py", root
+    )
+    assert got == "/repo/.venv-p3/bin/python -m pytest a.py"
+    # a cd in the middle is the ticket's own business and is left alone
+    kept = absolutize_command("echo one && cd /elsewhere && echo two", root)
+    assert kept == "echo one && cd /elsewhere && echo two"
+    # a command that is only a cd is not emptied into nothing
+    assert absolutize_command("cd /somewhere", root) == "cd /somewhere"
