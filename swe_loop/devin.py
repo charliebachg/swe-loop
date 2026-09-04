@@ -578,6 +578,9 @@ class FakeTransport:
         sc = getattr(self, "_scan", None)
         if not sc or sc["status"] != "completed":
             return []
+        # a test can say what a later look at the same scan turns up, the way new commits do
+        if getattr(self, "_findings", None) is not None:
+            return [dict(f, scan_id=sc["scan_id"]) for f in self._findings]
         return [
             {
                 "finding_id": "fake-finding-001",

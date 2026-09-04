@@ -664,3 +664,73 @@ def test_a_scan_this_loop_started_is_not_adopted_as_someone_elses(tmp_path):
     out = codescan.adopt(settings, cfg, st, client, log=lambda _m: None)
     assert out["kind"] == "none"
     assert len(st.list_scan_sessions()) == before
+
+
+def test_new_findings_on_a_scan_we_already_hold_are_picked_up_too(tmp_path):
+    """A schedule bound to an existing scan re-runs that scan against the new commits.
+
+    So the work can arrive as findings on a scan this store already has a row for, rather than as
+    a scan it has never seen. That is the same event wearing different clothes, and missing it
+    would mean the schedule fires, Devin finds something, and the board stays empty.
+    """
+    from swe_loop import codescan
+
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    settings = Settings.from_env()
+    client = DevinClient(FakeTransport())
+
+    codescan.run(settings, cfg, st, client, log=lambda _m: None)
+    first = {t["id"] for t in st.list_tickets()}
+    assert first, "the first scan filed something"
+
+    # the schedule fires: the same scan, a finding that was not there before
+    client.t._findings = [
+        {
+            "finding_id": "sfind-fromtheschedule",
+            "title": "found after the new commits landed",
+            "severity": "high",
+            "file_path": "superset/models/core.py",
+            "line": 12,
+            "category": "other-info-disclosure",
+        }
+    ]
+    out = codescan.adopt(settings, cfg, st, client, log=lambda _m: None)
+
+    assert out["kind"] == "adopted"
+    assert not [c for c in client.t.calls if c[0] == "start_code_scan"][1:], "no second scan"
+    after = {t["id"] for t in st.list_tickets()}
+    assert len(after) > len(first), "the new finding became a ticket"
+
+
+def test_the_cap_counts_tickets_made_not_findings_read(tmp_path):
+    """Capping before deduping spends the whole allowance on findings already on the board."""
+    from swe_loop import codescan
+
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    already = [
+        {
+            "finding_id": f"sfind-old{i}",
+            "title": f"old {i}",
+            "severity": "critical",
+            "file_path": f"superset/old{i}.py",
+            "line": 1,
+        }
+        for i in range(3)
+    ]
+    fresh = [
+        {
+            "finding_id": "sfind-new",
+            "title": "new one, lower severity",
+            "severity": "low",
+            "file_path": "superset/new.py",
+            "line": 1,
+        }
+    ]
+    codescan.file_findings(st, cfg, already, limit=3)
+    assert len(st.list_tickets()) == 3
+
+    out = codescan.file_findings(st, cfg, already + fresh, limit=3)
+    assert out["new"], "the new finding is filed even though three older ones sort above it"
+    assert len(out["known"]) == 3

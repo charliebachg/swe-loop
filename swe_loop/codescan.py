@@ -76,9 +76,6 @@ def file_findings(
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     findings = sorted(findings, key=lambda f: order.get(str(f.get("severity")), 9))
     dropped = 0
-    if limit is not None and len(findings) > limit:
-        dropped = len(findings) - limit
-        findings = findings[:limit]
     new, known, refused, taken, questions = [], [], [], [], []
     for f in findings:
         where = where_of(f)
@@ -91,6 +88,12 @@ def file_findings(
         tid = finding_id(f)
         if store.get_ticket(tid):
             known.append(tid)
+            continue
+        # the cap counts tickets this run creates, not findings it reads. Counting reads instead
+        # means a re-scan spends its whole allowance on findings already on the board and files
+        # none of the new ones.
+        if limit is not None and len(new) >= limit:
+            dropped += 1
             continue
         title = clip(str(f.get("title") or where or "a finding with no title"), 190)
         store.insert_event("code_scan", f, ticket_id=tid)
@@ -277,16 +280,41 @@ def adopt(
         else _time.sleep
     )
     ours = {c["devin_session_id"] for c in store.list_scan_sessions()}
-    theirs = [
-        s
-        for s in client.t.list_code_scans()
-        if s.get("scan_id") not in ours and s.get("repo_name") == cfg.repo
-    ]
-    if not theirs:
-        log("no scan on the organisation that this loop did not start")
+    on_org = [s for s in client.t.list_code_scans() if s.get("repo_name") == cfg.repo]
+    theirs = [s for s in on_org if s.get("scan_id") not in ours]
+
+    # A schedule bound to an existing scan re-runs that scan against the new commits, so the new
+    # work can arrive as findings on a scan we already hold rather than as a scan we do not.
+    # Both are the same event and both have to be looked for.
+    again = []
+    for s in on_org:
+        sid_scan = s.get("scan_id")
+        if sid_scan not in ours or str(s.get("status")) not in TERMINAL:
+            continue
+        fresh = file_findings(store, cfg, client.code_scan_findings(sid_scan), limit)
+        if fresh["new"]:
+            row = next(
+                (
+                    c
+                    for c in store.list_scan_sessions()
+                    if c["devin_session_id"] == sid_scan
+                ),
+                None,
+            )
+            store.log(
+                "scan",
+                "Devin's schedule scanned the new commits",
+                session_id=row["id"] if row else None,
+                detail=f"{plural(len(fresh['new']), 'new finding')} on {sid_scan}",
+            )
+            log(f"{sid_scan}: {len(fresh['new'])} new since we last looked")
+            again.append({"kind": "filed", "scan": sid_scan, "area": s.get("scan_type"), **fresh})
+
+    if not theirs and not again:
+        log("no scan on the organisation that this loop did not start, and nothing new on ours")
         return {"kind": "none", "adopted": []}
 
-    out = []
+    out = list(again)
     for scan in theirs:
         scan_id = scan["scan_id"]
         area = str(scan.get("scan_type") or cfg.scan.get("devin_area") or "security")
