@@ -50,8 +50,8 @@ scanner. Twelve changes were written and checked; twelve passed. 11 were merged 
 The one to read is `#00001`. Its scoping session read the ticket and declined: the three places
 sat behind tests that encode pandas 2 behaviour, and a session may not edit tests, so it returned
 three notes and the router filed it for a person. A maintainer answered on the issue with the
-three prescribed fixes and confirmed the tests could stay as they were. That answer woke the same
-session, which re-scoped the ticket in under two minutes; the repair session opened its pull
+three prescribed fixes and confirmed the tests could stay as they were. A scoping session started
+with that answer and re-scoped the ticket in under two minutes; the repair session opened its pull
 request six minutes later and the checks passed it. The system did not guess. It asked, and it
 kept the conversation.
 
@@ -118,8 +118,8 @@ and reading what came back.
 remarks, and revises. On `#00002` and `#00003` Devin Review's remarks went back into the repair
 session that wrote the code, which revised, and the gate re-ran the acceptance commands before
 anyone saw it. `#00001` waited on a person: its scoping session declined and asked a question, a
-maintainer answered on the issue, and that answer woke the same session, which re-scoped in under
-two minutes with everything it already knew. A process that exits when its command finishes cannot
+maintainer answered on the issue, and a scoping session started with that answer and re-scoped in
+under two minutes with everything it already knew. A process that exits when its command finishes cannot
 do either.
 
 **The gate is what makes the volume safe.** It is easy to point a model at 351 call sites and
@@ -164,8 +164,11 @@ the Automations page moves Devin's, then shows what Devin answered. Devin has no
 webhook, so `swe-loop watch` polls: a tick that finds nothing does nothing, and never starts a
 scan of its own, because that would make the timer beside the point. Because it reads state
 rather than events, stopping the watcher loses nothing; the next tick picks up whatever the
-schedule did meanwhile. A run that extends a finished scan and finds nothing new changes no scan
-and no finding, so the watcher also reads Devin's own sessions: one with `origin: automation`,
+schedule did meanwhile. The recurrence is when Devin looks, not
+when it runs: a check that finds no commits since the last run spawns nothing, and one that does
+spawns a full scan of the new commits. So a merge is what triggers the next scan, within the hour.
+A run that extends a finished scan and finds nothing new changes no scan and no finding, so the
+watcher also reads Devin's own sessions: one with `origin: automation`,
 carrying the automation id Devin gave us and no parent, is one scheduled run, and it goes into the
 run history with the time Devin says it started and finished. Otherwise a schedule that ran and
 cleared the repository is indistinguishable from one that never fired. Sub-hourly recurrences need a Teams plan, so on a self-serve plan hourly
@@ -214,7 +217,7 @@ python -m swe_loop apply-config --dry-run   # what would be created on the org; 
 python -m swe_loop apply-config             # the playbooks and Knowledge notes; the first live run does this itself
 python -m swe_loop seed --as-new            # the fork's open tickets, untriaged
 python -m swe_loop triage                   # one triage session per new ticket
-python -m swe_loop triage --ticket tkt_A --answer "..."   # answer a question; wakes the same session
+python -m swe_loop triage --ticket tkt_A --answer "..."   # answer a question; wakes the ticket's session, or starts one with the answer
 python -m swe_loop run                      # route, dispatch, poll, gate, review, reduce: one pass
 python -m swe_loop review-followup --ticket tkt_B         # send Devin Review's remarks back, re-gate
 python -m swe_loop cost --set 58d404d2=1.78 # the console's figure for a session
@@ -257,7 +260,8 @@ invisible. A session that finishes without structured output is a failure, not a
 
 Two things a session can do that the loop handles without a person: ask a question, and
 receive review remarks. A triage session that needs a decision ends its turn waiting; the
-ticket shows the question, and the answer goes to that same session, which keeps its context.
+ticket shows the question, and the answer goes to that ticket's session, which keeps its context
+when it can still be woken; when it cannot, a fresh session starts with the answer in hand.
 Devin Review's remarks on a passed PR are posted back to the repair session that opened it; the
 revised head is gated again before anyone sees it.
 
