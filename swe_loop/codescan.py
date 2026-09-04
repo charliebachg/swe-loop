@@ -189,6 +189,27 @@ def run(
         detail=f"{area} on {cfg.repo}" + (f" · profile {profile_id}" if profile_id else ""),
     )
     log(f"code scan {scan_id} started: {area} on {cfg.repo}")
+    return follow(store, cfg, client, scan_id, sid, area, limit, started, sleep, wall_clock, log)
+
+
+def follow(
+    store: Store,
+    cfg: TargetConfig,
+    client: Any,
+    scan_id: str,
+    sid: str,
+    area: str,
+    limit: int,
+    started: dict[str, Any],
+    sleep: Any,
+    wall_clock: float,
+    log: Any,
+) -> dict[str, Any]:
+    """Wait for a scan to finish and file what it found.
+
+    Shared by a scan this loop asked for and a scan Devin's own schedule started: once it exists,
+    there is nothing different about it, and the tickets it produces go through the same board."""
+    import time as _time
 
     t0, wait, state = _time.monotonic(), 10.0, started
     while str(state.get("status")) not in TERMINAL:
@@ -227,6 +248,67 @@ def run(
     )
     log(f"code scan: {len(filed['new'])} new, {len(filed['known'])} already known")
     return {"kind": "filed", "scan": scan_id, "area": area, "findings": len(found), **filed}
+
+
+def adopt(
+    settings: Settings,
+    cfg: TargetConfig,
+    store: Store,
+    client: Any,
+    *,
+    limit: int | None = None,
+    sleep: Any = None,
+    wall_clock: float = 3600.0,
+    log: Any = print,
+) -> dict[str, Any]:
+    """Pick up scans Devin started without being asked.
+
+    A schedule registered on Devin fires on Devin's side, and there is no webhook out, so the way
+    to find out is to look. Any scan on the organisation that this store has no row for was
+    started by something other than this loop, which on this organisation means the schedule. It
+    is followed and filed exactly like one we asked for.
+    """
+    import time as _time
+
+    limit = limit or int(cfg.scan.get("max_findings", 5))
+    sleep = sleep or (
+        (lambda s_: _time.sleep(min(s_, 0.05)))
+        if getattr(client, "is_fake", False)
+        else _time.sleep
+    )
+    ours = {c["devin_session_id"] for c in store.list_scan_sessions()}
+    theirs = [
+        s
+        for s in client.t.list_code_scans()
+        if s.get("scan_id") not in ours and s.get("repo_name") == cfg.repo
+    ]
+    if not theirs:
+        log("no scan on the organisation that this loop did not start")
+        return {"kind": "none", "adopted": []}
+
+    out = []
+    for scan in theirs:
+        scan_id = scan["scan_id"]
+        area = str(scan.get("scan_type") or cfg.scan.get("devin_area") or "security")
+        sid = store.insert_scan_session(
+            devin_session_id=scan_id,
+            url="",
+            status=str(scan.get("status") or "running"),
+            status_detail=area,
+            playbook_id=None,
+            tags=[cfg.session.get("tags_prefix", "swe-loop"), "code_scan", area, "scheduled"],
+        )
+        store.log(
+            "scan",
+            "Devin's schedule started a scan",
+            session_id=sid,
+            detail=f"{area} on {cfg.repo} · {scan_id}",
+        )
+        log(f"adopting {scan_id}: {area} on {cfg.repo}, started by Devin")
+        out.append(
+            follow(store, cfg, client, scan_id, sid, area, limit, scan, sleep, wall_clock, log)
+        )
+    return {"kind": "adopted", "adopted": out}
 
 
 def summarise(store: Store) -> dict[str, Any]:

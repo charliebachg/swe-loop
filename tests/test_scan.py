@@ -612,3 +612,55 @@ def test_waiting_is_a_state_work_passes_through_not_where_it_dies(tmp_path):
     st.insert_event("scan", {"file": cfg.scan["reserved_paths"][0], "line": 1}, ticket_id="tkt_res")
     st.set_router_decision("tkt_res", "refuse", "held back")
     assert scan_mod.release_waiting(st, cfg) == []
+
+
+def test_a_scan_devins_schedule_started_is_picked_up_without_starting_another(tmp_path):
+    """The schedule fires on Devin's side and there is no webhook out.
+
+    So a scan can exist that this loop never asked for. Finding it means looking: any scan on the
+    organisation with no row in this store was started by something else, and on this
+    organisation that means the schedule. It has to be followed and filed like any other, and it
+    must not cause a second scan to be started beside it.
+    """
+    from swe_loop import codescan
+
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    settings = Settings.from_env()
+    client = DevinClient(FakeTransport())
+    # a scan that is simply there, the way one is after the schedule has fired
+    client.t._scan = {
+        "scan_id": "scan-fromtheschedule",
+        "repo_name": cfg.repo,
+        "status": "running",
+        "scan_type": "security",
+        "created_at": 0,
+    }
+
+    out = codescan.adopt(settings, cfg, st, client, log=lambda _m: None)
+    assert out["kind"] == "adopted" and len(out["adopted"]) == 1
+    assert out["adopted"][0]["kind"] == "filed"
+    assert not [c for c in client.t.calls if c[0] == "start_code_scan"], "never a second scan"
+
+    rows = st.list_scan_sessions()
+    assert [r["devin_session_id"] for r in rows] == ["scan-fromtheschedule"]
+
+    # and it is not picked up twice
+    again = codescan.adopt(settings, cfg, st, client, log=lambda _m: None)
+    assert again["kind"] == "none"
+    assert len(st.list_scan_sessions()) == 1
+
+
+def test_a_scan_this_loop_started_is_not_adopted_as_someone_elses(tmp_path):
+    from swe_loop import codescan
+
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    settings = Settings.from_env()
+    client = DevinClient(FakeTransport())
+
+    codescan.run(settings, cfg, st, client, log=lambda _m: None)
+    before = len(st.list_scan_sessions())
+    out = codescan.adopt(settings, cfg, st, client, log=lambda _m: None)
+    assert out["kind"] == "none"
+    assert len(st.list_scan_sessions()) == before

@@ -179,16 +179,26 @@ def run_automation(
         if a["kind"] == "code_scan":
             from swe_loop import codescan
 
-            found = codescan.run(
-                settings,
-                cfg,
-                store,
-                client,
-                # an automation may pin its own area; the seam is the default
-                area=(a.get("trigger") or {}).get("area"),
-                limit=a.get("max_findings"),
-                log=log,
+            # a schedule on Devin fires on Devin's side and there is no webhook out, so before
+            # asking for another scan, look for one their schedule already started
+            taken = codescan.adopt(
+                settings, cfg, store, client, limit=a.get("max_findings"), log=log
             )
+            if taken["adopted"]:
+                found = taken["adopted"][-1]
+                result["started_by"] = "Devin's schedule"
+            else:
+                found = codescan.run(
+                    settings,
+                    cfg,
+                    store,
+                    client,
+                    # an automation may pin its own area; the seam is the default
+                    area=(a.get("trigger") or {}).get("area"),
+                    limit=a.get("max_findings"),
+                    log=log,
+                )
+                result["started_by"] = "this loop"
             result["scan"] = found.get("kind")
             result["scan_id"] = found.get("scan", "")
             result["area"] = found.get("area", "")
