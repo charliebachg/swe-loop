@@ -734,3 +734,27 @@ def test_the_cap_counts_tickets_made_not_findings_read(tmp_path):
     out = codescan.file_findings(st, cfg, already + fresh, limit=3)
     assert out["new"], "the new finding is filed even though three older ones sort above it"
     assert len(out["known"]) == 3
+
+
+def test_a_watcher_tick_never_starts_a_scan_of_its_own(tmp_path, monkeypatch):
+    """Devin has no outbound webhook, so a schedule there needs something here to be looking.
+
+    The point of looking is that Devin decides when work happens. A tick that started its own
+    scan when it found nothing would make the schedule beside the point, and would spend money
+    on every tick besides.
+    """
+    from swe_loop import pages, runner
+
+    monkeypatch.setenv("SWE_LOOP_MODE", "replay")
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    settings = Settings.from_env()
+    client = DevinClient(FakeTransport())
+    pages.seed_automations(st, cfg)
+
+    out = runner.run_automation(
+        settings, cfg, st, client, "auto_codescan", log=lambda _m: None, only_if_scheduled=True
+    )
+    assert out["scan"] == "nothing scheduled"
+    assert not [c for c in client.t.calls if c[0] == "start_code_scan"]
+    assert not st.list_tickets()

@@ -157,6 +157,7 @@ def run_automation(
     fetch: Fetch | None = None,
     stop_after: str | None = None,
     area: str | None = None,
+    only_if_scheduled: bool = False,
 ) -> dict[str, Any]:
     """The whole loop for one automation: intake, triage, route, repair, gate, review.
 
@@ -187,6 +188,12 @@ def run_automation(
             if taken["adopted"]:
                 found = taken["adopted"][-1]
                 result["started_by"] = "Devin's schedule"
+            elif only_if_scheduled:
+                # a watcher tick: the schedule is the trigger, so with nothing from it there is
+                # nothing to do. Starting a scan here would make the timer beside the point.
+                result["scan"] = "nothing scheduled"
+                store.finish_automation_run(rid, result)
+                return result
             else:
                 found = codescan.run(
                     settings,

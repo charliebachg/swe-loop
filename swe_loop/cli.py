@@ -82,6 +82,40 @@ def cmd_seed(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_watch(args: argparse.Namespace) -> int:
+    """Wait for a schedule on Devin to fire, then run the loop on what it produced.
+
+    Devin has no outbound webhook, so a schedule registered there fires on their side and this
+    side has to be looking. That is the whole job of this command: it does not decide when work
+    happens, it notices that Devin decided, and it never starts a scan of its own. Stop it and
+    the schedule keeps its own time; the next tick picks up whatever it did meanwhile.
+    """
+    import time as _time
+
+    from swe_loop import pages, runner
+
+    settings, cfg, store, client = _ctx()
+    if not settings.live:
+        print("mode=replay: there is no organisation to watch", file=sys.stderr)
+        return 1
+    pages.seed_automations(store, cfg)
+    pages.seed_playbooks(store, cfg)
+    deadline = _time.monotonic() + args.for_minutes * 60
+    tick = 0
+    while _time.monotonic() < deadline:
+        tick += 1
+        out = runner.run_automation(
+            settings, cfg, store, client, args.id, log=print, only_if_scheduled=True
+        )
+        if out.get("scan") != "nothing scheduled":
+            print(json.dumps(out))
+            return 0
+        print(f"tick {tick}: nothing from the schedule yet", flush=True)
+        _time.sleep(args.every)
+    print("the schedule did not fire in the time given", file=sys.stderr)
+    return 2
+
+
 def cmd_schedule(args: argparse.Namespace) -> int:
     """Hand the code scan's recurrence to Devin, or take it back."""
     from swe_loop import codescan
@@ -679,6 +713,13 @@ def main(argv: list[str] | None = None) -> int:
         help="file the tickets and stop; nothing is scoped or repaired",
     )
     au.set_defaults(fn=cmd_automation)
+    w = sub.add_parser("watch", help="wait for Devin's schedule to fire, then run the loop")
+    w.add_argument("--id", default="auto_codescan", help="which automation the schedule backs")
+    w.add_argument("--every", type=float, default=60.0, help="seconds between looks")
+    w.add_argument(
+        "--for-minutes", type=float, default=90.0, dest="for_minutes", help="how long to wait"
+    )
+    w.set_defaults(fn=cmd_watch)
     sc = sub.add_parser("schedule", help="let Devin run the code scan on its own recurrence")
     sc.add_argument("--id", default="auto_codescan", help="which automation the schedule backs")
     sc.add_argument("--scan", help="the Devin code scan id; the most recent one by default")
