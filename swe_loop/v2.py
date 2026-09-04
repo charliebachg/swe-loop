@@ -1415,7 +1415,10 @@ def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
                 "Read the pull request and merge."
             )
         if review == "requested":
-            return "Every check passed on a clean copy. The AI reviewer is reading it now."
+            return (
+                "Every check passed on a clean copy. The AI reviewer is reading it now, and the "
+                "pull request is held as a draft until it is done."
+            )
         return plain(f"Every check passed on a clean copy; {review_txt}. Waiting on your decision.")
     return row.get("note") or ""
 

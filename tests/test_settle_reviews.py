@@ -173,3 +173,39 @@ def _refresh_with(monkeypatch, outcome):
         return n
 
     return refresh
+
+
+def test_a_pull_request_under_review_is_a_draft_then_ready(monkeypatch):
+    """While the AI reviewer reads it, the pull request says draft, so nobody on the team thinks
+    it is waiting on them. When it is ready for a person, it stops being a draft."""
+    from swe_loop import reduce as rd
+
+    seen = []
+
+    def call(url, body):
+        seen.append((url, body))
+        if body is None:
+            return {"node_id": "PR_node"}
+        return {"data": {"ok": True}}
+
+    assert rd.set_pr_draft("https://github.com/o/r/pull/12", "tok", True, post=call) == "draft"
+    assert seen[0][0] == "https://api.github.com/repos/o/r/pulls/12"
+    assert "convertPullRequestToDraft" in seen[1][1]["query"]
+    assert seen[1][1]["variables"] == {"id": "PR_node"}
+    seen.clear()
+    assert (
+        rd.set_pr_draft("https://github.com/o/r/pull/12", "tok", False, post=call)
+        == "ready for review"
+    )
+    assert "markPullRequestReadyForReview" in seen[1][1]["query"]
+
+
+def test_github_refusing_the_draft_change_is_reported(monkeypatch):
+    from swe_loop import reduce as rd
+
+    def call(url, body):
+        return {"node_id": "x"} if body is None else {"errors": [{"message": "not permitted"}]}
+
+    assert (
+        rd.set_pr_draft("https://github.com/o/r/pull/1", "tok", True, post=call) == "not permitted"
+    )

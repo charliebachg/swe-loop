@@ -29,7 +29,14 @@ from swe_loop.gate import Gate, apply_result
 from swe_loop.gate import preflight as gate_preflight
 from swe_loop.knowledge import load_notes, load_playbook
 from swe_loop.poll import Poller
-from swe_loop.reduce import detect_conflicts, refresh_pr_states, refresh_reviews, summary
+from swe_loop.reduce import (
+    detect_conflicts,
+    readiness,
+    refresh_pr_states,
+    refresh_reviews,
+    set_pr_draft,
+    summary,
+)
 from swe_loop.replay import record, seed
 from swe_loop.router import route_all
 from swe_loop.store import Store, now
@@ -194,6 +201,19 @@ def settle_reviews(
             out["followups"] += 1
         rounds += 1
         deadline = clock() + wait_s
+    for t in store.list_tickets():
+        r = readiness(store, t["id"])
+        if not r.ready:
+            continue
+        for pr in r.pr_urls:
+            state = set_pr_draft(pr, settings.github_token, False)
+            store.log(
+                "review",
+                "pull request marked ready for your team",
+                ticket_id=t["id"],
+                detail=f"{pr} · {state}",
+            )
+            out["ready_for_review"] = out.get("ready_for_review", 0) + 1
     return out
 
 
@@ -245,6 +265,15 @@ def run_once(
                     g = gate.run_gate(sid)
                     did = apply_result(g, store, client, poller)
                     out["gated"] += 1
+                    if did == "reviewed" and g.pr_url:
+                        state = set_pr_draft(g.pr_url, settings.github_token, True)
+                        store.log(
+                            "review",
+                            "pull request held as a draft while the AI reviewer reads it",
+                            ticket_id=t["id"],
+                            session_id=sid,
+                            detail=state,
+                        )
                     log(f"  gate {g.gate_result}: {'; '.join(g.reasons)[:120]} -> {did}")
                 elif fast:
                     store.log(

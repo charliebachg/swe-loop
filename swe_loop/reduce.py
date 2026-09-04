@@ -132,6 +132,37 @@ def detect_conflicts(store: Store) -> list[dict[str, Any]]:
     return found
 
 
+def set_pr_draft(pr_url: str, token: str, draft: bool, post: Any = None) -> str:
+    """While the AI reviewer is reading a pull request, it is a draft, so nobody on the team
+    mistakes it for something waiting on them. It becomes ready for review only once the checks
+    have passed and the review has come back."""
+    import httpx
+
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "swe-loop"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    call = post or (
+        lambda url, body: httpx.post(url, headers=headers, json=body, timeout=20).json()
+    )
+    n = pr_url.rsplit("/", 1)[-1]
+    api = pr_url.replace("github.com/", "api.github.com/repos/", 1).replace(
+        f"/pull/{n}", f"/pulls/{n}"
+    )
+    try:
+        node = (post or (lambda u, b: httpx.get(u, headers=headers, timeout=20).json()))(api, None)
+        node_id = (node or {}).get("node_id")
+        if not node_id:
+            return "could not read the pull request"
+        name = "convertPullRequestToDraft" if draft else "markPullRequestReadyForReview"
+        q = f"mutation($id:ID!){{{name}(input:{{pullRequestId:$id}}){{pullRequest{{isDraft}}}}}}"
+        out = call("https://api.github.com/graphql", {"query": q, "variables": {"id": node_id}})
+    except Exception as ex:  # noqa: BLE001 - reported, never silent
+        return f"{type(ex).__name__}: {ex}"[:120]
+    if isinstance(out, dict) and out.get("errors"):
+        return str(out["errors"][0].get("message", "GitHub refused"))[:120]
+    return "draft" if draft else "ready for review"
+
+
 def merge_on_github(
     store: Store, ticket_id: str, github_token: str = "", request: Any = None
 ) -> list[dict[str, Any]]:
