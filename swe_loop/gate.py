@@ -96,8 +96,14 @@ class Workspace:
             ["git", *args], cwd=str(cwd or self.repo_root), capture_output=True, text=True
         )
 
-    def fetch(self, ref: str) -> None:
-        self.git("fetch", "--quiet", "origin", ref)
+    def fetch(self, ref: str | None = None) -> None:
+        """Bring the clone's view of the target up to date. With no ref, everything.
+
+        The base branch must be read fresh, not taken from whatever this machine last saw. It
+        moves whenever anything else is merged, and a branch cut after that move looks, to a
+        clone that has not caught up, like it introduced every commit the clone has not heard
+        about. Good work then fails for changing files it never touched."""
+        self.git("fetch", "--quiet", "origin", *([ref] if ref else []))
 
     def _resolve(self, ref: str) -> str:
         for cand in (f"origin/{ref}", ref):
@@ -107,6 +113,7 @@ class Workspace:
         raise RuntimeError(f"ref not found in {self.repo_root}: {ref}")
 
     def checkout(self, ref: str) -> Path:
+        self.fetch()
         sha = self._resolve(ref)
         path = Path(tempfile.mkdtemp(prefix="swe-loop-gate-"))
         r = self.git("worktree", "add", "--detach", "--quiet", str(path), sha)

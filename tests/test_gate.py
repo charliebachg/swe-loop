@@ -232,3 +232,26 @@ def test_where_devin_chose_the_file_itself_a_difference_is_confirmed_not_failed(
     assert res.scope_changed == ["other.py"]
     assert res.tiers.get("T0") is True
     assert not any("outside the work order" in r for r in res.reasons)
+
+
+def test_the_base_branch_is_read_fresh_not_from_whatever_this_machine_last_saw(tmp_path):
+    """The base moves whenever anything else is merged. A branch cut after that move looks, to a
+    clone that has not fetched, like it introduced every commit the clone has not heard about,
+    and good work is failed for changing files it never touched."""
+    repo = make_repo(tmp_path)
+    st, sid = seed(tmp_path, branch="fix-ok")
+    calls: list[tuple[str, ...]] = []
+    gate = make_gate(st, tmp_path, repo, "fix-ok")
+    real = gate.ws.git
+
+    def spy(*args, **kw):
+        calls.append(args)
+        return real(*args, **kw)
+
+    gate.ws.git = spy
+    gate.run_gate(sid)
+    fetched = [i for i, c in enumerate(calls) if c[0] == "fetch"]
+    assert fetched, "the clone was compared against a base it never refreshed"
+    # and it happens before the base is resolved, which is what the comparison rests on
+    resolved = [i for i, c in enumerate(calls) if c[0] == "rev-parse"]
+    assert resolved and fetched[0] < resolved[0]
