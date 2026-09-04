@@ -9,26 +9,31 @@
           <span style="margin-left:auto;{{ MONO }};color:#8f97a3">{{ window }}</span>
         </div>
 
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px;align-items:start">
           {% for c in cards %}
-          <div style="{{ CARD }};padding:16px 18px 14px">
-            <div style="{{ LBL }}">{{ c.title }}</div>
-            <div style="display:flex;align-items:baseline;gap:3px;margin-top:8px">
-              <span style="font:600 40px/1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ c.color }}">{{ c.n }}</span>
-              <span style="font:400 24px/1 'Instrument Sans',system-ui,sans-serif;color:#c9c5bb">/</span>
-              <span style="font:400 24px/1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:#626b78">{{ c.of }}</span>
+          <div hx-get="{{ c.toggle }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="{{ CARD }};padding:20px 22px 18px;cursor:pointer" data-hover="border-color:#c9c5bb">
+            <div style="display:flex;align-items:baseline;gap:8px">
+              <span style="{{ LBL }}">{{ c.title }}</span>
+              <span style="margin-left:auto;color:#c9c5bb;font-size:11px;transform:rotate({{ '180' if c.open else '0' }}deg);transition:transform .12s">&#9662;</span>
             </div>
-            <div style="font-size:12px;color:#8f97a3;margin-top:6px;text-wrap:pretty">{{ c.unit }}</div>
-            <div style="height:4px;border-radius:2px;background:#ecebe6;margin-top:10px;overflow:hidden"><span style="display:block;height:100%;width:{{ c.pct }}%;background:{{ c.color }}"></span></div>
-            <div style="margin-top:11px;display:flex;flex-direction:column;gap:5px;border-top:1px solid #f0efe9;padding-top:10px">
+            <div style="display:flex;align-items:baseline;gap:4px;margin-top:12px">
+              <span style="font:600 52px/1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:{{ c.color }};letter-spacing:-.02em">{{ c.n }}</span>
+              <span style="font:400 30px/1 'Instrument Sans',system-ui,sans-serif;color:#d4d0c6">/</span>
+              <span style="font:400 30px/1 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;color:#8f97a3">{{ c.of }}</span>
+            </div>
+            <div style="height:5px;border-radius:3px;background:#ecebe6;margin-top:14px;overflow:hidden"><span style="display:block;height:100%;width:{{ c.pct }}%;background:{{ c.color }}"></span></div>
+            <div style="font-size:12.5px;color:#626b78;margin-top:10px;text-wrap:pretty">{{ c.unit }}</div>
+            {% if c.open %}
+            <div style="margin-top:14px;display:flex;flex-direction:column;gap:6px;border-top:1px solid #f0efe9;padding-top:12px">
               {% for r in c.rows %}
               <div style="display:grid;grid-template-columns:1fr 34px;gap:8px;align-items:center;font-size:12.5px">
                 <span style="min-width:0;color:#626b78;text-wrap:pretty">{{ r.label }}</span>
                 <span style="text-align:right;{{ MONO }};color:{{ r.color }};font-variant-numeric:tabular-nums">{{ r.n }}</span>
               </div>
               {% endfor %}
+              <div style="font-size:11.5px;color:#8f97a3;margin-top:6px;text-wrap:pretty">{{ c.note }}</div>
             </div>
-            <div style="font-size:11.5px;color:#8f97a3;margin-top:10px;text-wrap:pretty">{{ c.note }}</div>
+            {% endif %}
           </div>
           {% endfor %}
         </div>

@@ -451,12 +451,16 @@ def _usd_or_min(store: Store, row: dict[str, Any], kind: str, rates: dict[str, f
     return f"{secs / 60.0:.0f} min"
 
 
-def insights(store: Store) -> dict[str, Any]:
+def insights(store: Store, q: dict[str, str] | None = None) -> dict[str, Any]:
     """Devin's own read on the sessions it ran, mirrored here so the behaviour can be watched
     and the instructions improved. Everything on this page comes from Session Insights; nothing
-    on it is our own measurement, which is the point of keeping it separate from the Report."""
+    on it is our own measurement, which is the point of keeping it separate from the Report.
+
+    Three rates carry the page and nothing else shows until a person asks for the working."""
     from swe_loop import insights as ins
 
+    q = q or {}
+    open_panels = {x for x in (q.get("panel") or "").split(",") if x}
     rows = store.insights()
     started = ins.known_ids(store)
     t = ins.turns(rows)
@@ -464,6 +468,25 @@ def insights(store: Store) -> dict[str, Any]:
     sizes = ins.by_size(rows)
     tools = ins.tools(rows)
     nopb = ins.no_playbook(rows)
+    right = sum(1 for r in rows if (r.get("session_size") or "").lower() not in ("l", "xl"))
+
+    def panel(key: str, title: str, n: int, of: int, unit: str, colour: str) -> dict[str, Any]:
+        is_open = key in open_panels
+        return {
+            "key": key,
+            "title": title,
+            "n": str(n),
+            "of": str(of),
+            "unit": unit,
+            "pct": _pct(n, of) if of else "0",
+            "open": is_open,
+            "color": colour if of and n == of else (INK if of else FAINT),
+            "toggle": url(
+                "/devin/insights",
+                panel=",".join(sorted(open_panels - {key} if is_open else open_panels | {key}))
+                or None,
+            ),
+        }
 
     nums = {tk["id"]: tk.get("number") for tk in store.list_tickets()}
     which: dict[str, tuple[str, str]] = {}
@@ -494,17 +517,41 @@ def insights(store: Store) -> dict[str, Any]:
                 "tools": ", ".join((cl.get("tools_and_frameworks") or [])[:3]) or "none named",
                 "sure": f"{float(conf) * 100:.0f}%" if conf is not None else "not given",
                 "playbook": "yes" if r.get("playbook_id") else "none",
-                "prs": len(r.get("pull_requests") or []),
                 "analysed": r.get("analysis_status") or "not analysed",
             }
         )
 
+    n = len(rows)
     return {
-        "count": len(rows),
+        "count": n,
         "started": len(started),
-        "missing": len(started) - len(rows),
-        "turns": t,
-        "turnsLabel": f"{t['one']} of {t['total']}",
+        "missing": len(started) - n,
+        "panels": [
+            panel(
+                "turns",
+                "Ran on one message",
+                t["one"],
+                t["total"],
+                "sessions were told what to do once and got on with it",
+                PL["ok"][0],
+            ),
+            panel(
+                "size",
+                "Cut to the right size",
+                right,
+                n,
+                "pieces Devin judged small enough for one session",
+                PL["ok"][0],
+            ),
+            panel(
+                "playbook",
+                "Ran on a playbook",
+                n - len(nopb),
+                n,
+                "sessions followed instructions we can edit and reuse",
+                PL["ok"][0],
+            ),
+        ],
         "replies": t["replies"],
         "repliesMax": max((r["sessions"] for r in t["replies"]), default=1),
         "sizes": sizes,
@@ -2623,6 +2670,19 @@ def report(
     checks_open = q.get("checks") == "1"
     log_open = q.get("log") == "1"
     log_ticket = q.get("lt") or ""
+    # the three headline rates are the number and nothing else until a person asks for the
+    # working, which is what "panel" holds
+    open_panels = {x for x in (q.get("panel") or "").split(",") if x}
+
+    def keep(**extra: Any) -> dict[str, Any]:
+        """Everything else on the page stays where it was when one panel is opened."""
+        return {
+            "checks": "1" if checks_open else None,
+            "log": "1" if log_open else None,
+            "lt": log_ticket or None,
+            "panel": ",".join(sorted(open_panels)) or None,
+            **extra,
+        }
 
     def card(
         key: str,
@@ -2634,6 +2694,7 @@ def report(
         note: str,
         colour: str,
     ) -> dict[str, Any]:
+        is_open = key in open_panels
         return {
             "key": key,
             "title": title,
@@ -2641,6 +2702,14 @@ def report(
             "of": str(of) if of else "0",
             "unit": unit,
             "pct": _pct(n, of) if of else "0",
+            "open": is_open,
+            "toggle": url(
+                "/report",
+                **keep(
+                    panel=",".join(sorted(open_panels - {key} if is_open else open_panels | {key}))
+                    or None
+                ),
+            ),
             "color": colour if of and n == of else (INK if of else FAINT),
             "rows": [
                 {
@@ -2759,9 +2828,7 @@ def report(
         "checksLine": f"{sum(1 for r in receipts if r['passed'])} of {len(receipts)} checks passed, "
         f"each re-run by this app on a clean copy of the change",
         "checksOpen": checks_open,
-        "checksToggle": url(
-            "/report", checks=None if checks_open else "1", log="1" if log_open else None
-        ),
+        "checksToggle": url("/report", **keep(checks=None if checks_open else "1")),
         "checksToggleLabel": "hide the checks" if checks_open else "show every check we ran",
         "checkGroups": check_groups,
         "checksNote": "Each command ran in a fresh copy of the repository that the AI session could "
@@ -2785,24 +2852,15 @@ def report(
         },
         "log": events,
         "logOpen": log_open,
-        "logToggle": url(
-            "/report", log=None if log_open else "1", checks="1" if checks_open else None
-        ),
+        "logToggle": url("/report", **keep(log=None if log_open else "1")),
         "logToggleLabel": "show less" if log_open else "show the whole log",
         "logTickets": log_tickets,
-        "logAll": url(
-            "/report", log="1" if log_open else None, checks="1" if checks_open else None
-        ),
+        "logAll": url("/report", **keep(lt=None)),
         "logFilter": [
             {
                 "label": t["ref"],
                 "on": t["on"],
-                "set": url(
-                    "/report",
-                    lt=None if t["on"] else t["id"],
-                    log="1" if log_open else None,
-                    checks="1" if checks_open else None,
-                ),
+                "set": url("/report", **keep(lt=None if t["on"] else t["id"])),
             }
             for t in log_tickets
         ],

@@ -683,11 +683,21 @@ def build_app(
             ins.refresh(st, client, ins.known_ids(st))
         except Exception as ex:  # noqa: BLE001 - shown on the page, never a stack trace
             st.log("automation", "insights could not be read", detail=f"{type(ex).__name__}: {ex}")
-        return _render(request, "insights.html", "insights", i=v2.insights(request.app.state.store))
+        return _page(
+            request,
+            "insights",
+            "insights.html",
+            {"i": v2.insights(request.app.state.store, _q(request))},
+        )
 
     @app.get("/devin/insights", response_class=HTMLResponse)
     def insights_page(request: Request) -> HTMLResponse:
-        return _render(request, "insights.html", "insights", i=v2.insights(request.app.state.store))
+        return _page(
+            request,
+            "insights",
+            "insights.html",
+            {"i": v2.insights(request.app.state.store, _q(request))},
+        )
 
     @app.get("/tickets/{ticket_id}/changes", response_class=HTMLResponse)
     def ticket_changes(ticket_id: str, request: Request) -> HTMLResponse:

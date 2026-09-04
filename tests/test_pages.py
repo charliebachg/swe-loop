@@ -199,7 +199,7 @@ def test_capability_pages_render_real_state(client):
     html = c.get("/devin/insights").text
     # Insights mirrors Devin's own record; with no insights fetched it says so rather
     # than inventing numbers of ours
-    assert "what Devin says about its own sessions" in html
+    assert "read from Devin's own record and not measured by us" in html
     assert "No insights stored yet" in html
     body = html.split("<main", 1)[-1]
     assert "ACU per session" not in body and ">ACU<" not in body  # nothing this plan cannot report
