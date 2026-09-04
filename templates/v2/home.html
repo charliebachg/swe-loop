@@ -88,5 +88,5 @@
     {% endfor %}
   </div>
 </details>
-<div style="display:flex;gap:14px;font:10.5px/18px 'JetBrains Mono',monospace;margin-top:8px;white-space:nowrap"><span style="color:#626b78">who does each step:</span><span style="color:#5b6f8a">▎automatic</span><span style="color:#7a4fb5">▎AI engineer (Devin)</span><span style="color:#1f8a80">▎independent checks</span><span style="color:#b8862a">▎your team</span><span style="color:#8f97a3;margin-left:auto">refreshes every 5s</span></div>
+<div style="display:flex;gap:14px;font:10.5px/18px 'JetBrains Mono',monospace;margin-top:8px;white-space:nowrap"><span style="color:#626b78">who does each step:</span><span style="color:#5b6f8a">▎automatic</span><span style="color:#7a4fb5">▎AI engineer (Devin)</span><span style="color:#1f8a80">▎independent checks</span><span style="color:#b8862a">▎your team</span><span style="color:#8f97a3;margin-left:auto">{% if refreshUrl %}following the run, refreshing every {{ refreshEvery }}{% else %}nothing running{% endif %}</span></div>
 {% endblock %}

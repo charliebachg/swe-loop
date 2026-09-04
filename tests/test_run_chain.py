@@ -94,7 +94,7 @@ def test_live_fetch_maps_issue_numbers_to_shard_letters(tmp_path):
 
 def test_pages_poll_while_something_runs(fresh):
     c, st = fresh
-    assert 'hx-trigger="every 5s"' not in c.get("/").text
+    assert "hx-trigger" not in c.get("/").text
     st.upsert_ticket(id="tkt_Z", source="manual", title="z", status="dispatched")
     st.insert_work_order(
         ticket_id="tkt_Z", shard_id="Z", files=["a.py"], tests=[], acceptance={"p": "true"}
@@ -106,7 +106,7 @@ def test_pages_poll_while_something_runs(fresh):
     )
     for path in ("/", "/tickets-page", "/automations", "/devin/sessions"):
         html = c.get(path).text
-        assert 'hx-trigger="every 5s"' in html, path
+        assert 'hx-trigger="every 1s"' in html, path  # a session is working: follow it closely
     # the tickets page says what the ticket is doing, and links the live session
     html = c.get("/tickets-page").text
     assert "The AI is working on the fix" in html and "open the session" in html

@@ -39,7 +39,8 @@ def test_home_shows_now_needs_you_and_recent(client):
 def test_settings_shows_checks_seam_and_budget(client):
     c, st = client
     html = c.get("/settings").text
-    assert "not checked" in html  # replay: no tokens, nothing is called
+    assert "checking the connection" in html  # the checks arrive after the page is drawn
+    assert "not checked" in c.get("/settings/checks").text  # replay: no tokens, nothing is called
     assert "configs/superset-pandas3.yaml" in html
     assert "tests/" in html and "the lower bound does not move" in html
     r = c.post(

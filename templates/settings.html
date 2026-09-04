@@ -2,10 +2,8 @@
 {% block title %}Settings{% endblock %}
 {% block content %}
 <p class="lede">Our side of the connection: which repository, what a session may never touch, how much it may spend. The Devin org's side is under <a href="/devin/integrations">Integrations</a>.</p>
-<div class="card"><h3>Connected <span class="who code">{{ 'all checks pass' if s.all_ok else 'checked live, see each call' }}</span></h3>
-  <div class="grid3">
-    {% for c in s.checks %}<div class="chk {{ c.status }}"><div class="k">{{ c.label }}</div><div class="v {{ 'mono' if c.key in ('branch','seam') else '' }}">{{ c.value }}</div><div class="c">{{ '✓' if c.ok else ('·' if c.status == 'skipped' else '✕') }} {{ c.call }}</div></div>{% endfor %}
-  </div>
+<div class="card"><h3>Connected <span class="who code">checked live, see each call</span></h3>
+  <div hx-get="/settings/checks" hx-trigger="load" hx-swap="outerHTML"><div class="grid3"><div class="chk">checking the connection…</div></div></div>
   <p class="foot" style="margin-top:12px">Add another repository: <span class="pill p-na">next</span> · one seam file per repository; the pipeline reads nothing else about the target.</p>
 </div>
 <div class="two">

@@ -6,6 +6,7 @@ import json
 import os
 import threading
 from contextlib import asynccontextmanager
+from html import escape
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs
@@ -117,7 +118,8 @@ def build_app(
     def _page(request: Request, active: str, template: str, ctx: dict[str, Any]) -> HTMLResponse:
         """A designed page. An HTMX request gets the content block only; the frame stays."""
         st: Store = request.app.state.store
-        busy = request.app.state.run_lock.locked() or bool(st.live_sessions())
+        working = bool(st.live_sessions())
+        busy = request.app.state.run_lock.locked() or working
         full = {
             **pages.shell(settings, cfg, st, active),
             **v2.frame(settings, cfg, st, active),
@@ -126,6 +128,8 @@ def build_app(
             )
             if busy
             else "",
+            # while a session is actually writing code, follow it closely; otherwise idle back
+            "refreshEvery": "1s" if working else "5s",
             **ctx,
         }
         if request.headers.get("HX-Request"):
@@ -207,6 +211,21 @@ def build_app(
                 err=err,
                 name=name,
             ),
+        )
+
+    @app.get("/automations/native", response_class=HTMLResponse)
+    def automations_native(name: str, request: Request) -> HTMLResponse:
+        """One line about what the organisation itself holds, fetched after the row is drawn so a
+        call across the network never delays the page."""
+        native = pages._native_automations(request.app.state.client)
+        a = native.get(name)
+        text = (
+            f"native Automation {a.get('id') or a.get('automation_id')}"
+            if a
+            else "no Automation of this name on the organisation; this one runs from here"
+        )
+        return HTMLResponse(
+            f'<span style="text-wrap:pretty;min-width:0;overflow-wrap:anywhere">{escape(text)}</span>'
         )
 
     @app.post("/automations", response_class=HTMLResponse)
@@ -390,8 +409,23 @@ def build_app(
             cost_rows=v2.cost_rows(request.app.state.store),
             usdCap=v2._usd_cap(st),
             rerun=v2.rerun_ctx(settings, cfg, st),
-            s=pages.settings_page(settings, cfg, st, request.app.state.client),
+            s=pages.settings_page(settings, cfg, st, request.app.state.client, with_checks=False),
         )
+
+    @app.get("/settings/checks", response_class=HTMLResponse)
+    def settings_checks(request: Request) -> HTMLResponse:
+        """The live connection checks, fetched after the page is drawn: each one is a call across
+        the network and together they took nearly five seconds."""
+        st: Store = request.app.state.store
+        checks = connect.run_checks(settings, cfg, st, request.app.state.client)
+        cells = "".join(
+            f'<div class="chk {escape(c.status)}"><div class="k">{escape(c.label)}</div>'
+            f'<div class="v {"mono" if c.key in ("branch", "seam") else ""}">{escape(c.value)}</div>'
+            f'<div class="c">{"✓" if c.ok else "·"}</div>'
+            f'<div class="foot">{escape(c.call)}</div></div>'
+            for c in checks
+        )
+        return HTMLResponse(f'<div class="grid3">{cells}</div>')
 
     @app.post("/settings/credits")
     async def settings_credits(request: Request) -> RedirectResponse:

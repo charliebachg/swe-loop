@@ -95,9 +95,13 @@ def home(store: Store) -> dict[str, Any]:
 
 
 def settings_page(
-    settings: Settings, cfg: TargetConfig, store: Store, client: DevinClient | None
+    settings: Settings,
+    cfg: TargetConfig,
+    store: Store,
+    client: DevinClient | None,
+    with_checks: bool = True,
 ) -> dict[str, Any]:
-    checks = connect.run_checks(settings, cfg, store, client)
+    checks = connect.run_checks(settings, cfg, store, client) if with_checks else []
     return {
         "checks": checks,
         "all_ok": all(c.ok for c in checks),
@@ -594,19 +598,44 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
         )
 
 
+_NATIVE: dict[str, tuple[float, dict[str, Any]]] = {}
+NATIVE_TTL = 120.0
+
+
+def _native_automations(client: DevinClient | None) -> dict[str, Any]:
+    """What the organisation itself has, read at most once every couple of minutes.
+
+    It is one line of context inside an opened row, so it must never be on the path that draws
+    the page: a call across the network on every render made this the slowest page in the app."""
+    import time as _time
+
+    if client is None or client.is_fake:
+        return {}
+    hit = _NATIVE.get("all")
+    if hit and _time.monotonic() - hit[0] < NATIVE_TTL:
+        return hit[1]
+    out: dict[str, Any] = {}
+    try:
+        for a in client.t.list_automations():
+            out[a.get("name", "")] = a
+    except Exception:  # noqa: BLE001 - context, never the page
+        out = {}
+    _NATIVE["all"] = (_time.monotonic(), out)
+    return out
+
+
 def automations(
-    store: Store, cfg: TargetConfig, settings: Settings, client: DevinClient | None, running: bool
+    store: Store,
+    cfg: TargetConfig,
+    settings: Settings,
+    client: DevinClient | None,
+    running: bool,
+    want_native: bool = False,
 ) -> dict[str, Any]:
     from swe_loop.intake import ADAPTERS
 
     seed_automations(store, cfg)
-    native: dict[str, Any] = {}
-    if client is not None and not client.is_fake:
-        try:
-            for a in client.t.list_automations():
-                native[json.dumps(a)[:0] or a.get("name", "")] = a
-        except Exception:  # noqa: BLE001 - listing is informational
-            native = {}
+    native = _native_automations(client) if want_native else {}
     rows = []
     for a in store.list_automations():
         t = a["trigger"]
@@ -750,15 +779,31 @@ def seed_playbooks(store: Store, cfg: TargetConfig) -> None:
         )
 
 
+_ORG_PB: dict[str, tuple[float, dict[str, str]]] = {}
+
+
+def _org_playbooks(client: DevinClient | None) -> dict[str, str]:
+    """Which playbooks the organisation already has, read at most once every couple of minutes."""
+    import time as _time
+
+    if client is None or client.is_fake:
+        return {}
+    hit = _ORG_PB.get("all")
+    if hit and _time.monotonic() - hit[0] < NATIVE_TTL:
+        return hit[1]
+    out: dict[str, str] = {}
+    try:
+        for p in client.t.list_playbooks():
+            out[p.get("title", "")] = p.get("playbook_id") or p.get("id") or ""
+    except Exception:  # noqa: BLE001 - context, never the page
+        out = {}
+    _ORG_PB["all"] = (_time.monotonic(), out)
+    return out
+
+
 def playbooks(store: Store, cfg: TargetConfig, client: DevinClient | None) -> dict[str, Any]:
     seed_playbooks(store, cfg)
-    org: dict[str, str] = {}
-    if client is not None and not client.is_fake:
-        try:
-            for p in client.t.list_playbooks():
-                org[p.get("title", "")] = p.get("playbook_id") or p.get("id") or ""
-        except Exception:  # noqa: BLE001
-            org = {}
+    org = _org_playbooks(client)
     used_by = {
         "pb_triage": ("the triage step", "/tickets-page?view=pipeline"),
         "pb_repair": ("every repair session", "/devin/sessions"),

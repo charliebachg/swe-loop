@@ -2066,8 +2066,8 @@ def automations(
     err: bool = False,
     name: str = "",
 ) -> dict[str, Any]:
-    a = pages.automations(store, cfg, settings, client, running)
     open_ids = {x for x in (q.get("open") or "").split(",") if x}
+    a = pages.automations(store, cfg, settings, client, running)
     add_open = q.get("add") == "1" or err
     mono = "'JetBrains Mono',monospace"
     autos = []
@@ -2160,11 +2160,8 @@ def automations(
                     },
                     {
                         "k": "on the Devin org",
-                        "v": (
-                            f"native Automation {r['native'].get('id') or r['native'].get('automation_id')}"
-                            if r.get("native")
-                            else a["native_note"]
-                        ),
+                        "v": "",
+                        "lazy": url("/automations/native", name=r["name"]) if a["live"] else "",
                         "mono": False,
                     },
                 ],

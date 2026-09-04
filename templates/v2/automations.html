@@ -48,7 +48,7 @@
               <div style="border-top:1px solid #ecebe6;padding:16px 18px 18px 48px;background:#faf9f6;display:grid;grid-template-columns:1fr 1fr;gap:18px 26px;align-items:start">
                 <div style="grid-column:1 / -1;font-size:13.5px;text-wrap:pretty">{{ a.desc }}{% if a.notes %} <span style="color:#626b78">{{ a.notes }}</span>{% endif %}</div>
                 <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
-                  {% for k in a.rows %}<div style="display:grid;grid-template-columns:120px 1fr;gap:12px;padding:8px 14px;border-bottom:1px solid #ecebe6;font-size:13px;align-items:baseline"><span style="{{ LBL }}">{{ k.k }}</span><span style="{% if k.mono %}font:12px/1.5 'JetBrains Mono',monospace;{% endif %}text-wrap:pretty;min-width:0;overflow-wrap:anywhere">{{ k.v }}</span></div>{% endfor %}
+                  {% for k in a.rows %}<div style="display:grid;grid-template-columns:120px 1fr;gap:12px;padding:8px 14px;border-bottom:1px solid #ecebe6;font-size:13px;align-items:baseline"><span style="{{ LBL }}">{{ k.k }}</span>{% if k.lazy %}<span hx-get="{{ k.lazy }}" hx-trigger="load" hx-swap="outerHTML" style="color:#8f97a3;text-wrap:pretty">reading the organisation…</span>{% else %}<span style="{% if k.mono %}font:12px/1.5 'JetBrains Mono',monospace;{% endif %}text-wrap:pretty;min-width:0;overflow-wrap:anywhere">{{ k.v }}</span>{% endif %}</div>{% endfor %}
                 </div>
                 <div>
                   <div style="{{ LBL }};margin-bottom:6px">runs</div>
