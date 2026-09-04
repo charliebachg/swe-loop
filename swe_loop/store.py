@@ -110,7 +110,8 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT, updated_a
 CREATE TABLE IF NOT EXISTS automations (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
   availability TEXT NOT NULL DEFAULT 'live', trigger_json TEXT NOT NULL, target TEXT NOT NULL,
-  playbook TEXT, max_acu REAL, concurrency INTEGER NOT NULL DEFAULT 4, schedule TEXT, notes TEXT,
+  playbook TEXT, max_acu REAL, max_findings INTEGER, concurrency INTEGER NOT NULL DEFAULT 4,
+  schedule TEXT, notes TEXT,
   created_at TEXT NOT NULL, last_run TEXT, last_result TEXT
 );
 CREATE TABLE IF NOT EXISTS playbooks (
@@ -173,6 +174,7 @@ class Store:
         for table, col, decl in (
             ("tickets", "number", "INTEGER"),
             ("sessions", "pr_state", "TEXT"),
+            ("automations", "max_findings", "INTEGER"),
         ):
             cols = {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if col not in cols:
@@ -793,6 +795,7 @@ class Store:
             "playbook": a.get("playbook"),
             "max_acu": a.get("max_acu"),
             "concurrency": int(a.get("concurrency") or 4),
+            "max_findings": a.get("max_findings"),
             "schedule": a.get("schedule"),
             "notes": a.get("notes"),
             "created_at": now(),
@@ -827,6 +830,7 @@ class Store:
             "last_result",
             "notes",
             "max_acu",
+            "max_findings",
             "concurrency",
             "schedule",
             "playbook",

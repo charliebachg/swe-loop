@@ -2224,6 +2224,9 @@ def automations(
                     if r.get("last_run")
                     else "never run"
                 ),
+                "cap": f"at most {r['max_findings']} tickets a run"
+                if r["kind"] == "scan" and r.get("max_findings")
+                else "",
                 "isNext": is_next,
                 "opacity": ".72" if is_next else "1",
                 "open": is_open,
@@ -2245,6 +2248,17 @@ def automations(
                     {"k": "how it runs", "v": how, "mono": False},
                     {"k": "repository", "v": r["target"], "mono": True},
                     {"k": "playbook", "v": r["playbook"] or "none", "mono": True},
+                    *(
+                        [
+                            {
+                                "k": "tickets per run",
+                                "v": f"at most {r['max_findings']}, the most important first",
+                                "mono": False,
+                            }
+                        ]
+                        if r["kind"] == "scan" and r.get("max_findings")
+                        else []
+                    ),
                     {
                         "k": "per session",
                         "v": f"Devin's limit {int(r['max_acu'])} ACU · {r['concurrency']} sessions at once"

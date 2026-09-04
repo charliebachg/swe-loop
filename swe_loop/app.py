@@ -547,6 +547,7 @@ def build_app(
             playbook=form.get("playbook") or None,
             max_acu=float(form.get("max_acu") or cfg.max_acu_limit),
             concurrency=int(form.get("concurrency") or 4),
+            max_findings=int(form.get("max_findings") or 3) if scan else None,
             schedule=form.get("schedule") or None,
             notes=(form.get("notes") or "")[:200] or None,
         )

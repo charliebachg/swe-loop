@@ -23,7 +23,10 @@ so a wrong finding costs someone real time.
 3. For each site, read the surrounding function. Decide whether behaviour actually changes here,
    or whether the call is already safe.
 4. Discard anything already covered by an open ticket or already fixed on the branch.
-5. Record at most the number of findings you were asked for, strongest evidence first.
+5. Record at most the number of findings you were asked for, most important first. Important
+   means, in this order: it breaks outright rather than only warning; a command you ran
+   demonstrated it rather than you recognising the shape of it; a test already covers the site,
+   so the fix can be checked. Only that many are kept, so do not spend them on the easy ones.
 6. For each finding give the file, the line, the class of change, and why you believe it: quote
    the library's message where there is one, and name the tests that cover the site.
 7. Mark confidence honestly. Use certain only when a command you ran demonstrated the change.

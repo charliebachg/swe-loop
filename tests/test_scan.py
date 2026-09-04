@@ -5,7 +5,10 @@ goes through the same scoping, routing, checks and review as work that arrived a
 
 from pathlib import Path
 
+from fastapi.testclient import TestClient
+
 from swe_loop import scan
+from swe_loop.app import build_app
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.devin import DevinClient, FakeTransport
 from swe_loop.store import Store
@@ -101,3 +104,40 @@ def test_output_that_is_not_the_agreed_shape_files_nothing(tmp_path):
         Settings(mode="replay"), CFG, st, Says(), sleep=lambda s: None, log=lambda m: None
     )
     assert out["kind"] == "invalid" and st.list_tickets() == []
+
+
+def test_only_the_most_important_findings_are_kept(tmp_path):
+    """A scan is told how many tickets it may file. What survives the cap is the strongest
+    evidence, not whatever the session listed first."""
+    st = Store(tmp_path / "s.sqlite")
+    out = {
+        "searched": "x",
+        "findings": [
+            {**GOOD["findings"][0], "file": "superset/a.py", "confidence": "unsure"},
+            {**GOOD["findings"][0], "file": "superset/b.py", "confidence": "certain"},
+            {**GOOD["findings"][0], "file": "superset/c.py", "confidence": "likely"},
+        ],
+    }
+    filed = scan.file_findings(st, CFG, out, limit=2)
+    assert filed["dropped"] == 1 and len(filed["new"]) == 2
+    kept = {st.get_ticket(t)["title"] for t in filed["new"]}
+    titles = {
+        st.get_ticket(t)["id"]: st._one(
+            "SELECT payload_json AS p FROM events WHERE ticket_id=?", t
+        )["p"]
+        for t in filed["new"]
+    }
+    assert any("superset/b.py" in p for p in titles.values())  # certain survived
+    assert not any("superset/a.py" in p for p in titles.values())  # unsure was dropped
+    assert kept  # and the tickets themselves exist
+
+
+def test_the_automation_carries_the_number(tmp_path, monkeypatch):
+    monkeypatch.delenv("DEVIN_API_KEY", raising=False)
+    st = Store(tmp_path / "s.sqlite")
+    app = build_app(Settings.from_env(), st, seed_replay=False)
+    with TestClient(app) as c:
+        a = st.get_automation("auto_scan")
+        assert a["max_findings"] == 3
+        html = c.get("/automations?open=auto_scan").text
+        assert "at most 3 tickets a run" in html and "tickets per run" in html

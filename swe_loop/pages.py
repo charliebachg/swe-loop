@@ -572,9 +572,14 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
     if sc and sc["availability"] == "next":
         # a store written before the scan existed: the row becomes the real thing
         store.conn.execute(
-            "UPDATE automations SET name=?, availability='live', playbook=?, max_acu=?, notes=NULL "
-            "WHERE id='auto_scan'",
-            ("Scan the repository", "scan-pandas3 then triage and repair", 4),
+            "UPDATE automations SET name=?, availability='live', playbook=?, max_acu=?, "
+            "max_findings=?, notes=NULL WHERE id='auto_scan'",
+            (
+                "Scan the repository",
+                "scan-pandas3 then triage and repair",
+                4,
+                int(cfg.scan.get("max_findings", 3)),
+            ),
         )
     if store.get_automation("auto_repair") is not None:
         a = store.get_automation("auto_repair")
@@ -599,6 +604,7 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
             target=cfg.repo,
             playbook="scan-pandas3 then triage and repair",
             max_acu=4,
+            max_findings=int(cfg.scan.get("max_findings", 3)),
             concurrency=1,
             schedule="every weekday at 06:00",
             notes=None,

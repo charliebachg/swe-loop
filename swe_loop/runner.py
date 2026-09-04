@@ -179,6 +179,7 @@ def run_automation(
                 cfg,
                 store,
                 client,
+                limit=a.get("max_findings"),
                 playbook_id=store.get_setting("playbook_id.scan-pandas3"),
                 log=log,
             )

@@ -66,8 +66,11 @@ def build_prompt(cfg: TargetConfig, limit: int) -> str:
         "- Prefer evidence a command produced over a pattern you recognise. The project's own "
         "tests with warnings promoted to errors are the best evidence available.\n"
         "- Read the surrounding function before deciding a site is affected.\n"
-        f"- Report at most {limit} findings, strongest evidence first, and fewer if that is the "
-        "honest answer.\n"
+        f"- Report at most {limit} findings, and fewer if that is the honest answer. Put the most "
+        "important first, in this order: places that break outright before places that only warn; "
+        "then what a command demonstrated before what you recognised by eye; then places covered "
+        "by an existing test before places that are not.\n"
+        f"- Only the first {limit} are kept. Do not spend the budget on the easy ones.\n"
         "Don't:\n"
         f"- Touch any file, or anything under {', '.join(cfg.forbidden_paths)}.\n"
         "- Open a pull request, push a branch, or comment anywhere.\n"
@@ -91,14 +94,31 @@ def build_spec(cfg: TargetConfig, limit: int, playbook_id: str | None) -> Sessio
     )
 
 
-def file_findings(store: Store, cfg: TargetConfig, out: dict[str, Any]) -> dict[str, Any]:
+def rank(f: dict[str, Any]) -> tuple[int, int]:
+    """Most important first, in the order that decides which findings survive the cap.
+
+    A place that breaks outright matters more than one that only warns, and a claim a command
+    demonstrated matters more than one that was recognised by eye."""
+    breaks = 0 if str(f.get("class") or "").lower().startswith(("break", "error")) else 1
+    seen = {"certain": 0, "likely": 1, "unsure": 2}.get(str(f.get("confidence") or ""), 3)
+    return (seen, breaks)
+
+
+def file_findings(
+    store: Store, cfg: TargetConfig, out: dict[str, Any], limit: int | None = None
+) -> dict[str, Any]:
     """Each finding becomes a ticket the loop has never seen, in the state a new ticket starts in.
 
     A finding already filed is left alone: scanning the same repository twice must not fill the
     board with duplicates."""
     forbidden = tuple(cfg.forbidden_paths)
     new, known, refused = [], [], []
-    for f in out.get("findings") or []:
+    findings = sorted(out.get("findings") or [], key=rank)
+    dropped = 0
+    if limit is not None and len(findings) > limit:
+        dropped = len(findings) - limit
+        findings = findings[:limit]
+    for f in findings:
         where = str(f.get("file") or "")
         if where.startswith(forbidden):
             refused.append(where)  # the scan was told to stay out; the loop does not relent
@@ -122,7 +142,7 @@ def file_findings(store: Store, cfg: TargetConfig, out: dict[str, Any]) -> dict[
             detail=f"{where}:{f.get('line')} · {f.get('confidence', 'unrated')} · {str(f.get('why') or '')[:120]}",
         )
         new.append(tid)
-    return {"new": new, "known": known, "refused": refused}
+    return {"new": new, "known": known, "refused": refused, "dropped": dropped}
 
 
 def run_scan(
@@ -168,11 +188,16 @@ def run_scan(
     if problems:
         store.log("intake", "scan output rejected", detail="; ".join(problems)[:200])
         return {"kind": "invalid", "session": state.session_id, "problems": problems}
-    filed = file_findings(store, cfg, out)
+    filed = file_findings(store, cfg, out, limit)
     store.log(
         "intake",
         f"scan filed {len(filed['new'])} new ticket(s)",
-        detail=f"{out.get('searched', '')[:160]}",
+        detail=(
+            f"kept the {limit} most important, dropped {filed['dropped']}. "
+            if filed["dropped"]
+            else ""
+        )
+        + f"{out.get('searched', '')[:160]}",
     )
     log(f"scan: {len(filed['new'])} new, {len(filed['known'])} already known")
     return {"kind": "filed", "session": state.session_id, "at": now(), **filed}
