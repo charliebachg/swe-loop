@@ -145,43 +145,21 @@ def file_findings(
     return {"new": new, "known": known, "refused": refused, "dropped": dropped}
 
 
-def run_scan(
+def _follow(
     settings: Settings,
     cfg: TargetConfig,
     store: Store,
     client: Any,
-    *,
-    limit: int | None = None,
-    playbook_id: str | None = None,
-    sleep: Any = None,
-    wall_clock: float = 3600.0,
-    log: Any = print,
+    state: Any,
+    sid: str,
+    limit: int,
+    sleep: Any,
+    wall_clock: float,
+    log: Any,
 ) -> dict[str, Any]:
-    """One scan session, start to findings. A session that ends without output files nothing."""
+    """Watch one scan session to its end and file what it returns."""
     import time as _time
 
-    limit = limit or int(cfg.scan.get("max_findings", 3))
-    sleep = sleep or (
-        (lambda s_: _time.sleep(min(s_, 0.05)))
-        if getattr(client, "is_fake", False)
-        else _time.sleep
-    )
-    spec = build_spec(cfg, limit, playbook_id)
-    state = client.start(spec)
-    sid = store.insert_scan_session(
-        devin_session_id=state.session_id,
-        url=getattr(state, "url", "") or f"https://app.devin.ai/sessions/{state.session_id}",
-        status=state.status,
-        status_detail=state.status_detail,
-        playbook_id=playbook_id,
-        tags=list(spec.tags),
-    )
-    store.log(
-        "scan",
-        "session started",
-        session_id=sid,
-        detail=f"{state.session_id} · at most {limit} finding(s)",
-    )
     started = _time.monotonic()
     wait = 5.0
     while not (state.delivered or state.terminal):
@@ -224,3 +202,80 @@ def run_scan(
     )
     log(f"scan: {len(filed['new'])} new, {len(filed['known'])} already known")
     return {"kind": "filed", "session": state.session_id, "at": now(), **filed}
+
+
+def _record(store: Store, state: Any, spec_tags: Any, playbook_id: str | None) -> str:
+    return store.insert_scan_session(
+        devin_session_id=state.session_id,
+        url=getattr(state, "url", "") or f"https://app.devin.ai/sessions/{state.session_id}",
+        status=state.status,
+        status_detail=state.status_detail,
+        playbook_id=playbook_id,
+        tags=list(spec_tags),
+    )
+
+
+def adopt_scan(
+    settings: Settings,
+    cfg: TargetConfig,
+    store: Store,
+    client: Any,
+    devin_session_id: str,
+    *,
+    limit: int | None = None,
+    sleep: Any = None,
+    wall_clock: float = 3600.0,
+    log: Any = print,
+) -> dict[str, Any]:
+    """Pick up a scan session this app started and then lost, for example when the server was
+    restarted under it. The session kept working; only our side of it went away."""
+    import time as _time
+
+    limit = limit or int(cfg.scan.get("max_findings", 3))
+    sleep = sleep or (
+        (lambda s_: _time.sleep(min(s_, 0.05)))
+        if getattr(client, "is_fake", False)
+        else _time.sleep
+    )
+    existing = [s for s in store.list_scan_sessions() if s["devin_session_id"] == devin_session_id]
+    state = client.status(devin_session_id)
+    sid = (
+        existing[0]["id"]
+        if existing
+        else _record(store, state, (cfg.session.get("tags_prefix", "swe-loop"), "scan"), None)
+    )
+    store.log("scan", "picked the session back up", session_id=sid, detail=devin_session_id)
+    return _follow(settings, cfg, store, client, state, sid, limit, sleep, wall_clock, log)
+
+
+def run_scan(
+    settings: Settings,
+    cfg: TargetConfig,
+    store: Store,
+    client: Any,
+    *,
+    limit: int | None = None,
+    playbook_id: str | None = None,
+    sleep: Any = None,
+    wall_clock: float = 3600.0,
+    log: Any = print,
+) -> dict[str, Any]:
+    """One scan session, start to findings. A session that ends without output files nothing."""
+    import time as _time
+
+    limit = limit or int(cfg.scan.get("max_findings", 3))
+    sleep = sleep or (
+        (lambda s_: _time.sleep(min(s_, 0.05)))
+        if getattr(client, "is_fake", False)
+        else _time.sleep
+    )
+    spec = build_spec(cfg, limit, playbook_id)
+    state = client.start(spec)
+    sid = _record(store, state, spec.tags, playbook_id)
+    store.log(
+        "scan",
+        "session started",
+        session_id=sid,
+        detail=f"{state.session_id} · at most {limit} finding(s)",
+    )
+    return _follow(settings, cfg, store, client, state, sid, limit, sleep, wall_clock, log)

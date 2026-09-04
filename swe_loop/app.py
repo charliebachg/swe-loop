@@ -41,6 +41,20 @@ def build_app(
         app.state.client = DevinClient.from_settings(settings)
         app.state.run_lock = threading.Lock()
         app.state.run_thread = None
+        st0: Store = app.state.store
+        stuck = st0._all("SELECT id, automation_id FROM automation_runs WHERE status='running'")
+        for r in stuck:
+            st0.finish_automation_run(
+                r["id"],
+                {"error": "the app was restarted while this run was going"},
+                status="interrupted",
+            )
+            st0.log(
+                "automation",
+                "a run was cut short by a restart",
+                detail=f"{r['automation_id']} · any session it started is still on Devin",
+            )
+        st0.set_setting("automation.running", "")
         pages.seed_automations(app.state.store, cfg)
         pages.seed_playbooks(app.state.store, cfg)
         if not settings.live and seed_replay:

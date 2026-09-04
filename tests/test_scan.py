@@ -170,3 +170,60 @@ def test_the_scan_session_is_visible_and_counted(tmp_path, monkeypatch):
         html = c.get("/devin/sessions").text
         assert "read the repository and filed what it found" in html
         assert rows[0]["devin_session_id"][:12] in html
+
+
+def test_a_restart_does_not_leave_a_run_looking_alive(tmp_path, monkeypatch):
+    """Killing the app kills the thread, not the session. The page must say so rather than show
+    a run that will never finish."""
+    monkeypatch.delenv("DEVIN_API_KEY", raising=False)
+    st = Store(tmp_path / "s.sqlite")
+    rid = st.start_automation_run("auto_scan")
+    st.set_setting("automation.running", "auto_scan")
+    with TestClient(build_app(Settings.from_env(), st, seed_replay=False)):
+        pass
+    run = st.list_automation_runs("auto_scan")[0]
+    assert run["status"] == "interrupted" and run["finished_at"]
+    assert "restarted while this run was going" in run["result"]["error"]
+    assert st.get_setting("automation.running") == ""
+    assert rid == run["id"]
+
+
+def test_a_lost_session_can_be_picked_back_up(tmp_path):
+    """The session kept working; only our side of it went away."""
+
+    class Alive:
+        is_fake = True
+        n = 0
+
+        def status(self, sid):
+            Alive.n += 1
+            done = Alive.n > 1
+            return type(
+                "S",
+                (),
+                {
+                    "session_id": sid,
+                    "url": f"https://app.devin.ai/sessions/{sid}",
+                    "status": "exit" if done else "running",
+                    "status_detail": "finished" if done else "working",
+                    "acus_consumed": 0.0,
+                    "delivered": done,
+                    "terminal": done,
+                    "structured_output": GOOD if done else None,
+                },
+            )()
+
+    st = Store(tmp_path / "s.sqlite")
+    out = scan.adopt_scan(
+        Settings(mode="replay"),
+        CFG,
+        st,
+        Alive(),
+        "lost-1",
+        sleep=lambda s: None,
+        log=lambda m: None,
+    )
+    assert out["kind"] == "filed" and len(out["new"]) == 1
+    row = st.list_scan_sessions()[0]
+    assert row["devin_session_id"] == "lost-1" and row["outcome"] == "filed"
+    assert "picked the session back up" in " ".join(e["event"] for e in st.timeline(limit=20))
