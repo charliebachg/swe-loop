@@ -370,7 +370,7 @@ def _short_status(status: str | None, detail: str | None, delivered: bool) -> st
     if d in ("terminated", "error", "inactivity", "out_of_credits"):
         return {
             "terminated": "stopped",
-            "inactivity": "stalled",
+            "inactivity": "idle",
             "out_of_credits": "out of credits",
         }.get(d, d)
     if status in ("running", "claimed"):
@@ -1143,11 +1143,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
             "color": PL["ok"][0] if quiet else FAINT,
             "pct": None,
             "svg": "",
-            "note": (
-                plural(len(all_sessions) - quiet, "session") + " needed a person's answer"
-                if all_sessions
-                else ""
-            ),
+            "note": (f"{len(all_sessions) - quiet} needed an answer" if all_sessions else ""),
         },
     ]
     for tile in tiles:
@@ -1561,11 +1557,6 @@ SOURCE_GROUPS = [
         {"code_scan"},
         "Devin's own code scan, started against the repository with an area to look in. Every security finding goes to a person: this repository requires such a finding to name the capability row in SECURITY.md it violates and the principal the attacker holds, and to be filed as a question when it cannot.",
     ),
-    (
-        "Others",
-        {"gmail", "slack", "email", "linear", "jira"},
-        "Gmail and Slack are not connected. A new source is one new adapter; everything after intake stays the same.",
-    ),
 ]
 VIEWS = [("list", "List"), ("pipeline", "Pipeline")]
 
@@ -1609,7 +1600,7 @@ _WORD_RE = re.compile(r"\b(" + "|".join(w for w, _ in PLAIN_WORDS) + r")\b", re.
 _WORD_MAP = dict(PLAIN_WORDS)
 
 
-_ABS_PATH_RE = re.compile(r"/(?:[A-Za-z0-9._@+-]+/){2,}[A-Za-z0-9._@+-]+")
+_ABS_PATH_RE = re.compile(r"(?<![:/\w])/(?:[A-Za-z0-9._@+-]+/){2,}[A-Za-z0-9._@+-]+")
 _KEEP_SEGMENTS = 4
 
 

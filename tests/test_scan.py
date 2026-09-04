@@ -452,7 +452,7 @@ def test_an_unconfirmed_security_finding_keeps_its_detail_off_a_shared_screen(tm
     assert codescan.masked(st) is True  # withheld unless a person turns it off
     hidden = codescan.safe_title(t, True)
     assert "sql_lab" not in hidden and "164" not in hidden
-    assert hidden == "other idor, detail withheld until someone confirms it"
+    assert hidden == "insecure object reference, detail withheld until someone confirms it"
     # the detail is still there for whoever needs it
     assert codescan.safe_title(t, False) == t["title"]
     st.set_setting(codescan.MASK_SETTING, "1")

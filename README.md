@@ -70,10 +70,12 @@ ones that only read a ticket and the one that went to a person.
 
 **Detection was never the missing piece.** Three tools were already running on
 `apache/superset#42671` and none of them moved it. Dependabot opened the pull request and stopped,
-because its job ends where code changes begin; the repository's own `.github/dependabot.yml`
-carries a hand-written list of major upgrades the bot must skip, React among them, each with a
-comment saying the application does not support it yet. A review bot read the diff on day one and
-described the migration correctly, naming the file and the line. CI went red and stayed red. A
+because its job ends where code changes begin. GitHub says as much about its own bot: some updates
+[need code changes across your project](https://github.blog/changelog/2026-04-07-dependabot-alerts-are-now-assignable-to-ai-agents-for-remediation/),
+and a coding agent picks up where Dependabot leaves off. This repository already knows it too: its
+own `.github/dependabot.yml` carries a hand-written list of major upgrades the bot must skip, React
+among them, each with a comment saying the application does not support it yet. A review bot read
+the diff on day one and described the migration correctly, naming the file and the line. CI went red and stayed red. A
 month later the pull request was exactly where it started.
 
 So the gap is not finding the work. It is doing it, and being able to trust what comes back.

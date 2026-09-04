@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -261,11 +262,31 @@ def is_unverified_security(t: dict[str, Any]) -> bool:
     return t.get("source") == "code_scan" and "SECURITY.md" in (t.get("router_reason") or "")
 
 
+_CLASS_WORDS = {
+    "idor": "insecure object reference",
+    "sql": "SQL",
+    "xss": "cross-site scripting",
+    "csrf": "cross-site request forgery",
+    "ssrf": "server-side request forgery",
+    "info": "information",
+    "authz": "authorisation",
+    "authn": "authentication",
+}
+
+
+def class_words(cls: str) -> str:
+    """Devin names a finding's class in its own shorthand, and prefixes anything that does not
+    fit a category with "other". Neither reads as English on a board someone is scanning."""
+    cls = re.sub(r"^other[-_ ]+", "", (cls or "").strip())
+    parts = [p for p in re.split(r"[-_\s]+", cls) if p]
+    return " ".join(_CLASS_WORDS.get(p.lower(), p) for p in parts)
+
+
 def safe_title(t: dict[str, Any], hide: bool) -> str:
     """What a row may say about a finding before a person has confirmed it."""
     if not (hide and is_unverified_security(t)):
         return t.get("title") or ""
-    kind = (t.get("class") or "").replace("-", " ").strip() or "a security finding"
+    kind = class_words(t.get("class") or "") or "a security finding"
     return f"{kind}, detail withheld until someone confirms it"
 
 

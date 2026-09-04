@@ -1,10 +1,10 @@
 {% extends "shell.html" %}{% block title %}Home{% endblock %}{% block content %}{% include "v2/_refresh.html" %}
 {# ---- five numbers, each against something, the trend inside #}
 <div style="display:flex;justify-content:flex-end;gap:2px;margin:-6px 0 4px;font:11px/18px 'JetBrains Mono',monospace">{% for key, label, href in ranges %}<a href="{{ href }}" hx-get="{{ href }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="padding:0 8px;border-radius:4px;color:{{ '#2457a8' if key == range else '#8f97a3' }};background:{{ '#e2e9f6' if key == range else 'transparent' }}">{{ label }}</a>{% endfor %}</div>
-<div style="display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid #e2dfd8;border-bottom:1px solid #e2dfd8;padding:12px 0;margin-bottom:20px">
+<div class="tiles5" style="border-top:1px solid #e2dfd8;border-bottom:1px solid #e2dfd8;padding:12px 0;margin-bottom:20px">
   {% for f in tiles %}
-  <div style="padding:0 18px;{% if not loop.first %}border-left:1px solid #e2dfd8{% endif %};min-width:0">
-    <div style="display:flex;align-items:baseline;gap:6px"><span style="font:600 24px/1.05 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:{{ f.color }}">{{ f.n }}</span><span style="font:11px/1.3 'JetBrains Mono',monospace;color:#8f97a3">{{ f.of }}</span></div>
+  <div style="padding:0 18px;min-width:0">
+    <div style="display:flex;align-items:baseline;gap:6px"><span style="font:600 24px/1.05 'Instrument Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:{{ f.color }};white-space:nowrap">{{ f.n }}</span><span style="font:11px/1.3 'JetBrains Mono',monospace;color:#8f97a3">{{ f.of }}</span></div>
     <div style="font-size:12px;color:#626b78;margin-top:2px"{% if f.help %} title="{{ f.help }}"{% endif %}>{{ f.label }}{% if f.help %} <span style="color:#8f97a3">ⓘ</span>{% endif %}</div>
     {% if f.human is defined and f.human %}<div style="font-size:12px;color:#14181f;margin-top:4px" title="{{ f.humanHelp }}">≈ <b>{{ '%g' | format(f.human) }} h</b> of engineer work <span style="color:#8f97a3">ⓘ</span></div>{% endif %}
     {% if f.pct is not none %}<div style="height:4px;background:#e9e7e1;border-radius:3px;overflow:hidden;margin-top:8px"><span style="display:block;height:100%;width:{{ f.pct }}%;background:#7a4fb5;min-width:2px"></span></div>{% endif %}
@@ -76,7 +76,7 @@
 </div>
 
 {# ---- the last eight events, folded #}
-<details style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:0">
+<details open style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;padding:0">
   <summary style="padding:9px 16px;cursor:pointer;display:flex;align-items:baseline;gap:10px;list-style:none"><span style="font:500 11px/1.4 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#626b78">What just happened</span><span style="font-size:12px;color:#8f97a3">{{ countLabel }}</span><a href="{{ goLog }}" style="margin-left:auto;font-size:12.5px">the whole log →</a></summary>
   <div style="padding:2px 0 8px;border-top:1px solid #ecebe6">
     {% for e in recent8 %}

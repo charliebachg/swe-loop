@@ -17,6 +17,21 @@ document.addEventListener("mouseover", function (e) {
 </script>
 
 <style>svg rect,svg circle{transition:opacity .12s}svg rect:hover,svg circle:hover{opacity:.7;cursor:default}</style>
+<style>
+/* the headline tiles: five across when there is room, fewer when there is not, and the rule
+   between them only ever inside a row */
+.tiles5 { display:grid; grid-template-columns:repeat(5,1fr) }
+.tiles5 > * + * { border-left:1px solid #e2dfd8 }
+@media (max-width:1340px) {
+  .tiles5 { grid-template-columns:repeat(3,1fr); row-gap:16px }
+  .tiles5 > :nth-child(3n+1) { border-left:0 }
+}
+@media (max-width:860px) {
+  .tiles5 { grid-template-columns:repeat(2,1fr) }
+  .tiles5 > * { border-left:1px solid #e2dfd8 }
+  .tiles5 > :nth-child(odd) { border-left:0 }
+}
+</style>
 <style>code{font:.92em/1.4 'JetBrains Mono',ui-monospace,monospace;background:#eef1f5;border-radius:4px;padding:1px 2px;overflow-wrap:anywhere}pre code{background:none;padding:0}</style>
 <style>/* legacy page styles */
 
