@@ -140,13 +140,29 @@ def reoffer_shard(
         raise RuntimeError(f"the clone at {root} has local changes; refusing")
 
     repo.git("fetch", "--quiet", "origin", base)
+    repo.git("fetch", "--quiet", "origin", check=False)
     repo.git("checkout", "--quiet", base)
     repo.git("reset", "--quiet", "--hard", f"origin/{base}")
-    fix = repo.git("rev-parse", "HEAD").stdout.strip()
+
+    def carries_the_fix(ref: str) -> bool:
+        r = repo.git("diff", "--quiet", baseline, ref, "--", *files, check=False)
+        return r.returncode != 0
+
+    # the verified work lives on the shard's own branch, or still on the base branch
+    src = f"origin/{prefix}{shard}"
+    if repo.git("rev-parse", "--verify", "--quiet", src, check=False).returncode != 0 or not (
+        carries_the_fix(src)
+    ):
+        src = "HEAD"
+    if not carries_the_fix(src):
+        raise ValueError(
+            f"the verified change for shard {shard} is not on the branch or the base branch any "
+            "more, so there is nothing to offer again"
+        )
+    fix = repo.git("rev-parse", src).stdout.strip()
     out["fix_commit"] = fix[:10]
-    # the branch carries the work exactly as it was verified
-    repo.git("push", "--quiet", "--force", "origin", f"{fix}:refs/heads/{prefix}{shard}")
-    # the base branch goes back to before it landed
+
+    # the base branch goes back to before that work landed
     repo.git("checkout", "--quiet", baseline, "--", *files)
     if repo.git("diff", "--cached", "--quiet", check=False).returncode != 0:
         repo.git(
@@ -163,6 +179,23 @@ def reoffer_shard(
         out["base_restored"] = True
     else:
         out["base_restored"] = False
+
+    # the branch is the base plus the same change, so there is something to open
+    branch = f"{prefix}{shard}"
+    repo.git("checkout", "--quiet", "-B", branch)
+    repo.git("checkout", "--quiet", fix, "--", *files)
+    repo.git(
+        "-c",
+        "user.name=swe-loop",
+        "-c",
+        "user.email=swe-loop@users.noreply.github.com",
+        "commit",
+        "--quiet",
+        "-m",
+        f"fix(pandas): shard {shard}, the change that was verified earlier",
+    )
+    repo.git("push", "--quiet", "--force", "origin", f"{branch}:refs/heads/{branch}")
+    repo.git("checkout", "--quiet", base)
 
     body = (
         "The same change that was verified earlier, offered again so the merge step can be shown."
@@ -215,7 +248,10 @@ def _create_pr(repo: str, head: str, base: str, token: str, body: str, shard: st
         d = r.json()
     except Exception as ex:  # noqa: BLE001 - reported on the page
         return f"could not open a pull request: {type(ex).__name__}"
-    return d.get("html_url") or str(d.get("message", "GitHub refused"))[:160]
+    if d.get("html_url"):
+        return str(d["html_url"])
+    detail = "; ".join(e.get("message", "") for e in (d.get("errors") or []) if e.get("message"))
+    return (str(d.get("message", "GitHub refused")) + (f": {detail}" if detail else ""))[:200]
 
 
 def reset_shard(

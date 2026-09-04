@@ -206,6 +206,15 @@ def test_offer_it_again_reopens_the_same_verified_change(fork, tmp_path):
     assert out["pr"] == "https://github.com/o/r/pull/99" and out["base_restored"]
     assert seen["head"] == "swe-loop/D" and seen["base"] == "master"
     assert "No session was spent" in seen["body"]
+    # the branch is the base plus the change, so GitHub has something to open
+    ahead = subprocess.run(
+        ["git", "rev-list", "--count", "origin/master..origin/swe-loop/D"],
+        cwd=str(clone),
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    assert ahead == "1", f"the branch must be ahead of the base, was {ahead}"
     # the branch carries the fix, the base no longer does
     branch = subprocess.run(
         ["git", "show", "origin/swe-loop/D:superset/models/helpers.py"],
