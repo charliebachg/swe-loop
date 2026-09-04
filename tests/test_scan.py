@@ -298,3 +298,24 @@ def test_stopping_after_intake_files_tickets_and_spends_nothing_more(tmp_path, m
     # the run is on the record like any other
     runs = st.list_automation_runs("auto_scan")
     assert runs and runs[0]["status"] == "done"
+
+
+def test_a_ticket_in_a_file_another_change_owns_is_refused_without_a_session(tmp_path):
+    """The file is known from the finding, so working that out does not need a session. A
+    ticket filed before the rule existed is refused on the next run, not scoped and then thrown
+    away after the money is spent."""
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    reserved = cfg.scan["reserved_paths"][0]
+    for tid, where in (("tkt_held", reserved), ("tkt_free", "superset/utils/core.py")):
+        st.upsert_ticket(id=tid, source="scan", title=where, status="new")
+        st.insert_event("scan", {"file": where, "line": 1}, ticket_id=tid)
+
+    assert scan.refuse_reserved(st, cfg) == ["tkt_held"]
+    held = st.get_ticket("tkt_held")
+    assert held["status"] == "refused" and held["router_decision"] == "refuse"
+    assert "already has a change open against it" in held["router_reason"]
+    # the one on free ground is untouched and still waiting to be scoped
+    assert st.get_ticket("tkt_free")["status"] == "new"
+    # and it is idempotent: a second pass finds nothing left to refuse
+    assert scan.refuse_reserved(st, cfg) == []

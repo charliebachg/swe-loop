@@ -230,6 +230,13 @@ def run_automation(
                 detail="playbooks and Knowledge notes; anything already there was adopted",
             )
             log(f"apply-config: {n} created, {len(made['already_on_the_org'])} already there")
+        # A ticket in a file another change owns is refused before anything is spent on it.
+        from swe_loop import scan as scan_mod
+
+        held = scan_mod.refuse_reserved(store, cfg)
+        if held:
+            result["refused_reserved"] = len(held)
+            log(f"refused {plural(len(held), 'ticket')} in files another change already owns")
         if stop_after == "intake":
             result["stopped_after"] = "intake"
             log("stopping after intake, as asked: nothing is scoped or repaired")

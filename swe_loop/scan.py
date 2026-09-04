@@ -167,6 +167,37 @@ def file_findings(
     }
 
 
+def refuse_reserved(store: Store, cfg: TargetConfig) -> list[str]:
+    """Refuse any scan ticket sitting in a file another change already owns.
+
+    `file_findings` drops such a finding as it arrives, but tickets filed before that rule
+    existed are still on the board, and a repository's reserved list can grow while work is in
+    flight. Refusing them here costs nothing: the file is known from the finding itself, so no
+    session has to be spent working that out. Returns the ticket ids refused."""
+    reserved = tuple(cfg.scan.get("reserved_paths") or ())
+    if not reserved:
+        return []
+    out = []
+    for t in store.list_tickets("new"):
+        if t.get("source") != "scan":
+            continue
+        ev = store._one("SELECT payload_json FROM events WHERE ticket_id=?", t["id"])
+        if not ev:
+            continue
+        where = str(json.loads(ev["payload_json"]).get("file") or "")
+        if where not in reserved:
+            continue
+        reason = (
+            f"{where} already has a change open against it. Two changes to one file collide at "
+            "the merge, so this one waits until that work has landed."
+        )
+        store.set_router_decision(t["id"], "refuse", reason)
+        store.set_ticket_status(t["id"], "refused")
+        store.log("route", "refused", ticket_id=t["id"], detail=reason)
+        out.append(t["id"])
+    return out
+
+
 def _close(store: Store, sid: str, outcome: str, **extra: Any) -> None:
     """A scan session that has finished must not still say it is running. The last poll wrote
     whatever the API said mid-flight; this writes what actually became of it."""
