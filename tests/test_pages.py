@@ -195,7 +195,7 @@ def test_capability_pages_render_real_state(client):
     assert "lower bound" in html and "not yet used" in html
     html = c.get("/devin/insights").text
     assert "How big the pieces were" in html and "Minutes the AI was working" in html
-    body = html.split('<main', 1)[-1]
+    body = html.split("<main", 1)[-1]
     assert "ACU per session" not in body and ">ACU<" not in body  # nothing this plan cannot report
     html = c.get("/devin/review").text
     assert "requested" in html and "devin-ai-integration[bot]" in html

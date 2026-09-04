@@ -469,6 +469,11 @@ def rerun_ctx(settings: Settings, cfg: TargetConfig, store: Store) -> dict[str, 
                 else f"shard {last['shard']} at {last.get('at', '')[:16].replace('T', ' ')}: repository {last.get('repo')}"
                 + (", pushed" if last.get("pushed") else "")
                 + (", old repair branch deleted" if last.get("branch_deleted") else "")
+                + (
+                    f", issue {last['issue']}"
+                    if last.get("issue") not in (None, "not touched")
+                    else ""
+                )
                 + f" · {last.get('store_rows', 0)} store row(s) forgotten"
                 + (f" · snapshot {last.get('snapshot')}" if last.get("snapshot") else "")
             )
@@ -1415,7 +1420,7 @@ def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
     return row.get("note") or ""
 
 
-def tickets(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
+def tickets(store: Store, cfg: TargetConfig, q: dict[str, str], note: str = "") -> dict[str, Any]:
     tk_page = pages.tickets(store)
     sm = tk_page["summary"]
     info = {r["id"]: r for g in tk_page["groups"] for r in g["rows"]}
@@ -1493,11 +1498,16 @@ def tickets(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any
         rows.append(r)
     groups = []
     placed: set[str] = set()
-    for name, sources, note in SOURCE_GROUPS:
+    for name, sources, empty_note in SOURCE_GROUPS:
         g_rows = [r for r in rows if r["source"] in sources]
         placed.update(r["id"] for r in g_rows)
         groups.append(
-            {"name": name, "rows": g_rows, "note": note if not g_rows else "", "empty": not g_rows}
+            {
+                "name": name,
+                "rows": g_rows,
+                "note": empty_note if not g_rows else "",
+                "empty": not g_rows,
+            }
         )
     groups[0]["rows"].extend(r for r in rows if r["id"] not in placed)
     for g in groups:
@@ -1515,6 +1525,7 @@ def tickets(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any
         + ("" if len(rows) == len(tr["trackerRows"]) else f" of {len(tr['trackerRows'])}"),
         "noTickets": not rows,
         "emptyText": EMPTY.get(f, "No tickets."),
+        "note": note,
     }
 
 

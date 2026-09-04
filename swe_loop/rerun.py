@@ -32,6 +32,36 @@ def shard_files(shard: str, tickets_json: Path = INVENTORY / "tickets.json") -> 
     return []
 
 
+def issue_number(
+    shard: str, repo: str, tickets_json: Path = INVENTORY / "tickets.json"
+) -> int | None:
+    """The issue this shard was filed as, when the target is the one the inventory describes."""
+    if not Path(tickets_json).exists():
+        return None
+    d = json.loads(Path(tickets_json).read_text())
+    if d.get("repo") and d["repo"] != repo:
+        return None
+    n = (d.get("numbers") or {}).get(shard)
+    return int(n) if n is not None else None
+
+
+def reopen_issue(repo: str, number: int, token: str, patch: Any = None) -> str:
+    """A merge closes the issue. A reset undoes the merge, so the issue comes back, otherwise the
+    next run has nothing to find."""
+    import httpx
+
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "swe-loop"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    url = f"https://api.github.com/repos/{repo}/issues/{number}"
+    call = patch or (lambda u, b: httpx.patch(u, headers=headers, json=b, timeout=20).json())
+    try:
+        d = call(url, {"state": "open"})
+    except Exception as ex:  # noqa: BLE001 - reported on the page, never silent
+        return f"could not reopen issue #{number}: {type(ex).__name__}"
+    return "reopened" if (d or {}).get("state") == "open" else "already open"
+
+
 def shards(tickets_json: Path = INVENTORY / "tickets.json") -> list[dict[str, Any]]:
     """The shards a reset can target: the ones routed to Devin, with their files."""
     d = json.loads(Path(tickets_json).read_text())
@@ -93,6 +123,7 @@ def reset_shard(
         "repo": "skipped",
         "pushed": False,
         "branch_deleted": False,
+        "issue": "not touched",
         "store_rows": 0,
         "snapshot": None,
         "at": now(),
@@ -158,12 +189,15 @@ def reset_shard(
         if push:
             r = repo.git("push", "--quiet", "origin", "--delete", f"{prefix}{shard}", check=False)
             out["branch_deleted"] = r.returncode == 0
+            n = issue_number(shard, cfg.repo)
+            if n is not None:
+                out["issue"] = reopen_issue(cfg.repo, n, settings.github_token)
         log(f"repository: {out['repo']}" + (", pushed" if out["pushed"] else ""))
 
     store.log(
         "intake",
         f"shard {shard} reset for a rerun",
-        detail=f"{out['repo']} · {out['store_rows']} store row(s) forgotten · the issue stays open",
+        detail=f"{out['repo']} · {out['store_rows']} store row(s) forgotten · issue {out['issue']}",
     )
     store.set_setting("rerun.last", json.dumps(out))
     return out

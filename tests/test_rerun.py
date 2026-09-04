@@ -149,3 +149,31 @@ def test_settings_card_and_route_in_replay(tmp_path, monkeypatch):
         res = st.get_automation("auto_repair")["last_result"]
         assert res["new_tickets"] == ["tkt_D"] and res["triaged"] == 1
         assert st.get_ticket("tkt_D")["status"] != "new"
+
+
+def test_reset_reopens_the_issue_the_merge_closed(fork, tmp_path):
+    """Merging closes the issue. A reset undoes the merge, so it must reopen it, or the next run
+    finds nothing to do."""
+    _origin, clone, cfg, _baseline = fork
+    st = Store(tmp_path / "s.sqlite")
+    calls = []
+
+    def patch(url, body):
+        calls.append((url, body))
+        return {"state": "open"}
+
+    from swe_loop import rerun as rr
+
+    assert rr.issue_number("D", CFG.repo) == 4
+    assert rr.reopen_issue(CFG.repo, 4, "tok", patch=patch) == "reopened"
+    assert calls[0][0].endswith("/issues/4") and calls[0][1] == {"state": "open"}
+    out = rr.reset_shard(
+        Settings(mode="live", devin_api_key="x"),
+        cfg,
+        st,
+        "D",
+        repo_root=clone,
+        snapshot_dir=tmp_path / "snap",
+    )
+    # the real call is attempted with no token, and whatever it answers is reported, never hidden
+    assert out["issue"] != "not touched"

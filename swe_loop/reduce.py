@@ -132,6 +132,55 @@ def detect_conflicts(store: Store) -> list[dict[str, Any]]:
     return found
 
 
+def merge_on_github(
+    store: Store, ticket_id: str, github_token: str = "", request: Any = None
+) -> list[dict[str, Any]]:
+    """Merge this ticket's verified pull requests, because a person asked for it.
+
+    The loop never calls this by itself. It runs only from a person's click, and only on a
+    ticket the checks have already passed, which is what `record_merge` insists on."""
+    import httpx
+
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "swe-loop"}
+    if github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
+    put = request or (
+        lambda url, body: httpx.put(url, headers=headers, json=body, timeout=30).json()
+    )
+    out = []
+    for pr in readiness(store, ticket_id).pr_urls:
+        n = pr.rsplit("/", 1)[-1]
+        api = pr.replace("github.com/", "api.github.com/repos/", 1).replace(
+            f"/pull/{n}", f"/pulls/{n}/merge"
+        )
+        try:
+            d = put(api, {"merge_method": "squash"})
+        except Exception as ex:  # noqa: BLE001 - reported to the person who clicked
+            out.append({"pr": pr, "merged": False, "why": f"{type(ex).__name__}: {ex}"[:200]})
+            continue
+        merged = bool(isinstance(d, dict) and d.get("merged"))
+        out.append(
+            {
+                "pr": pr,
+                "merged": merged,
+                "sha": (d or {}).get("sha", "")[:10] if merged else "",
+                "why": "" if merged else str((d or {}).get("message", "GitHub refused"))[:200],
+            }
+        )
+        if merged:
+            store.conn.execute(
+                "UPDATE sessions SET pr_state='merged' WHERE pull_request_url=?", (pr,)
+            )
+            store.conn.commit()
+            store.log(
+                "merge",
+                f"pull request {n} merged on GitHub",
+                ticket_id=ticket_id,
+                detail=f"squash, commit {(d or {}).get('sha', '')[:10]}",
+            )
+    return out
+
+
 def record_merge(
     store: Store, ticket_id: str, actor: str, pr_url: str | None = None
 ) -> dict[str, Any]:

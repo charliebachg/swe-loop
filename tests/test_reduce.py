@@ -113,3 +113,39 @@ def test_summary_buckets(tmp_path):
     s = summary(st)
     assert s["merged"] == ["tkt_A"] and s["ready"] == ["tkt_B"]
     assert {w["ticket_id"] for w in s["waiting"]} == {"tkt_C", "tkt_D"}
+
+
+def test_merge_goes_to_github_then_is_recorded(tmp_path):
+    """The button merges the pull request and records who asked. If GitHub refuses, nothing is
+    recorded here either, so the two can never disagree."""
+    from swe_loop import reduce as rd
+
+    st, sids = run_to_gated(tmp_path)
+    pass_and_review(st, sids["tkt_D"], "tkt_D")
+    calls = []
+
+    def ok(url, body):
+        calls.append((url, body))
+        return {"merged": True, "sha": "abc1234567890"}
+
+    out = rd.merge_on_github(st, "tkt_D", "tok", request=ok)
+    assert out and out[0]["merged"] and out[0]["sha"] == "abc1234567"
+    assert calls[0][0].endswith("/merge") and "api.github.com/repos/" in calls[0][0]
+    assert calls[0][1] == {"merge_method": "squash"}
+    assert (
+        st._one("SELECT pr_state FROM sessions WHERE id=?", sids["tkt_D"])["pr_state"] == "merged"
+    )
+    assert "merged on GitHub" in " ".join(e["event"] for e in st.timeline(ticket_id="tkt_D"))
+
+
+def test_a_refused_merge_is_reported_and_changes_nothing(tmp_path):
+    from swe_loop import reduce as rd
+
+    st, sids = run_to_gated(tmp_path)
+    pass_and_review(st, sids["tkt_D"], "tkt_D")
+    out = rd.merge_on_github(
+        st, "tkt_D", "tok", request=lambda u, b: {"message": "Pull Request is not mergeable"}
+    )
+    assert out[0]["merged"] is False and "not mergeable" in out[0]["why"]
+    assert st.get_ticket("tkt_D")["status"] != "merged"
+    assert not st._all("SELECT * FROM human_actions WHERE ticket_id='tkt_D'")

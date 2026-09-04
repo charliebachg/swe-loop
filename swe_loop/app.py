@@ -339,20 +339,45 @@ def build_app(
 
     @app.post("/tickets/{ticket_id}/merge-form", response_class=HTMLResponse)
     async def merge_form_v2(ticket_id: str, request: Request) -> HTMLResponse:
+        """A person merges. The pull request is merged on GitHub and the decision recorded here,
+        in that order, so the two can never disagree. Nothing else in the loop can call this."""
         form = parse_qs((await request.body()).decode())
         actor = (form.get("actor") or [""])[0].strip()
         st: Store = request.app.state.store
-        if actor:
-            try:
-                reduce_mod.record_merge(st, ticket_id, actor)
-            except ValueError:
-                pass  # not ready: the re-rendered row says why
+        note = _do_merge(st, ticket_id, actor, request)
         return _page(
             request,
             "tickets",
             "v2/tickets.html",
-            v2.tickets(st, cfg, {**_q(request), "view": "pipeline", "open": ticket_id}),
+            v2.tickets(st, cfg, {**_q(request), "view": "pipeline", "open": ticket_id}, note=note),
         )
+
+    def _do_merge(st: Store, ticket_id: str, actor: str, request: Request) -> str:
+        """Returns what to tell the person: empty when it went through."""
+        if not actor:
+            return "a name is needed; it is hashed and never shown"
+        client = request.app.state.client
+        live = settings.live and not client.is_fake
+        try:
+            reduce_mod.readiness(st, ticket_id)
+        except Exception:  # noqa: BLE001 - an unknown ticket
+            raise HTTPException(status_code=404) from None
+        if live:
+            results = reduce_mod.merge_on_github(st, ticket_id, settings.github_token)
+            refused = [r for r in results if not r["merged"]]
+            if refused:
+                st.log(
+                    "merge",
+                    "GitHub refused the merge",
+                    ticket_id=ticket_id,
+                    detail=refused[0]["why"],
+                )
+                return "GitHub did not merge it: " + refused[0]["why"]
+        try:
+            reduce_mod.record_merge(st, ticket_id, actor)
+        except ValueError as ex:
+            return str(ex)
+        return ""
 
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request) -> HTMLResponse:
