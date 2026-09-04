@@ -239,9 +239,9 @@ def test_the_base_branch_is_read_fresh_not_from_whatever_this_machine_last_saw(t
     clone that has not fetched, like it introduced every commit the clone has not heard about,
     and good work is failed for changing files it never touched."""
     repo = make_repo(tmp_path)
-    st, sid = seed(tmp_path, branch="fix-ok")
+    st, sid = seed(tmp_path, branch="fix-good")
     calls: list[tuple[str, ...]] = []
-    gate = make_gate(st, tmp_path, repo, "fix-ok")
+    gate = make_gate(st, tmp_path, repo, "fix-good")
     real = gate.ws.git
 
     def spy(*args, **kw):
@@ -255,3 +255,29 @@ def test_the_base_branch_is_read_fresh_not_from_whatever_this_machine_last_saw(t
     # and it happens before the base is resolved, which is what the comparison rests on
     resolved = [i for i, c in enumerate(calls) if c[0] == "rev-parse"]
     assert resolved and fetched[0] < resolved[0]
+
+
+def test_a_check_that_cannot_run_is_not_the_sessions_failure(tmp_path, monkeypatch):
+    """An acceptance command that pytest cannot even parse never ran a test, so it says nothing
+    about the change. The command lives in the work order, which a repair session cannot edit,
+    so sending it back would ask the session to fix something out of its reach and it would fail
+    the same way on every attempt after that."""
+    repo = make_repo(tmp_path)
+    st, sid = seed(tmp_path, branch="fix-good")
+    gate = make_gate(st, tmp_path, repo, "fix-good")
+    real = gate.run
+
+    def run(cmd, **kw):
+        if "grep" in str(cmd):  # stands in for the command pytest could not parse
+
+            class R:
+                returncode, stdout, stderr = 4, "", "ERROR: while parsing -W error::Nonsense"
+
+            return R()
+        return real(cmd, **kw)
+
+    gate.run = run
+    res = gate.run_gate(sid)
+    assert res.gate_result == "missing_evidence"
+    assert any("could not be run" in r for r in res.reasons)
+    assert any("not valid" in r for r in res.reasons)

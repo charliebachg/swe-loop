@@ -357,6 +357,15 @@ class Gate:
                 if code == 127:
                     # the command was not found: this machine's toolchain, not the session's work
                     infra.append(f"{name}: {output.strip()[:200] or 'command not found'}")
+                elif code == 4:
+                    # pytest's usage error: the command itself is malformed, so no test ran. The
+                    # command comes from the work order, which a repair session cannot edit, so
+                    # sending this back would ask it to fix something it has no reach over and it
+                    # would fail again on the next attempt, and every attempt after that.
+                    infra.append(
+                        f"{name}: the command is not valid, so nothing ran. "
+                        + (output.strip()[-300:] or "pytest reported a usage error")
+                    )
                 elif not ok:
                     t1_ok = False
                     failures.append(f"### {name} (exit {code})\n$ {cmd}\n{output[-4000:]}")
@@ -364,8 +373,7 @@ class Gate:
                 # never tell a session its work failed because a tool is missing here
                 res.gate_result = "missing_evidence"
                 res.reasons.append(
-                    "the gate's own toolchain is incomplete, so the work was not verified: "
-                    + "; ".join(infra)
+                    "the checks could not be run, so the work was not verified: " + "; ".join(infra)
                 )
                 return self._finish(res, wo)
             res.tiers["T1"] = t1_ok
