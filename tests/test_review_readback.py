@@ -61,7 +61,7 @@ def test_refresh_reviews_counts_comments_and_survives_no_token(tmp_path):
     }
     assert (
         _github_review_outcome("https://github.com/o/r/pull/7", "tok", fetch=lambda u: pages[u])
-        == "2 comment(s)"
+        == "2 comments"
     )
     assert (
         _github_review_outcome("https://github.com/o/r/pull/7", "", fetch=lambda u: pages[u])
@@ -98,4 +98,4 @@ def test_home_lists_the_mergers_notes(tmp_path, monkeypatch):
     with TestClient(app) as c:
         html = c.get("/").text
     assert "PR #7: 3 comments · 1 note for you" in html  # the inbox row
-    assert "boxplot.py:138: root cause outside the shard" in html  # in the row's hover text
+    assert "boxplot.py:138: root cause outside the piece" in html  # hover text, in plain words

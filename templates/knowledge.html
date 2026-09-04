@@ -10,7 +10,7 @@
           <div style="{{ CARD }};padding:14px 16px;display:flex;flex-direction:column;gap:8px">
             <div style="display:flex;align-items:baseline;gap:8px">
               <span style="font-weight:600;font-size:14px;text-wrap:pretty;min-width:0">{{ n.name }}</span>
-              <span style="margin-left:auto;display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{% if n.used %}#e3f2e8{% else %}#e9e7e1{% endif %};color:{% if n.used %}#2e7d4f{% else %}#8f97a3{% endif %};white-space:nowrap">{% if n.used %}used{% else %}not yet used{% endif %}</span>
+              <span style="margin-left:auto;display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{% if n.on_org %}#e3f2e8{% else %}#e9e7e1{% endif %};color:{% if n.on_org %}#2e7d4f{% else %}#8f97a3{% endif %};white-space:nowrap" title="{% if n.on_org %}this note is on the organisation, so a session can pull it{% else %}this note is in the repository but has not been created on the organisation yet{% endif %}">{% if n.on_org %}on the organisation{% else %}not sent yet{% endif %}</span>
             </div>
             <div><span style="{{ LBL }}">read when</span><div style="font-size:12.5px;color:#626b78;margin-top:2px;text-wrap:pretty">{{ n.trigger }}</div></div>
             <div style="font-size:12.5px;text-wrap:pretty">{{ n.summary }}</div>
@@ -18,5 +18,5 @@
           </div>
           {% endfor %}
         </div>
-        <p style="font-size:11.5px;color:#8f97a3;margin:14px 2px 0;max-width:80ch;text-wrap:pretty">A note is pulled in by its own description, not by us: the session decides it is relevant while it works. {% if not k.live %}This is a recorded run, so nothing new is being pulled right now.{% endif %}</p>
+        <p style="font-size:11.5px;color:#8f97a3;margin:14px 2px 0;max-width:80ch;text-wrap:pretty">A note is pulled in by its own description, not by us: the session decides it is relevant while it works, and Devin does not report back which ones it read, so this page shows what a session can reach rather than what it used.</p>
       {% endblock %}

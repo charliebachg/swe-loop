@@ -10,7 +10,7 @@ from typing import Any
 
 from swe_loop.config import TargetConfig
 from swe_loop.shard import split_work_order
-from swe_loop.store import Store
+from swe_loop.store import Store, clip, plural
 
 
 @dataclass(frozen=True)
@@ -152,10 +152,12 @@ def _needs_human_reason(needs_human: Any) -> str:
     """The verdict's own words when it gave them; the standing rule otherwise."""
     if isinstance(needs_human, list) and needs_human and isinstance(needs_human[0], dict):
         first = needs_human[0]
-        where = str(first.get("site") or "")[:60]
-        why = str(first.get("reason") or "")[:140]
-        more = f" (+{len(needs_human) - 1} more)" if len(needs_human) > 1 else ""
-        return f"triage: {len(needs_human)} site(s) need a person{more}: {where}: {why}"
+        where = clip(str(first.get("site") or ""), 60)
+        why = clip(str(first.get("reason") or ""), 140)
+        n = len(needs_human)
+        lead = plural(n, "place") + " need" + ("s" if n == 1 else "") + " a person"
+        rest = f", the first of {n}" if n > 1 else ""
+        return f"{lead}{rest}: {where}: {why}"
     return "the AI never edits tests or the build, so this one is your team's"
 
 

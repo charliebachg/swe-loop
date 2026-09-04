@@ -1,0 +1,45 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.15"
+
+      - name: Install
+        run: uv sync --locked --extra dev
+
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Tests
+        run: uv run pytest -q
+
+      - name: Build the image
+        run: docker build -t swe-loop:ci .
+
+      - name: The app answers in replay mode, with no credentials
+        run: |
+          docker run -d --name ci -p 8000:8000 -e SWE_LOOP_MODE=replay swe-loop:ci
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8000/health && break || sleep 2
+          done
+          for p in / /automations /tickets-page /report /devin/sessions \
+                   /devin/playbooks /devin/knowledge /devin/insights /settings; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8000$p")
+            echo "$p -> $code"
+            [ "$code" = "200" ] || exit 1
+          done
+          docker rm -f ci

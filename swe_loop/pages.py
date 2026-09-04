@@ -11,7 +11,7 @@ from swe_loop import connect, ops
 from swe_loop import reduce as reduce_mod
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.devin import DevinClient
-from swe_loop.store import Store
+from swe_loop.store import Store, clip
 from swe_loop.triage import TRIAGE_ACU_CAP
 
 NAV = [
@@ -25,9 +25,6 @@ NAV_DEVIN = [
     ("playbooks", "Playbooks", "/devin/playbooks", ""),
     ("knowledge", "Knowledge", "/devin/knowledge", ""),
     ("insights", "Insights", "/devin/insights", ""),
-    ("review", "Review", "/devin/review", ""),
-    ("integrations", "Integrations", "/devin/integrations", ""),
-    ("next", "Next", "/devin/next", "next"),
 ]
 
 
@@ -72,14 +69,19 @@ def home(store: Store) -> dict[str, Any]:
         )
     for tid in summary["ready"]:
         mn = reduce_mod.merge_notes(store, tid)
-        reason = "every shard passed the gate; no conflicts"
+        reason = "every part of it passed the checks on a clean copy, and nothing conflicts"
         if mn["reviews"]:
-            reason += "; Devin Review " + ", ".join(mn["reviews"])
+            reason += "; the AI reviewer left " + ", ".join(
+                r.replace(": ", " on ").replace("comment(s)", "comments").replace(
+                    "1 comments", "1 comment"
+                )
+                for r in mn["reviews"]
+            )
         if mn["notes"]:
             n_notes = len(mn["notes"])
             reason += (
                 f"; read first: the session left {n_notes} note{'' if n_notes == 1 else 's'}: "
-            ) + " | ".join(f"{n['site']}: {n['reason'][:90]}" for n in mn["notes"][:2])
+            ) + " | ".join(f"{n['site']}: {clip(n['reason'], 90)}" for n in mn["notes"][:2])
         needs.append(
             {
                 "kind": "ready to merge",
@@ -419,6 +421,19 @@ def _fmt(secs: float | None) -> str:
     return f"{secs // 3600}h {(secs % 3600) // 60:02d}m"
 
 
+def _when(ts: str | None) -> str:
+    """A time a person can place. Sessions in this store span more than one day, so the hour
+    alone is ambiguous."""
+    t = ts or ""
+    if len(t) < 16:
+        return t
+    month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    try:
+        return f"{t[8:10]} {month[int(t[5:7]) - 1]} {t[11:16]}"
+    except (ValueError, IndexError):
+        return t[11:19]
+
+
 def sessions(store: Store, cfg: TargetConfig) -> dict[str, Any]:
     o = ops.build(store)
     rows = store._all("SELECT * FROM sessions ORDER BY created_at DESC, rowid DESC")
@@ -472,7 +487,7 @@ def sessions(store: Store, cfg: TargetConfig) -> dict[str, Any]:
                 "parent": r["parent_session_id"],
                 "children": devin_children.get(r["devin_session_id"] or "", []),
                 "eta": eta,
-                "created": (r["created_at"] or "")[11:19],
+                "created": _when(r["created_at"]),
             }
         )
     scan_rows = []
@@ -499,7 +514,7 @@ def sessions(store: Store, cfg: TargetConfig) -> dict[str, Any]:
                 "gate": None,
                 "outcome": sc["outcome"],
                 "eta": "",
-                "created": sc["created_at"],
+                "created": _when(sc["created_at"]),
                 "elapsed": ops._elapsed(sc["created_at"], sc["terminal_at"]),
                 "findings": len(found.get("findings") or []),
             }
@@ -531,7 +546,7 @@ def sessions(store: Store, cfg: TargetConfig) -> dict[str, Any]:
                 "gate": None,
                 "outcome": tr["outcome"],
                 "eta": f"cap {TRIAGE_ACU_CAP} ACU" if live else "done",
-                "created": (tr["created_at"] or "")[11:19],
+                "created": _when(tr["created_at"]),
                 "elapsed": ops._elapsed(tr["created_at"], tr["terminal_at"]),
             }
         )
@@ -562,7 +577,7 @@ TRIGGER_CHOICES = [
     ("schedule", "Periodically, on a schedule"),
 ]
 KIND_NOTES = {
-    "repair": "Run pulls the open issues with the label, makes a ticket of each new one, starts one triage session per ticket, routes them, starts the repair sessions, checks every PR from a clean checkout and asks Devin Review. You merge.",
+    "repair": "Run pulls the open issues with the label, makes a ticket of each new one, starts one session per ticket to scope it, routes them, starts the sessions that write the fix, checks every pull request from a clean copy and asks Devin Review. You merge.",
     "scan": "Run points a session at the repository itself. It reads, finds places the upgrade changes behaviour, and files each one as a ticket. From there they go through the same scoping, checks and review as anything else. The session changes nothing.",
     "custom": "Run does the same as the default: issues to tickets, triage, route, repair, gate, review. You merge.",
 }
@@ -788,7 +803,14 @@ def seed_playbooks(store: Store, cfg: TargetConfig) -> None:
     from swe_loop.triage import TRIAGE_ACU_CAP, load_schema
 
     specs = [
-        ("pb_triage", "triage-pandas3", "triage session", load_schema(), TRIAGE_ACU_CAP, "live"),
+        (
+            "pb_triage",
+            "triage-pandas3",
+            "the session that scopes a ticket",
+            load_schema(),
+            TRIAGE_ACU_CAP,
+            "live",
+        ),
         (
             "pb_repair",
             "repair-pandas3",
@@ -907,15 +929,11 @@ def playbook_detail(store: Store, pid: str) -> dict[str, Any] | None:
 
 
 def knowledge(store: Store, settings: Settings, cfg: TargetConfig | None = None) -> dict[str, Any]:
-    """The notes a session is given when it works on this repository, and whether any session
-    has actually pulled each one."""
+    """The notes a session is given when it works on this repository, and whether each one is
+    on the organisation where a session can reach it. Devin does not report which notes a
+    session pulled, so this page does not pretend to know."""
     from swe_loop.knowledge import load_notes
 
-    used = {
-        t["detail"].split("note ", 1)[-1].strip()
-        for t in store.timeline(limit=5000)
-        if t["event"] == "knowledge used" and t["detail"]
-    }
     notes = []
     for n in load_notes():
         first = next((ln.strip() for ln in n.body.splitlines() if ln.strip()), "")
@@ -923,10 +941,11 @@ def knowledge(store: Store, settings: Settings, cfg: TargetConfig | None = None)
             {
                 "name": n.name,
                 "trigger": n.trigger_description,
-                "summary": first[:180],
+                "summary": clip(first, 180),
                 "body": n.body,
                 "lines": len([ln for ln in n.body.splitlines() if ln.strip()]),
-                "used": n.name in used,
+                # whether a session can actually reach it: the note exists on the organisation
+                "on_org": bool(store.get_setting(f"note_id.{n.name}")),
                 "file": Path(n.path).name if getattr(n, "path", None) else "",
             }
         )
@@ -987,6 +1006,25 @@ def insights(store: Store) -> dict[str, Any]:
                 "gate": None,
             }
         )
+    for sc in store.list_scan_sessions():
+        if not sc["devin_session_id"]:
+            continue
+        usd, src = cost_mod.session_usd(store, sc, "scn", kind_rates)
+        rows.append(
+            {
+                "id": sc["id"],
+                "devin_id": sc["devin_session_id"],
+                "url": sc["url"],
+                "ticket": "",
+                "number": None,
+                "size": "",
+                "big": False,
+                "minutes": cost_mod.scan_active_seconds(store, sc) / 60.0,
+                "usd": usd,
+                "priced": src == "console",
+                "gate": None,
+            }
+        )
     rows.sort(key=lambda r: r["minutes"], reverse=True)
     counts = {k: 0 for k in ("XS", "S", "M", "L", "XL")}
     for r in rows:
@@ -1001,87 +1039,3 @@ def insights(store: Store) -> dict[str, Any]:
         "metered": metered,
         "priced": sum(1 for r in rows if r["priced"]),
     }
-
-
-def review(store: Store) -> dict[str, Any]:
-    rows = []
-    for v in store._all(
-        "SELECT * FROM verdicts WHERE review_severity IS NOT NULL ORDER BY created_at DESC, rowid DESC"
-    ):
-        s = store.get_session(v["session_id"])
-        wo = store.get_work_order(s["work_order_id"]) if s else None
-        rows.append(
-            {
-                "pr_url": s["pull_request_url"] if s else None,
-                "ticket": wo["ticket_id"] if wo else "",
-                "devin_id": s["devin_session_id"] if s else "",
-                "at": v["created_at"],
-                "result": v["review_severity"],
-            }
-        )
-    return {"rows": rows}
-
-
-def integrations(
-    settings: Settings, cfg: TargetConfig, store: Store, client: DevinClient | None
-) -> dict[str, Any]:
-    checks = {c.key: c for c in connect.run_checks(settings, cfg, store, client)}
-    app = checks.get("app")
-    secrets: list[str] = []
-    if client is not None and not client.is_fake:
-        try:
-            secrets = [s.get("name") or s.get("key") or "?" for s in client.t.list_secrets()]
-        except Exception:  # noqa: BLE001
-            secrets = []
-    return {
-        "app": {
-            "status": app.status if app else "skipped",
-            "value": app.value if app else "unknown",
-            "call": app.call if app else "",
-        },
-        "repo": cfg.repo,
-        "secrets": secrets,
-        "allowlist": ["pypi.org", "files.pythonhosted.org", "api.github.com", "github.com"],
-        "snapshot": "not built in this run",
-        "org": settings.devin_org_id or "replay",
-        "plan": "Free plan; every endpoint this system uses answers on it",
-        "live": settings.live,
-    }
-
-
-NEXT = [
-    {
-        "name": "Computer Use",
-        "what": "Every cloud session runs on a VM with a desktop and a browser. A QA session starts the application, opens it, exercises the fixed path, and reports through structured output with a screenshot.",
-        "where": "a third check after the gate, on the Tracker; enabled per org by an admin (Settings, Customization, Enable desktop mode)",
-    },
-    {
-        "name": "DeepWiki",
-        "what": "Generated documentation for the repository, kept current, so the people who merge can read what the code does before they read the diff.",
-        "where": "a link on the repository card in Settings, and context for the scan session",
-    },
-    {
-        "name": "Security Swarm",
-        "what": "Devin's own scanner, an orchestration of parallel sessions that builds a threat model and validates findings. Consumed as a ticket source, never rebuilt.",
-        "where": "a second source on the Tickets page; each finding must name the SECURITY.md row and the principal, or it is filed as a question",
-    },
-    {
-        "name": "Scan session",
-        "what": "The triage playbook pointed at a repository instead of a ticket. It reads the code and the test output and files the tickets itself, on a schedule.",
-        "where": "the Scan automation; tickets appear in the Scan group",
-    },
-    {
-        "name": "Evaluator session",
-        "what": "Reads Session Insights across completed sessions and proposes edits to the playbooks and Knowledge notes. Grades on outcomes only, never on transcripts; every proposal is approved by a person.",
-        "where": "the Insights page, as proposed diffs awaiting approval",
-    },
-    {
-        "name": "Devin MCP",
-        "what": "The MCP server exposes session creation, search, interaction and a gather primitive that waits on many sessions at once, with no REST equivalent.",
-        "where": "fan-in over MCP instead of the poller, when the orchestrator is itself agent-driven",
-    },
-]
-
-
-def next_page() -> list[dict[str, str]]:
-    return NEXT

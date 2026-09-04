@@ -80,7 +80,7 @@ def test_remarks_are_fetched_and_composed():
     assert len(remarks) == 1 and remarks[0]["path"] == "utils.py" and "<" not in remarks[0]["body"]
     msg = compose_message("https://github.com/o/r/pull/8", "swe-loop/B", remarks)
     assert (
-        "1 remark(s)" in msg
+        "1 remark" in msg
         and "swe-loop/B" in msg
         and "utils.py:222" in msg
         and "is_final=true" in msg
@@ -106,7 +106,7 @@ def test_followup_messages_the_session_and_waits_for_a_new_claim(tmp_path):
     )
     assert out["kind"] == "revised_unverified" and out["remarks"] == 2  # fake gate is skipped
     sent = [c for c in t.calls if c[0] == "send_message"]
-    assert len(sent) == 1 and "2 remark(s)" in sent[0][1][1] and "a.py:9" in sent[0][1][1]
+    assert len(sent) == 1 and "2 remarks" in sent[0][1][1] and "a.py:9" in sent[0][1][1]
     s = st.get_session(sid)
     assert (
         s["terminal_at"]

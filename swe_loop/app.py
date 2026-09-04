@@ -13,6 +13,7 @@ from urllib.parse import parse_qs
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from swe_loop import connect, cost, ops, pages, replay, rerun, runner, v2
@@ -20,10 +21,11 @@ from swe_loop import reduce as reduce_mod
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.devin import DevinClient
 from swe_loop.intake import ingest, normalize, verify_github_signature
-from swe_loop.store import Store
+from swe_loop.store import Store, now
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = Jinja2Templates(directory=str(ROOT / "templates"))
+STATIC = ROOT / "static"
 INVENTORY = ROOT / "data" / "inventory" / "2026-09-03"
 
 
@@ -54,6 +56,13 @@ def build_app(
                 "a run was cut short by a restart",
                 detail=f"{r['automation_id']} · any session it started is still on Devin",
             )
+            # the automation still ran, so its row must say so; otherwise the page reports
+            # "never run" for work that is sitting right there in the log
+            st0.set_automation(
+                r["automation_id"],
+                last_run=now(),
+                last_result={"error": "the app was restarted while this run was going"},
+            )
         st0.set_setting("automation.running", "")
         pages.seed_automations(app.state.store, cfg)
         pages.seed_playbooks(app.state.store, cfg)
@@ -67,6 +76,10 @@ def build_app(
         yield
 
     app = FastAPI(title="swe-loop", lifespan=lifespan)
+
+    # htmx ships with the app rather than from a CDN: the dashboard must work on a machine
+    # with no internet, and every navigation on it goes through htmx
+    app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
     @app.get("/health")
     def health() -> dict[str, Any]:
@@ -410,6 +423,9 @@ def build_app(
             reduce_mod.record_merge(st, ticket_id, actor)
         except ValueError as ex:
             return str(ex)
+        if live:
+            # the change has landed, so the issue it came from is finished with
+            reduce_mod.close_source_issue(st, ticket_id, settings.github_token)
         return ""
 
     @app.get("/settings", response_class=HTMLResponse)
@@ -659,23 +675,6 @@ def build_app(
     @app.get("/devin/insights", response_class=HTMLResponse)
     def insights_page(request: Request) -> HTMLResponse:
         return _render(request, "insights.html", "insights", i=v2.insights(request.app.state.store))
-
-    @app.get("/devin/review", response_class=HTMLResponse)
-    def review_page(request: Request) -> HTMLResponse:
-        return _render(request, "review.html", "review", rv=pages.review(request.app.state.store))
-
-    @app.get("/devin/integrations", response_class=HTMLResponse)
-    def integrations_page(request: Request) -> HTMLResponse:
-        return _render(
-            request,
-            "integrations.html",
-            "integrations",
-            ig=pages.integrations(settings, cfg, request.app.state.store, request.app.state.client),
-        )
-
-    @app.get("/devin/next", response_class=HTMLResponse)
-    def next_page(request: Request) -> HTMLResponse:
-        return _render(request, "next.html", "next", nx=pages.next_page())
 
     @app.get("/tickets/{ticket_id}/changes", response_class=HTMLResponse)
     def ticket_changes(ticket_id: str, request: Request) -> HTMLResponse:

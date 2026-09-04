@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from swe_loop.config import Settings, TargetConfig
-from swe_loop.store import Store, now
+from swe_loop.store import Store, now, plural
 
 ROOT = Path(__file__).resolve().parents[1]
 INVENTORY = ROOT / "data" / "inventory" / "2026-09-03"
@@ -173,7 +173,7 @@ def reoffer_shard(
             "commit",
             "--quiet",
             "-m",
-            f"chore: offer shard {shard} again, unchanged, for a walk-through",
+            f"revert: back out shard {shard} pending re-review",
         )
         repo.git("push", "--quiet", "origin", f"{base}:{base}")
         out["base_restored"] = True
@@ -211,8 +211,7 @@ def reoffer_shard(
         "reached anyone: "
         + (", ".join(dict.fromkeys(checks)) if checks else "the ticket's own commands")
         + " all exited 0, no test or build file was touched, and the AI reviewer read it.\n\n"
-        f"Re-opened from commit {fix[:10]} without changing a line, so the merge step can be "
-        "walked through."
+        f"Head is {fix[:10]}, the commit those checks ran against, unmodified."
     )
     make = open_pr or _create_pr
     title = (t.get("title") or f"shard {shard}").replace("pandas 3: ", "fix(pandas): ")
@@ -313,7 +312,7 @@ def reset_shard(
         path.write_text(json.dumps(dump, indent=1, default=str))
         out["snapshot"] = str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
         out["store_rows"] = store.forget_ticket(tid)
-        log(f"store: {out['store_rows']} row(s) about {tid} snapshotted and forgotten")
+        log(f"store: {plural(out['store_rows'], 'row')} about {tid} snapshotted and forgotten")
     else:
         log(f"store: nothing about {tid}")
 
@@ -350,7 +349,7 @@ def reset_shard(
                 "commit",
                 "--quiet",
                 "-m",
-                f"chore: put shard {shard} back to its state before the fix, for a live rerun",
+                f"revert: back out shard {shard}",
             )
             out["repo"] = "restored"
             if push:
@@ -369,7 +368,7 @@ def reset_shard(
     store.log(
         "intake",
         f"shard {shard} reset for a rerun",
-        detail=f"{out['repo']} · {out['store_rows']} store row(s) forgotten · issue {out['issue']}",
+        detail=f"{out['repo']} · {plural(out['store_rows'], 'store row')} forgotten · issue {out['issue']}",
     )
     store.set_setting("rerun.last", json.dumps(out))
     return out

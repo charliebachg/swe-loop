@@ -17,7 +17,7 @@ from swe_loop import charts, cost, ops, pages, rates
 from swe_loop import reduce as reduce_mod
 from swe_loop import report as report_mod
 from swe_loop.config import Settings, TargetConfig
-from swe_loop.store import Store
+from swe_loop.store import Store, clip, plural
 from swe_loop.triage import TRIAGE_ACU_CAP
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -87,9 +87,6 @@ PAGES = {
     "playbooks": ("Playbooks", "/devin/playbooks"),
     "knowledge": ("Knowledge", "/devin/knowledge"),
     "insights": ("Insights", "/devin/insights"),
-    "review": ("Review", "/devin/review"),
-    "integrations": ("Integrations", "/devin/integrations"),
-    "next": ("Next", "/devin/next"),
     "settings": ("Settings", "/settings"),
 }
 JOURNEY = ["home", "automations", "tickets", "report"]
@@ -128,11 +125,9 @@ STAGE5_ACTOR = ["code", "devin", "devin", "gate", "person"]
 BRAND = "Backstop"
 SIZE_HOURS = {"XS": 0.5, "S": 1.0, "M": 3.0, "L": 8.0, "XL": 20.0}
 HUMAN_HELP = (
-    "Engineer time for the same change, estimated from the triage verdict's size class per fix "
-    "(XS half an hour, S one hour, M three hours, L eight, XL twenty). Cognition measures AI output in "
-    "productive engineering hours, the time a human would need for the same result, and found raw model "
-    "estimates undercount by about 2x (h = 2.28 m^0.923); METR's time-horizon scale likewise rates tasks by "
-    "the time experts need. This figure is the raw size estimate, not adjusted."
+    "Engineer time for the same change, from the size the AI gave each fix when it scoped it: "
+    "XS half an hour, S one hour, M three hours, L eight, XL twenty. It is that estimate and "
+    "nothing more, so read it as a rough scale, not as time saved."
 )
 KIND_PLAIN = {
     "human_only": "needs your team",
@@ -217,7 +212,9 @@ def dot(store: Store, ticket_id: str, done: bool) -> dict[str, Any]:
     c = tk_color(ticket_id)
     t = store.get_ticket(ticket_id) or {}
     return {
-        "ref": ref(t.get("number")),
+        # a scan is not opened against a ticket, and a blank cell says that better than a
+        # placeholder that looks like a number failed to load
+        "ref": ref(t.get("number")) if ticket_id else "none",
         "color": c,
         "dotBg": c if done else "#fff",
         "dotFg": "#fff" if done else c,
@@ -283,8 +280,12 @@ def _hhmmss(iso: str | None) -> str:
     return (iso or "")[11:19]
 
 
-def ev(e: dict[str, Any]) -> dict[str, Any]:
+def ev(e: dict[str, Any], nums: dict[str, Any] | None = None) -> dict[str, Any]:
+    """One line of the log. `nums` maps a ticket's stored id to the number it is called by on
+    screen; without it the line carries no reference, because a stored id is not a name anyone
+    reading the log would recognise."""
     actor = _actor_for_layer(e.get("layer", ""), e.get("event", ""))
+    tid = e.get("ticket_id") or ""
     detail = e.get("detail") or ""
     if re.fullmatch(r"acus=0(\.0+)?", detail):
         detail = ""
@@ -293,7 +294,7 @@ def ev(e: dict[str, Any]) -> dict[str, Any]:
         "layer": LAYER_PLAIN.get(e.get("layer", ""), e.get("layer", "")),
         "event": EVENT_PLAIN.get(e.get("event", ""), plain(e.get("event", ""))),
         "detail": plain(detail),
-        "ref": e.get("ticket_id") or "",
+        "ref": (ref(nums.get(tid)) if nums and tid in nums else ""),
         "fg": ACT[actor][0],
         "bg": ACT[actor][1],
         "evColor": PL["bad"][0] if _bad_event(e.get("event", ""), detail) else INK,
@@ -361,38 +362,56 @@ def _status_kind(status: str | None, detail: str | None, terminal: bool) -> str:
 
 
 def cost_rows(store: Store) -> list[dict[str, Any]]:
-    """Every session with its Devin id, minutes, and the console figure if entered: the Settings form."""
-    cost.rates(store)
+    """Every session with its Devin id, minutes, and the console figure if entered: the Settings
+    form. Every kind of session is here, so the table and the total count the same work."""
     kr = cost.rates(store)
+    nums = {t["id"]: t.get("number") for t in store.list_tickets()}
+
+    def row(devin_id: str, label: str, secs: float, usd: Any, rate: float) -> dict[str, Any]:
+        return {
+            "devin_id": devin_id or "",
+            "label": label,
+            "minutes": f"{secs / 60.0:.1f}",
+            "usd": usd,
+            "est": f"{secs / 60.0 * rate:.2f}" if usd is None else "",
+        }
+
     out = []
     for r in store._all("SELECT * FROM sessions ORDER BY created_at"):
         wo = store.get_work_order(r["work_order_id"]) or {}
+        tid = wo.get("ticket_id", "")
+        shard = wo.get("shard_id", "")
+        label = "wrote the fix for " + ref(nums.get(tid))
+        if shard:
+            label += f", part {shard}"
         out.append(
-            {
-                "devin_id": r["devin_session_id"] or "",
-                "label": f"repair {wo.get('ticket_id', '')} shard {wo.get('shard_id', '')}",
-                "minutes": f"{cost.repair_active_seconds(store, r) / 60.0:.1f}",
-                "usd": r.get("cost_usd"),
-                "est": (
-                    f"{cost.repair_active_seconds(store, r) / 60.0 * kr['rep']:.2f}"
-                    if r.get("cost_usd") is None
-                    else ""
-                ),
-            }
+            row(
+                r["devin_session_id"],
+                label,
+                cost.repair_active_seconds(store, r),
+                r.get("cost_usd"),
+                kr["rep"],
+            )
         )
     for r in store.list_triage_sessions():
         out.append(
-            {
-                "devin_id": r["devin_session_id"] or "",
-                "label": f"triage {r['ticket_id']}",
-                "minutes": f"{cost.triage_active_seconds(store, r) / 60.0:.1f}",
-                "usd": r.get("cost_usd"),
-                "est": (
-                    f"{cost.triage_active_seconds(store, r) / 60.0 * kr['tri']:.2f}"
-                    if r.get("cost_usd") is None
-                    else ""
-                ),
-            }
+            row(
+                r["devin_session_id"],
+                "scoped " + ref(nums.get(r["ticket_id"])),
+                cost.triage_active_seconds(store, r),
+                r.get("cost_usd"),
+                kr["tri"],
+            )
+        )
+    for r in store.list_scan_sessions():
+        out.append(
+            row(
+                r["devin_session_id"],
+                "read the repository",
+                cost.scan_active_seconds(store, r),
+                r.get("cost_usd"),
+                kr["scn"],
+            )
         )
     return [x for x in out if x["devin_id"]]
 
@@ -436,7 +455,7 @@ def insights(store: Store) -> dict[str, Any]:
     """The two charts and the table under them."""
     i = pages.insights(store)
     for r in i["rows"]:
-        r["ref"] = ref(r.get("number"))
+        r["ref"] = ref(r["number"]) if r["ticket"] else "none"
         r["color"] = tk_color(r["ticket"])
     mins = [r["minutes"] for r in i["rows"]]
     return {
@@ -459,7 +478,8 @@ def rerun_ctx(settings: Settings, cfg: TargetConfig, store: Store) -> dict[str, 
 
     last_raw = store.get_setting("rerun.last")
     last = json.loads(last_raw) if last_raw else None
-    root = (ROOT / cfg.gate.get("repo_root", "../superset-fork")).resolve()
+    where = cfg.gate.get("repo_root", "../superset-fork")
+    root = (ROOT / where).resolve()
     have_clone = (root / ".git").exists()
     live = settings.live
     return {
@@ -470,7 +490,8 @@ def rerun_ctx(settings: Settings, cfg: TargetConfig, store: Store) -> dict[str, 
         "repo": cfg.repo,
         "live": live,
         "haveClone": have_clone,
-        "clone": str(root),
+        # the configured location, never this machine's absolute path
+        "clone": where,
         "willPush": live and have_clone,
         "last": last,
         "canReoffer": live and have_clone,
@@ -499,7 +520,9 @@ def rerun_ctx(settings: Settings, cfg: TargetConfig, store: Store) -> dict[str, 
                     if last.get("issue") not in (None, "not touched")
                     else ""
                 )
-                + f" · {last.get('store_rows', 0)} store row(s) forgotten"
+                + " · "
+                + plural(last.get("store_rows", 0), "store row")
+                + " forgotten"
                 + (f" · snapshot {last.get('snapshot')}" if last.get("snapshot") else "")
             )
             if last
@@ -559,7 +582,7 @@ def frame(settings: Settings, cfg: TargetConfig, store: Store, active: str) -> d
     step = (
         f"step {JOURNEY.index(active) + 1} of 5"
         if active in JOURNEY
-        else ("our side" if active == "settings" else "Devin")
+        else ("settings" if active == "settings" else "Devin")
     )
     per_label = (
         f"{b['per_session_cap']:.0f}" if b.get("per_session_cap") else str(cfg.max_acu_limit)
@@ -622,6 +645,7 @@ def frame(settings: Settings, cfg: TargetConfig, store: Store, active: str) -> d
         "target": cfg.repo,
         "active": active,
         "goTracker": "/tickets-page?view=pipeline",
+        "goLog": "/report?log=1",
         "goSessions": "/devin/sessions",
         "goTickets": "/tickets-page",
     }
@@ -811,7 +835,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                     "bg": d["dotBg"],
                     "fg": d["dotFg"],
                     "ring": d["color"],
-                    "title": f"{d['ref']} {t.get('title', '')[:70]} · {state}"
+                    "title": f"{d['ref']} {clip(t.get('title', ''), 70)} · {state}"
                     + (f" · issue #{issue}" if issue else ""),
                     "go": url("/tickets-page", open=t["id"]),
                 }
@@ -845,7 +869,8 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         )
     raw_mode = q.get("tl") == "raw"
     open_groups = {x for x in (q.get("open") or "").split(",") if x}
-    events = [ev(e) for e in reversed(store.timeline(limit=40))]
+    nums = {t["id"]: t.get("number") for t in store.list_tickets()}
+    events = [ev(e, nums) for e in reversed(store.timeline(limit=40))]
     groups = _group_events(events, open_groups, raw_mode)
     on, off = ("#e2e9f6", "#2457a8"), ("transparent", "#8f97a3")
     b = store.budget_state()
@@ -919,7 +944,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
     for n in needs:
         tid = n["ticket"]
         t = store.get_ticket(tid) or {}
-        what = (t.get("title") or "")[:64]
+        what = clip(t.get("title") or "", 64)
         if n["kind"] == "ready to merge":
             mn = reduce_mod.merge_notes(store, tid)
             what = " · ".join(mn["reviews"]) + (
@@ -927,7 +952,9 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                 if mn["notes"]
                 else ""
             )
-        short_needs.append({**n, "what": what or n["reason"][:64], "hover": n["reason"]})
+        short_needs.append(
+            {**n, "what": what or clip(n["reason"], 64), "hover": plain(n["reason"])}
+        )
     rng = q.get("range", "run")
     spark = _sparklines(store, rng)
     issue_no = {
@@ -935,18 +962,27 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         for t in tickets
         if t.get("external_ref") and "#" in t["external_ref"]
     }
-    # sessions that finished without a person typing anything into them
+    # Sessions that ran without a person typing anything into them. The poller's own reply,
+    # logged as "answered waiting_for_user from the work order", is the loop answering the
+    # session from the work order it already had; counting it here would report the opposite
+    # of what happened. Only a person's own words count: an answer typed on a ticket, or an
+    # escalation a person resolved.
     tri = store.list_triage_sessions()
     tl = store.timeline(limit=2000)
-    answered_triage = {e["ticket_id"] for e in tl if e["event"] == "answered by a person"}
-    answered_repair = {
-        e["session_id"] for e in tl if e["event"] == "answered waiting_for_user from the work order"
+    helped = {e["ticket_id"] for e in tl if e["event"] == "answered by a person"}
+    helped |= {
+        h["ticket_id"]
+        for h in store._all("SELECT ticket_id FROM human_actions WHERE kind='resolve'")
     }
-    all_sessions = [("tri", x) for x in tri] + [("rep", x) for x in sess]
+    all_sessions = (
+        [("tri", x) for x in tri]
+        + [("rep", x) for x in sess]
+        + [("scn", x) for x in store.list_scan_sessions()]
+    )
     quiet = 0
     for kind, x in all_sessions:
-        asked = x["ticket_id"] in answered_triage if kind == "tri" else x["id"] in answered_repair
-        if not asked:
+        # a scan is not opened against a ticket, so nobody could have answered it
+        if kind == "scn" or x.get("ticket_id") not in helped:
             quiet += 1
     oldest_wait = None
     for e in store.list_escalations():
@@ -970,9 +1006,11 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
             "color": PL["ok"][0] if quiet else FAINT,
             "pct": None,
             "svg": "",
-            "note": f"{len(all_sessions) - quiet} asked your team a question"
-            if all_sessions
-            else "",
+            "note": (
+                plural(len(all_sessions) - quiet, "session") + " needed a person's answer"
+                if all_sessions
+                else ""
+            ),
         },
     ]
     for tile in tiles:
@@ -991,8 +1029,8 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                 **dot(store, e["ticket_id"], False),
                 "kind": KIND_PLAIN.get(e["kind"], e["kind"]),
                 **pill("bad"),
-                "what": (t.get("title") or e["reason"])[:70],
-                "hover": e["reason"],
+                "what": clip(plain(t.get("title") or e["reason"]), 70),
+                "hover": plain(e["reason"]),
                 "age": _age(e["created_at"]),
                 "go": url("/tickets-page", open=e["ticket_id"]),
                 "answerUrl": f"/tickets/{e['ticket_id']}/answer" if can_answer else "",
@@ -1016,13 +1054,16 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                     )
                 )
                 or "every check passed, and it was reviewed",
-                "hover": next(
-                    (
-                        x["reason"]
-                        for x in h["needs"]
-                        if x["ticket_id"] == tid and x["kind"] == "ready to merge"
-                    ),
-                    "every shard passed the gate and was reviewed; merge on GitHub first, then record it here",
+                "hover": plain(
+                    next(
+                        (
+                            x["reason"]
+                            for x in h["needs"]
+                            if x["ticket_id"] == tid and x["kind"] == "ready to merge"
+                        ),
+                        "every check passed and the AI reviewer read it; merge on GitHub first, "
+                        "then record it here",
+                    )
                 ),
                 "age": _age(
                     next(
@@ -1393,6 +1434,12 @@ PLAIN_PHRASES = [
     ("Devin Review", "the AI reviewer"),
     ("triage: ", ""),
     ("site(s)", "places"),
+    # text written by an older version of this app, still in the store
+    ("ticket(s)", "tickets"),
+    ("session(s)", "sessions"),
+    ("finding(s)", "findings"),
+    ("row(s)", "rows"),
+    ("command(s)", "commands"),
     ("remark(s)", "comments"),
     ("comment(s)", "comments"),
     ("work order(s)", "pieces of work"),
@@ -1445,7 +1492,7 @@ def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
         return plain(f"Merged by your team. Every check passed on a clean copy; {review_txt}.")
     if st == "escalated" or (route and route != "devin"):
         return plain(
-            "For your team to decide: " + (t.get("router_reason") or "a person decides")[:150]
+            "For your team to decide: " + clip(t.get("router_reason") or "a person decides", 150)
         )
     if st == "new":
         return (
@@ -1461,7 +1508,7 @@ def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
         return f"The AI is working on the fix{since}. Open the session to watch."
     if st in ("gated", "reviewed"):
         if verdict and verdict.get("gate_result") != "pass":
-            return plain("Checks failed: " + (verdict.get("reason") or "see the log")[:150])
+            return plain("Checks failed: " + clip(verdict.get("reason") or "see the log", 150))
         if row.get("ready"):
             return plain(
                 f"Ready for you: every check passed on a clean copy, {review_txt}. "
@@ -1564,7 +1611,7 @@ def tickets(store: Store, cfg: TargetConfig, q: dict[str, str], note: str = "") 
         live_url = (sd or {}).get("url") or (tri[-1].get("url") if tri else None)
         r["sessionUrl"] = live_url or ""
         r["sessionLabel"] = (
-            "open the session" if sd else ("open the triage session" if live_url else "")
+            "open the session" if sd else ("open the scoping session" if live_url else "")
         )
         r["prLabel"] = f"PR #{r['pr']}" if r.get("pr") and r["pr"] != "none" else ""
         r["scope"] = _ticket_panel(store, r["id"], f, q) if r["open"] else None
@@ -1643,7 +1690,7 @@ def _ticket_panel(store: Store, tid: str, f: str, q: dict[str, str]) -> dict[str
         else (
             {"label": "routed to a person", **pill("person")}
             if route
-            else {"label": "awaiting triage", **pill("na")}
+            else {"label": "not scoped yet", **pill("na")}
         ),
         {"label": d["status"], **pill(st_kind)},
         {"label": f"source: {d.get('source', '')}", **pill("na")},
@@ -1661,7 +1708,7 @@ def _ticket_panel(store: Store, tid: str, f: str, q: dict[str, str]) -> dict[str
             {
                 "loc": loc,
                 "cls": ", ".join(c for c in classes if c),
-                "msg": (s.get("r3") or s.get("r2") or s.get("prescribed_fix") or "")[:220],
+                "msg": clip(s.get("r3") or s.get("r2") or s.get("prescribed_fix") or "", 220),
                 "warned": bool(s.get("warned")) or bool(s.get("r2")),
                 "broke": bool(s.get("broke")) or bool(s.get("r3")),
                 "kind": s.get("kind") or "",
@@ -1867,9 +1914,9 @@ def tracker(
                 "said": (
                     f"{'done' if claim.get('self_reported_done') else 'not done'} · tests {claim.get('tests_passed', 0)}/{claim.get('tests_run', 0)}"
                     + (
-                        f" · {len(claim.get('needs_human') or [])} note(s) for a person".replace(
-                            "1 note(s)", "1 note"
-                        ).replace("note(s)", "notes")
+                        " · "
+                        + plural(len(claim.get("needs_human") or []), "note")
+                        + " for a person"
                         if claim.get("needs_human")
                         else ""
                     )
@@ -1938,6 +1985,10 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
         for r in store.list_triage_sessions():
             mins[r["id"]] = cost.triage_active_seconds(store, r) / 60.0
             usd_rows[r["id"]] = cost.session_usd(store, r, "tri", kind_rates)
+        # a scan is a session and costs money like any other, so it is priced here too
+        for r in store.list_scan_sessions():
+            mins[r["id"]] = cost.scan_active_seconds(store, r) / 60.0
+            usd_rows[r["id"]] = cost.session_usd(store, r, "scn", kind_rates)
     rows = []
     # still working first, then the most recent
     for s in sorted(
@@ -2008,7 +2059,15 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
                 and f"#{(s.get('pr_url') or '').rsplit('/', 1)[-1]}"
                 or ("verdict" if is_triage else "none yet"),
                 "prUrl": s.get("pr_url") or url("/tickets-page", open=s["ticket"]),
-                "gate": (s.get("outcome") or "scoping") if is_triage else (gate or "not run"),
+                "gate": (
+                    {
+                        "triaged": "scoped",
+                        "invalid": "output rejected",
+                        "no_output": "no answer",
+                    }.get(s.get("outcome") or "", s.get("outcome") or "scoping")
+                    if is_triage
+                    else (gate or "not run")
+                ),
                 "gateBg": PL["gate"][1]
                 if (gate == "pass" or s.get("outcome") == "triaged")
                 else (
@@ -2149,11 +2208,11 @@ def _run_line(res: dict[str, Any]) -> str:
     parts = []
     if "issues" in res:
         n_new = len(res.get("new_tickets") or [])
-        parts.append(f"{res['issues']} issue(s) found, {n_new} new ticket(s)")
+        parts.append(f"{plural(res['issues'], 'issue')} found, {plural(n_new, 'new ticket')}")
     if "triaged" in res:
-        parts.append(f"{res['triaged']} triage session(s)")
+        parts.append(f"{plural(res['triaged'], 'ticket')} scoped")
     if "dispatched" in res:
-        parts.append(f"{res['dispatched']} repair session(s)")
+        parts.append(f"{plural(res['dispatched'], 'fix')} started")
     if "gated" in res:
         parts.append(f"{res['gated']} checked")
     if res.get("escalated"):
@@ -2616,8 +2675,9 @@ def report(
             }
         )
 
+    nums = {t["id"]: t.get("number") for t in store.list_tickets()}
     events = collapse(
-        [ev(e) for e in reversed(store.timeline(ticket_id=log_ticket or None, limit=400))]
+        [ev(e, nums) for e in reversed(store.timeline(ticket_id=log_ticket or None, limit=400))]
     )
     if not log_open:
         events = events[:12]

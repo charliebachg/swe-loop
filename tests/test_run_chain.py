@@ -44,7 +44,7 @@ def test_run_pulls_issues_triages_and_dispatches(fresh):
     assert len(st.list_triage_sessions()) == 5
     # the page shows the run and the tickets it created
     html = c.get("/automations?open=auto_repair").text
-    assert "5 issue(s) found, 5 new ticket(s)" in html and "5 triage session(s)" in html
+    assert "5 issues found, 5 new tickets" in html and "5 tickets scoped" in html
     assert "tkt_A" in html and "tickets it created" in html
     # a second run finds nothing new and touches no ticket
     before = {t["id"]: t["status"] for t in st.list_tickets()}

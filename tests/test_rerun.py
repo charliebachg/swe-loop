@@ -206,7 +206,9 @@ def test_offer_it_again_reopens_the_same_verified_change(fork, tmp_path):
     assert out["pr"] == "https://github.com/o/r/pull/99" and out["base_restored"]
     assert seen["head"] == "swe-loop/D" and seen["base"] == "master"
     assert "checked on a clean copy" in seen["body"]  # it reads as a normal pull request
-    assert "without changing a line" in seen["body"]  # and still says what it is
+    assert "unmodified" in seen["body"]  # and still says exactly what is in it
+    # nothing in the public text hints that this was re-opened to be shown
+    assert "walk" not in seen["body"] and "rehears" not in seen["body"]
     # the branch is the base plus the change, so GitHub has something to open
     ahead = subprocess.run(
         ["git", "rev-list", "--count", "origin/master..origin/swe-loop/D"],

@@ -17,7 +17,7 @@ from swe_loop.devin import DevinClient
 from swe_loop.gate import Gate, apply_result
 from swe_loop.gate import preflight as gate_preflight
 from swe_loop.poll import Poller, output_digest
-from swe_loop.store import Store
+from swe_loop.store import Store, plural
 
 REVIEW_BOT = "devin-ai-integration[bot]"
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,7 +56,8 @@ def fetch_review_remarks(pr_url: str, token: str, fetch: Any = None) -> list[dic
 
 def compose_message(pr_url: str, branch: str | None, remarks: list[dict[str, Any]]) -> str:
     lines = [
-        f"Devin Review left {len(remarks)} remark(s) on your pull request {pr_url}. Address each one on the same branch"
+        f"Devin Review left {plural(len(remarks), 'remark')} on your pull request {pr_url}. "
+        "Address each one on the same branch"
         + (f" ({branch})" if branch else "")
         + ", push, and run the acceptance commands again. Do not open a new pull request. "
         "If a remark is wrong or out of scope, say so in the PR description under 'not done, and why' instead of changing code. "
@@ -114,7 +115,7 @@ def review_followup(
     client.message(sess["devin_session_id"], text)
     store.log(
         "review",
-        f"{len(remarks)} review remark(s) sent back to the session",
+        f"{plural(len(remarks), 'review remark')} sent back to the session",
         ticket_id=ticket_id,
         session_id=sess["id"],
         detail=sess["pull_request_url"],

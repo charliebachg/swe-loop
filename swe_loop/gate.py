@@ -32,7 +32,7 @@ from typing import Any
 
 from swe_loop.config import TargetConfig
 from swe_loop.devin import DevinClient
-from swe_loop.store import Store
+from swe_loop.store import Store, plural
 
 PR_RE = re.compile(r"https://github\.com/([^/]+)/([^/]+)/pull/(\d+)$")
 
@@ -323,7 +323,7 @@ class Gate:
             res.tiers["T1"] = t1_ok
             if not t1_ok:
                 res.gate_result = "fail"
-                res.reasons.append(f"{len(failures)} acceptance command(s) failed")
+                res.reasons.append(f"{plural(len(failures), 'acceptance command')} failed")
                 res.failure_text = "T1 failed.\n" + "\n\n".join(failures)
                 return self._finish(res, wo)
 

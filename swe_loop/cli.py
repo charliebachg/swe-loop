@@ -39,7 +39,7 @@ from swe_loop.reduce import (
 )
 from swe_loop.replay import record, seed
 from swe_loop.router import route_all
-from swe_loop.store import Store, now
+from swe_loop.store import Store, now, plural
 
 ROOT = Path(__file__).resolve().parents[1]
 INVENTORY = ROOT / "data" / "inventory" / "2026-09-03"
@@ -72,7 +72,7 @@ def cmd_seed(args: argparse.Namespace) -> int:
         ids = load_tickets(store, INVENTORY / "tickets.json", triaged=False)
         store.log(
             "intake",
-            f"{len(ids)} ticket(s) loaded as new",
+            f"{plural(len(ids), 'ticket')} loaded as new",
             detail=str(INVENTORY / "tickets.json"),
         )
         print(json.dumps({"seeded": True, "recorded": False, "as_new": True, "tickets": ids}))
@@ -233,7 +233,7 @@ def run_once(
         store, client, cfg, sleep=(lambda s: time.sleep(min(s, 0.05))) if fast else time.sleep
     )
     decisions = route_all(store, cfg)
-    log(f"routed {len(decisions)} ticket(s)")
+    log(f"routed {plural(len(decisions), 'ticket')}")
     gate = None
     repo_root = (ROOT / cfg.gate.get("repo_root", "../superset-fork")).resolve()
     not_ready = gate_preflight(repo_root, cfg)
@@ -427,6 +427,87 @@ def cmd_cost(args: argparse.Namespace) -> int:
     return 0
 
 
+def receipts(store: Store, cfg: TargetConfig) -> str:
+    """The table in the README, built from the store so it cannot drift away from the app.
+
+    One row per ticket that reached a session, in ticket order, with what is true right now:
+    where the work went, which session did it, whether the checks passed, what the AI reviewer
+    said, and where the change ended up."""
+    from swe_loop import reduce as reduce_mod
+    from swe_loop.v2 import plain, ref
+
+    head = (
+        "| ticket | issue | scope | went to | session | checks | Devin Review | where it is |\n"
+        "|---|---|---|---|---|---|---|---|"
+    )
+    lines = [head]
+    for t in sorted(store.list_tickets(), key=lambda x: x.get("number") or 0):
+        wos = store.work_orders_for(t["id"])
+        tri = [x for x in store.list_triage_sessions() if x["ticket_id"] == t["id"]]
+        if not wos and not tri:
+            continue
+        issue = ""
+        if "#" in (t.get("external_ref") or ""):
+            repo, n = t["external_ref"].rsplit("#", 1)
+            issue = f"[#{n}](https://github.com/{repo}/issues/{n})"
+        sess = [s for w in wos for s in store.sessions_for(w["id"])]
+        sid = sess[-1]["devin_session_id"][:8] if sess and sess[-1]["devin_session_id"] else ""
+        link = (
+            f"[{sid}](https://app.devin.ai/sessions/{sess[-1]['devin_session_id']})"
+            if sid
+            else "none"
+        )
+        verdicts = [v for s in sess for v in [store.latest_verdict(s["id"])] if v]
+        checks = (
+            "passed"
+            if verdicts and all(v["gate_result"] == "pass" for v in verdicts)
+            else ("not run" if not verdicts else "failed")
+        )
+        rev = next(
+            (
+                v.get("review_severity") or ""
+                for v in reversed(verdicts)
+                if v.get("review_severity")
+            ),
+            "",
+        )
+        rev = rev.split(":", 1)[1] if ":" in rev else rev
+        rev = plain(rev) if rev else "not requested"
+        prs = reduce_mod.readiness(store, t["id"]).pr_urls if wos else []
+        pr = ""
+        if prs:
+            n = prs[-1].rsplit("/", 1)[-1]
+            pr = f"[#{n}]({prs[-1]})"
+        where = {
+            "merged": f"merged, {pr}" if pr else "merged",
+            "reviewed": f"waiting for a person, {pr}" if pr else "waiting for a person",
+            "escalated": "with the team",
+            "refused": "refused",
+        }.get(t["status"], t["status"])
+        files = sorted({f for w in wos for f in (w.get("files") or [])})
+        scope = (
+            f"`{files[0].rsplit('/', 1)[-1]}`"
+            + (f" and {len(files) - 1} more" if len(files) > 1 else "")
+            if files
+            else "not scoped"
+        )
+        route = {"devin": "Devin", "human_only": "a person", "refuse": "refused"}.get(
+            t.get("router_decision") or "", "not routed"
+        )
+        lines.append(
+            f"| {ref(t.get('number'))} | {issue or 'filed by a scan'} | {scope} | {route} | "
+            f"{link} | {checks} | {rev} | {where} |"
+        )
+    return "\n".join(lines)
+
+
+def cmd_receipts(args: argparse.Namespace) -> int:
+    """Print the README's table from the store, so the two can never disagree."""
+    _, cfg, store, _ = _ctx()
+    print(receipts(store, cfg))
+    return 0
+
+
 def apply_config(settings: Settings, cfg: TargetConfig, store: Store, client: DevinClient) -> dict:
     """Create this target's playbooks and Knowledge notes on the organisation, once. Anything
     already there is adopted, not duplicated, so calling it again is free. The playbook ids are
@@ -452,10 +533,15 @@ def apply_config(settings: Settings, cfg: TargetConfig, store: Store, client: De
     for note in load_notes():
         if note.name in existing_kn:
             skipped[note.name] = existing_kn[note.name]
-            continue
-        made[note.name] = client.t.create_knowledge_note(note.to_payload(pinned_repo=cfg.repo)).get(
-            "note_id"
-        )
+            nid = existing_kn[note.name]
+        else:
+            nid = client.t.create_knowledge_note(note.to_payload(pinned_repo=cfg.repo)).get(
+                "note_id"
+            )
+            made[note.name] = nid
+        # kept so the Knowledge page can say which notes a session can actually reach
+        if nid:
+            store.set_setting(f"note_id.{note.name}", nid)
     return {"created": made, "already_on_the_org": skipped}
 
 
@@ -536,6 +622,7 @@ def main(argv: list[str] | None = None) -> int:
     rs.add_argument("--shard", required=True, help="the shard letter, e.g. D")
     rs.add_argument("--no-push", action="store_true", help="restore in the local clone only")
     rs.set_defaults(fn=cmd_reset_shard)
+    sub.add_parser("receipts").set_defaults(fn=cmd_receipts)
     ac = sub.add_parser("apply-config")
     ac.add_argument(
         "--dry-run", action="store_true", help="print what would be created; create nothing"

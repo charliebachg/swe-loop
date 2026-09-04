@@ -1,7 +1,7 @@
 {% extends "shell.html" %}
 {% block title %}Settings{% endblock %}
 {% block content %}
-<p class="lede">Our side of the connection: which repository, what a session may never touch, how much it may spend. The Devin org's side is under <a href="/devin/integrations">Integrations</a>.</p>
+<p class="lede">Which repository this instance watches, what a session may never touch, and how much it may spend.</p>
 <div class="card"><h3>Connected <span class="who code">checked live, see each call</span></h3>
   <div hx-get="/settings/checks" hx-trigger="load" hx-swap="outerHTML"><div class="grid3"><div class="chk">checking the connection…</div></div></div>
   <p class="foot" style="margin-top:12px">Add another repository: <span class="pill p-na">next</span> · one seam file per repository; the pipeline reads nothing else about the target.</p>
@@ -20,7 +20,7 @@
     </table>
   </div>
   <div class="card"><h3>More about the organisation <span class="who code">read only</span></h3>
-    <p class="foot">The reviews Devin ran are shown on each ticket. These three pages carry the rest of the organisation's own side: <a href="/devin/review">every review it ran</a>, <a href="/devin/integrations">how it is connected to the repository</a>, and <a href="/devin/next">what the next version would add</a>.</p>
+    <p class="foot">Read only: this is the organisation's own configuration, not ours. Every review Devin ran is shown on the ticket it belongs to.</p>
   </div>
   <div class="card" id="rerun"><h3>Rerun a shard <span class="who code">the repository and the store, together</span></h3>
     <p class="foot">Running the loop again on a shard that is already fixed would show nothing: the sessions would find the work done. A reset puts one shard back to its broken state. On the repository, its files return to the base branch as it was before any fix landed{% if rerun.baseline %} (commit <span class="mono">{{ rerun.baseline }}</span>){% endif %}, the change is committed and pushed to <span class="mono">{{ rerun.repo }}</span> <span class="mono">{{ rerun.base }}</span>, and the old repair branch is deleted. In the store, every row about the ticket is snapshotted to a file and forgotten. The issue stays open, so the next Run on Automations picks it up as new and does the whole loop again for real.</p>
@@ -42,7 +42,7 @@
       <span class="foot">{% if cost.metered %}spent so far {{ s.budget.spent }} ACU{% else %}spent so far {{ acuSpent }}{% endif %} · at the cap every live session is terminated and archived · the per-session limit is Devin's own ceiling, sent with every session</span>
     </form>
     <h3 style="margin-top:18px">Cost <span class="who code">measured by us; the plan reports no ACU</span></h3>
-    <p class="foot">This organisation is on a self-serve plan, billed in dollar credits. The API reports 0 ACU for every session. The console lists dollars per session; enter them below. Minutes the AI was actively working are measured from our own polls: <b>{{ cost.active_min }} min</b> across {{ cost.n_sessions }} session(s){% if cost.usd is not none %}, <b>${{ cost.usd }}</b>{% if cost.rate %} at ${{ "%.3f" | format(cost.rate) }} per active minute{% endif %}{% else %}. Sessions without a console figure are priced by minutes at the rate for their kind{% endif %}.</p>
+    <p class="foot">This organisation is on a self-serve plan, billed in dollar credits. The API reports 0 ACU for every session. The console lists dollars per session; enter them below. Minutes the AI was actively working are measured from our own polls: <b>{{ cost.active_min }} min</b> across {{ cost.n_sessions }} session{% if cost.n_sessions != 1 %}s{% endif %}{% if cost.usd is not none %}, <b>${{ cost.usd }}</b>{% if cost.rate %} at ${{ "%.3f" | format(cost.rate) }} per active minute{% endif %}{% else %}. Sessions without a console figure are priced by minutes at the rate for their kind{% endif %}.</p>
     <form method="post" action="/settings/session-cost" style="margin:8px 0 14px">
       <table>
         <tr><th>session</th><th>Devin id</th><th class="num">AI minutes</th><th>console figure, USD</th></tr>

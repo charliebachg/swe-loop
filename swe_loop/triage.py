@@ -16,7 +16,7 @@ from jsonschema import Draft7Validator
 
 from swe_loop.config import TargetConfig
 from swe_loop.devin import SessionSpec
-from swe_loop.store import Store, now
+from swe_loop.store import Store, now, plural
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "schemas" / "triage_verdict.schema.json"
@@ -333,7 +333,9 @@ def run_triage(
         "triage",
         "verdict accepted",
         ticket_id=ticket_id,
-        detail=f"split {out['split']} · {len(out.get('sites', []))} site(s) · {len(ids)} work order(s) · needs_human {len(out.get('needs_human', []))}",
+        detail=f"split {out['split']} · {plural(len(out.get('sites', [])), 'place')} · "
+        f"{plural(len(ids), 'piece of work', 'pieces of work')} · "
+        f"{plural(len(out.get('needs_human', [])), 'point')} for a person",
     )
     return {"ticket_id": ticket_id, "kind": "triaged", "session": tid, "work_orders": ids}
 

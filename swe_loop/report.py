@@ -20,24 +20,33 @@ ROOT = Path(__file__).resolve().parents[1]
 BANNED = [
     (
         "Lines of code",
-        "Volume is not value: about 10% velocity from about 75% AI-authored code at one large vendor is the public counterexample.",
+        "Counts how much was typed, not whether any of it worked.",
     ),
     (
         "Pull requests opened",
-        "28.3% of agent PRs merge within one minute and the tail is expensive (arXiv:2601.00753). Count what merged and survived.",
+        "Opening one is free. What matters is what merged and stayed merged, counted above.",
     ),
     (
-        "Acceptance rate",
-        "Rubber-stamping inflates it; the CTOs of two developer-metrics companies are on record against it.",
+        "Acceptance rate of suggestions",
+        (
+            "A team that approves everything scores best on it. What is counted above is "
+            "merged against offered, with the turned-down number beside it."
+        ),
     ),
-    ("Share of code written by AI", "Definitionally not the metric, per the point above."),
+    ("Share of code written by AI", "Says who typed it, not whether it holds up."),
     (
         "Tokens",
-        "Cost shifts into the review gate; cheaper tokens did not yield cheaper merged features.",
+        (
+            "Cheaper tokens move the cost into review time. Dollars per change that passed is "
+            "the number that moves."
+        ),
     ),
     (
-        "Self-reported time saved",
-        "The best RCT measured that self-report as wrong by about 40 points (METR, 2025; corrected 2026).",
+        "Time saved, self-reported",
+        (
+            "People are poor judges of their own time saved, and nobody can check the figure. "
+            "Everything on this page is measured."
+        ),
     ),
 ]
 

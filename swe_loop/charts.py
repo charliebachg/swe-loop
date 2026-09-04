@@ -216,7 +216,7 @@ def histogram(bins: list[tuple[str, int, bool]], w: int = 260) -> str:
 
 def stage_durations(
     rows: list[dict[str, Any]],
-) -> str:  # pragma: no cover - reserved for the Tracker pass
+) -> str:  # pragma: no cover - not drawn on any page yet
     return ""
 
 

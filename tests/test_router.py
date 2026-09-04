@@ -163,7 +163,7 @@ def test_human_only_reason_quotes_the_verdict(tmp_path):
     d = route_ticket(st, "tkt_A", cfg)[0]
     assert d.route == "human_only"
     assert (
-        "2 site(s) need a person (+1 more)" in d.reason
+        "2 places need a person, the first of 2" in d.reason
         and "client_processing.py:639: Silent behaviour change" in d.reason
     )
 

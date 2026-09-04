@@ -102,7 +102,7 @@ def test_sessions_page_lists_the_triage_session(tmp_path, monkeypatch):
     app = build_app(Settings.from_env(), st, seed_replay=False)
     with TestClient(app) as c:
         html = c.get("/devin/sessions").text
-        assert "read the ticket and wrote the plan" in html and ">triaged<" in html
+        assert "read the ticket and wrote the plan" in html and ">scoped<" in html
         assert "2.1" in html
         home = c.get("/").text
         assert "2.1" in home  # ACU spent on Home includes the triage session

@@ -15,7 +15,7 @@ from typing import Any
 
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.devin import SessionSpec
-from swe_loop.store import Store, now
+from swe_loop.store import Store, clip, now, plural
 
 ROOT = Path(__file__).resolve().parents[1]
 SCAN_ACU_CAP = 4
@@ -139,10 +139,24 @@ def file_findings(
             "intake",
             "a scan found something and filed it",
             ticket_id=tid,
-            detail=f"{where}:{f.get('line')} · {f.get('confidence', 'unrated')} · {str(f.get('why') or '')[:120]}",
+            detail=f"{where}:{f.get('line')} · {f.get('confidence', 'unrated')} · "
+            + clip(str(f.get("why") or ""), 120),
         )
         new.append(tid)
     return {"new": new, "known": known, "refused": refused, "dropped": dropped}
+
+
+def _close(store: Store, sid: str, outcome: str, **extra: Any) -> None:
+    """A scan session that has finished must not still say it is running. The last poll wrote
+    whatever the API said mid-flight; this writes what actually became of it."""
+    store.update_scan_session(
+        sid,
+        terminal_at=now(),
+        outcome=outcome,
+        status="exit" if outcome == "filed" else "error",
+        status_detail="finished" if outcome == "filed" else outcome,
+        **extra,
+    )
 
 
 def _follow(
@@ -164,7 +178,7 @@ def _follow(
     wait = 5.0
     while not (state.delivered or state.terminal):
         if _time.monotonic() - started > wall_clock:
-            store.update_scan_session(sid, terminal_at=now(), outcome="timeout")
+            _close(store, sid, "timeout")
             store.log("scan", "ran out of time", session_id=sid, detail=state.session_id)
             return {"kind": "timeout", "session": state.session_id}
         sleep(wait)
@@ -179,26 +193,26 @@ def _follow(
         store.log("scan", f"{state.status}/{state.status_detail or '-'}", session_id=sid)
     out = state.structured_output
     if not out:
-        store.update_scan_session(sid, terminal_at=now(), outcome="no_output")
+        _close(store, sid, "no_output")
         store.log("scan", "ended without findings", session_id=sid, detail=state.session_id)
         return {"kind": "no_output", "session": state.session_id}
     problems = validate(out)
     if problems:
-        store.update_scan_session(sid, terminal_at=now(), outcome="invalid", findings=out)
+        _close(store, sid, "invalid", findings=out)
         store.log("scan", "output rejected", session_id=sid, detail="; ".join(problems)[:200])
         return {"kind": "invalid", "session": state.session_id, "problems": problems}
     filed = file_findings(store, cfg, out, limit)
-    store.update_scan_session(sid, terminal_at=now(), outcome="filed", findings=out)
+    _close(store, sid, "filed", findings=out)
     store.log(
         "scan",
-        f"filed {len(filed['new'])} new ticket(s)",
+        f"filed {plural(len(filed['new']), 'new ticket')}",
         session_id=sid,
         detail=(
             f"kept the {limit} most important, dropped {filed['dropped']}. "
             if filed["dropped"]
             else ""
         )
-        + f"{out.get('searched', '')[:160]}",
+        + clip(str(out.get("searched", "")), 160),
     )
     log(f"scan: {len(filed['new'])} new, {len(filed['known'])} already known")
     return {"kind": "filed", "session": state.session_id, "at": now(), **filed}
@@ -276,6 +290,6 @@ def run_scan(
         "scan",
         "session started",
         session_id=sid,
-        detail=f"{state.session_id} · at most {limit} finding(s)",
+        detail=f"{state.session_id} · at most {plural(limit, 'finding')}",
     )
     return _follow(settings, cfg, store, client, state, sid, limit, sleep, wall_clock, log)

@@ -1,5 +1,7 @@
 # swe-loop
 
+[![tests](https://github.com/charliebachg/swe-loop/actions/workflows/ci.yml/badge.svg)](https://github.com/charliebachg/swe-loop/actions/workflows/ci.yml)
+
 Tickets in, verified pull requests out.
 
 A loop on the Devin API for the class of work that dependency bots can open but cannot
@@ -19,32 +21,44 @@ code, 15 in test expectations. Those became the tickets.
 
 ## What it did
 
-Five tickets on the fork, four pull requests, four merges, one refusal. Every line below is a
-row in the app and a record in `data/replay/run.json`.
+Every row below comes out of the store, printed by `python -m swe_loop receipts`, so this table
+and the app cannot drift apart. It is the current state, not a highlight reel: three changes
+written and checked, two of them merged by a person, one waiting for a person to merge, and one
+ticket the system refused to touch.
 
-| ticket | scope | route | Devin session | gate | Devin Review | result |
-|---|---|---|---|---|---|---|
-| [#4](https://github.com/charliebachg/superset/issues/4) D | `models/helpers.py`, 1 site | Devin | [58d404d2](https://app.devin.ai/sessions/58d404d2369545e3803db32660cb84ba), 6 min | pass | no issues | [#7](https://github.com/charliebachg/superset/pull/7) merged `284769ae` |
-| [#2](https://github.com/charliebachg/superset/issues/2) B | pivot, rolling, utils, 3 sites | Devin | [0f160096](https://app.devin.ai/sessions/0f1600968c9c47c18012fe8476f4f1e7), 12 min | pass, twice | 3 remarks, sent back; 4 on the revision | [#8](https://github.com/charliebachg/superset/pull/8) merged `4b99c166` |
-| [#3](https://github.com/charliebachg/superset/issues/3) C | aggregate, histogram, resample, 3 sites | Devin | [38e2b6e7](https://app.devin.ai/sessions/38e2b6e7d3994aa980d7379031b9117c), 12 min | pass, twice | 2 remarks, sent back; 3 on the revision | [#9](https://github.com/charliebachg/superset/pull/9) merged `9d5a9f4f` |
-| [#1](https://github.com/charliebachg/superset/issues/1) A | `charts/client_processing.py`, 3 sites | human first, then Devin | [feb8bfeb](https://app.devin.ai/sessions/feb8bfeb37ce445989356d0a7c4a1f71), 6 min | pass | 1 remark | [#10](https://github.com/charliebachg/superset/pull/10) merged `f36fa91c` |
-| [#5](https://github.com/charliebachg/superset/issues/5) E | 15 test expectations in 9 files | human only | none | | | open, for a person |
+| ticket | issue | scope | went to | session | checks | Devin Review | where it is |
+|---|---|---|---|---|---|---|---|
+| #00001 | [#1](https://github.com/charliebachg/superset/issues/1) | `client_processing.py` | Devin | [feb8bfeb](https://app.devin.ai/sessions/feb8bfeb37ce445989356d0a7c4a1f71) | passed | 1 comment | waiting for a person, [#13](https://github.com/charliebachg/superset/pull/13) |
+| #00002 | [#2](https://github.com/charliebachg/superset/issues/2) | `pivot.py` and 2 more | Devin | [0f160096](https://app.devin.ai/sessions/0f1600968c9c47c18012fe8476f4f1e7) | passed | 4 comments | merged, [#8](https://github.com/charliebachg/superset/pull/8) |
+| #00003 | [#3](https://github.com/charliebachg/superset/issues/3) | `aggregate.py` and 2 more | Devin | [38e2b6e7](https://app.devin.ai/sessions/38e2b6e7d3994aa980d7379031b9117c) | passed | 3 comments | merged, [#9](https://github.com/charliebachg/superset/pull/9) |
+| #00004 | [#5](https://github.com/charliebachg/superset/issues/5) | not scoped | a person | none | not run | not requested | with the team |
 
-The one to read is A. Its triage session read the ticket and declined: the three sites sat
-behind tests that encode pandas 2 behaviour, and sessions are not allowed to edit tests, so the
-verdict was `needs_human: 3` and the router filed it as human-only. A maintainer answered on
-the ticket with the three prescribed fixes and confirmed the tests could stay as they were. The
-answer woke the same triage session, which re-scoped the ticket into one work order in under
-two minutes; the repair session opened its PR six minutes later and the gate passed it. The
-system did not guess; it asked, and it remembered the conversation.
+The one to read is `#00001`. Its scoping session read the ticket and declined: the three places
+sat behind tests that encode pandas 2 behaviour, and a session may not edit tests, so it returned
+three notes and the router filed it for a person. A maintainer answered on the issue with the
+three prescribed fixes and confirmed the tests could stay as they were. That answer woke the same
+session, which re-scoped the ticket in under two minutes; the repair session opened its pull
+request six minutes later and the checks passed it. The system did not guess. It asked, and it
+kept the conversation.
 
-E was refused outright and stays refused. Fifteen test files assert pandas 2 results, and
-whether a test or the code is wrong is a product decision. The Report shows it as the one
-ticket of five that went to a person, with the reason.
+`#00004` went to the team and stays there. Fifteen test files assert pandas 2 results, and
+whether a test or the code is wrong is a product decision. A session may not edit tests, so it
+said so and stopped rather than making the tests agree with itself. The Report shows it as the
+ticket that went to a person, with the reason.
 
-Cost, for the ten sessions: 56 minutes of active AI work. The console prices seven of them at
-$14.78; the loop's own minute rate puts all ten at $18.58. That is the price of four merged
-fixes and one correct refusal.
+Issue #4 has no row because its shard is deliberately sitting at its unfixed state. It was
+repaired, merged, then put back by `reset-shard` so the whole loop can be run again from an open
+issue without anyone editing the store by hand. That is what Settings does, and it is the only
+honest way to demonstrate a loop whose work is already done.
+
+The scan is the second way in. Pointed at the repository rather than at a ticket, one session
+read the pandas-importing modules and filed three findings as tickets in its own group. Two
+matched places the measured inventory already knew about, which is the check on it; one, at
+`client_processing.py:754`, it found on its own.
+
+Cost so far: $14.97 across nine sessions, 48 minutes of active AI work, five of the nine priced
+from the console and the rest at the rate those five imply. Every session counts, including the
+ones that only read a ticket and the one that went to a person.
 
 ## Run it
 
@@ -84,8 +98,9 @@ python -m swe_loop triage --ticket tkt_A --answer "..."   # answer a question; w
 python -m swe_loop run                      # route, dispatch, poll, gate, review, reduce: one pass
 python -m swe_loop review-followup --ticket tkt_B         # send Devin Review's remarks back, re-gate
 python -m swe_loop cost --set 58d404d2=1.78 # the console's figure for a session
-python -m swe_loop reset-shard --shard D    # put one shard back to its broken state, on the fork and in the store
+python -m swe_loop reset-shard --shard D    # put one shard back to its unfixed state, on the fork and in the store
 python -m swe_loop record data/replay/run.json            # capture the run for replay, redacted
+python -m swe_loop receipts                 # the table at the top of this file, from the store
 ```
 
 Or open Automations and click Run: it is the same chain from a button, and the pages refresh
@@ -135,9 +150,9 @@ agent: each step says who does it, the AI or a person, and every session is pric
 | **Report** | three counts over stated denominators: how many changes passed checks re-run here, how many jobs ran without a person, and how many changes your team merged rather than turned down. Under them every check with its exit code and its log, where the work went, progress against the counted list, what it cost, and the log itself |
 | **Devin · Sessions** | every session: the ticket, what it was for, its status, cost, whether the checks passed, when it started and how long it took. Click a row for its timeline, the checks and what it claimed |
 | **Devin · Playbooks** | the instructions each kind of session follows and the shape its answer must have. Add one and attach it to an automation |
-| **Devin · Knowledge** | the notes a session is given about the repository, when each is read, and whether one has been |
+| **Devin · Knowledge** | the notes a session is given about the repository, when each is read, and which of them are on the organisation where a session can reach them |
 | **Devin · Insights** | how big each piece of work turned out to be, in Devin's own sizing, and what it cost |
-| **Settings** (gear) | the connected repository, the budget caps, the console's dollars per session, live connection checks, the reviews Devin ran, how it is connected, what a next version would add, and Rerun a shard: one button puts a fixed shard back to its broken state on the repository and in the store, so the next Run does it again for real |
+| **Settings** (gear) | the connected repository, what a session may never touch, the budget caps, the console's dollars per session, live connection checks, and Rerun a shard: one button puts a fixed shard back to its unfixed state on the repository and in the store, so the next Run does the whole thing again for real |
 
 The Report answers the question an engineering leader asks: *how would I know this is
 working?* Every number is a count with its denominator beside it, never a percentage on its own
@@ -153,6 +168,18 @@ measures cost itself: active minutes from its own polls (the gaps between polls 
 reported `working`, each gap capped at 60 seconds) times a rate per session kind. The console's
 per-session figures, entered on Settings or with `cost --set`, replace the computed dollars for
 those sessions and refine the rate for the rest. On an ACU-metered plan the same pages show ACU.
+
+## What it runs, and where
+
+The acceptance commands are shell strings, and they come from the scoping session's structured
+output, which is a model's writing. The loop runs them, so treat this as you would a build
+script from a pull request: point it at a repository you trust, run it in the container rather
+than on your laptop, and give the GitHub token only the repository it works on. The commands run
+in a detached worktree that the session has no access to, which stops a session marking its own
+homework; it does not sandbox the command itself.
+
+The dashboard has no sign-in, and its buttons merge to GitHub with whatever token is loaded, so
+`compose.yaml` publishes it on loopback only. Change that only on a network you trust.
 
 ## The seam
 
@@ -185,7 +212,8 @@ fork_files/        the skill and the PR template committed to the target fork
 data/inventory/    the measured inventory and the tickets drafted from it
 data/replay/       the recorded run, redacted
 templates/         the app
-tests/             129 tests; the gate is tested on a real git fixture
+static/            htmx, served by the app so the dashboard works with no internet
+tests/             163 tests; the checks are tested against a real git fixture
 ```
 
 ## Development

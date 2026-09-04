@@ -18,7 +18,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 TICKET_STATUSES = (
     "new",  # no verdict yet: the triage session scopes it; the router never sees it
@@ -128,6 +128,8 @@ CREATE INDEX IF NOT EXISTS ix_timeline_session ON timeline(session_id);
 CREATE INDEX IF NOT EXISTS ix_tickets_status ON tickets(status);
 CREATE INDEX IF NOT EXISTS ix_sessions_wo ON sessions(work_order_id);
 CREATE INDEX IF NOT EXISTS ix_evidence_session ON evidence(session_id);
+CREATE INDEX IF NOT EXISTS ix_timeline_ticket ON timeline(ticket_id, at);
+CREATE INDEX IF NOT EXISTS ix_timeline_at ON timeline(at);
 """
 
 
@@ -137,6 +139,29 @@ def now() -> str:
 
 def new_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:12]}"
+
+
+def clip(text: str, n: int) -> str:
+    """Shorten to n characters on a word boundary, and say that it was shortened. Cutting mid
+    word reads as a rendering fault, which is worse than the missing words."""
+    t = (text or "").strip()
+    if len(t) <= n:
+        return t
+    cut = t[:n].rsplit(" ", 1)[0].rstrip(" ,.;:-")
+    return (cut or t[:n].rstrip()) + "\u2026"
+
+
+def _must(ok: bool, why: str) -> None:
+    """A check that survives `python -O`. Every one of these guards a column name on its way
+    into a SQL statement, so an assert, which -O deletes, is the wrong tool."""
+    if not ok:
+        raise ValueError(why)
+
+
+def plural(n: int, one: str, many: str = "") -> str:
+    """A count and its noun, written the way a person writes it. Nothing on a page a person
+    reads should say "3 ticket(s)"."""
+    return f"{n} {one if n == 1 else (many or one + 's')}"
 
 
 def digest(data: bytes | str) -> str:
@@ -297,9 +322,9 @@ class Store:
         router_decision: str | None = None,
         router_reason: str | None = None,
     ) -> str:
-        assert status in TICKET_STATUSES, status
+        _must(status in TICKET_STATUSES, f"unknown ticket status: {status}")
         if router_decision is not None:
-            assert router_decision in ROUTES, router_decision
+            _must(router_decision in ROUTES, f"unknown route: {router_decision}")
         ts = now()
         number = (self.get_ticket(id) or {}).get("number") or (
             self.conn.execute("SELECT COALESCE(MAX(number), 0) + 1 FROM tickets").fetchone()[0]
@@ -333,14 +358,14 @@ class Store:
         return id
 
     def set_ticket_status(self, ticket_id: str, status: str) -> None:
-        assert status in TICKET_STATUSES, status
+        _must(status in TICKET_STATUSES, f"unknown ticket status: {status}")
         self.conn.execute(
             "UPDATE tickets SET status=?, updated_at=? WHERE id=?", (status, now(), ticket_id)
         )
         self.log("ticket", status, ticket_id=ticket_id)
 
     def set_router_decision(self, ticket_id: str, decision: str, reason: str) -> None:
-        assert decision in ROUTES, decision
+        _must(decision in ROUTES, f"unknown route: {decision}")
         status = {"devin": "routed", "human_only": "escalated", "refuse": "refused"}[decision]
         self.conn.execute(
             "UPDATE tickets SET router_decision=?, router_reason=?, status=?, updated_at=? WHERE id=?",
@@ -465,7 +490,7 @@ class Store:
             "rejected_output_digest",
         }
         bad = set(fields) - allowed
-        assert not bad, f"unknown session fields: {bad}"
+        _must(not bad, f"unknown session fields: {bad}")
         if "structured_output" in fields:
             fields["structured_output_json"] = json.dumps(fields.pop("structured_output"))
         sets = ", ".join(f"{k}=?" for k in fields)
@@ -553,9 +578,27 @@ class Store:
         self.conn.commit()
         return tid
 
+    TRIAGE_FIELDS: ClassVar[set[str]] = {
+        "devin_session_id",
+        "url",
+        "playbook_id",
+        "tags_json",
+        "terminal_at",
+        "status",
+        "status_detail",
+        "acus_consumed",
+        "verdict_json",
+        "outcome",
+        "cost_usd",
+    }
+
     def update_triage_session(self, tid: str, **fields: Any) -> None:
         if "verdict" in fields:
             fields["verdict_json"] = json.dumps(fields.pop("verdict"))
+        _must(
+            not (set(fields) - self.TRIAGE_FIELDS),
+            f"unknown fields: {set(fields) - self.TRIAGE_FIELDS}",
+        )
         cols = ", ".join(f"{k}=?" for k in fields)
         self.conn.execute(f"UPDATE triage_sessions SET {cols} WHERE id=?", (*fields.values(), tid))
         self.conn.commit()
@@ -589,9 +632,27 @@ class Store:
         self.conn.commit()
         return sid
 
+    SCAN_FIELDS: ClassVar[set[str]] = {
+        "devin_session_id",
+        "url",
+        "playbook_id",
+        "tags_json",
+        "terminal_at",
+        "status",
+        "status_detail",
+        "acus_consumed",
+        "findings_json",
+        "outcome",
+        "cost_usd",
+    }
+
     def update_scan_session(self, sid: str, **fields: Any) -> None:
         if "findings" in fields:
             fields["findings_json"] = json.dumps(fields.pop("findings"))
+        _must(
+            not (set(fields) - self.SCAN_FIELDS),
+            f"unknown fields: {set(fields) - self.SCAN_FIELDS}",
+        )
         cols = ", ".join(f"{k}=?" for k in fields)
         self.conn.execute(f"UPDATE scan_sessions SET {cols} WHERE id=?", (*fields.values(), sid))
         self.conn.commit()
@@ -700,8 +761,11 @@ class Store:
         tree_hash: str | None = None,
         review_severity: str | None = None,
     ) -> str:
-        assert gate_result in ("pass", "fail", "missing_evidence"), gate_result
-        assert decision in ("pass", "retry", "escalate"), decision
+        _must(
+            gate_result in ("pass", "fail", "missing_evidence"),
+            f"unknown check result: {gate_result}",
+        )
+        _must(decision in ("pass", "retry", "escalate"), f"unknown decision: {decision}")
         vid = new_id("vrd")
         self.conn.execute(
             "INSERT INTO verdicts VALUES (?,?,?,?,?,?,?,?)",
@@ -720,7 +784,7 @@ class Store:
     def insert_escalation(
         self, ticket_id: str, session_id: str | None, kind: str, reason: str
     ) -> str:
-        assert kind in ESCALATION_KINDS, kind
+        _must(kind in ESCALATION_KINDS, f"unknown escalation: {kind}")
         eid = new_id("esc")
         self.conn.execute(
             "INSERT INTO escalations VALUES (?,?,?,?,?,?,?)",
@@ -753,7 +817,10 @@ class Store:
         return self._all(q)
 
     def record_human_action(self, ticket_id: str, kind: str, actor: str) -> str:
-        assert kind in ("merge", "review_comment", "approve", "reject", "resolve"), kind
+        _must(
+            kind in ("merge", "review_comment", "approve", "reject", "resolve"),
+            f"unknown human action: {kind}",
+        )
         hid = new_id("hum")
         self.conn.execute(
             "INSERT INTO human_actions VALUES (?,?,?,?,?)",
@@ -880,7 +947,7 @@ class Store:
             "playbook",
         }
         bad = set(fields) - allowed
-        assert not bad, bad
+        _must(not bad, f"unknown automation fields: {bad}")
         if "last_result" in fields and not isinstance(fields["last_result"], str | type(None)):
             fields["last_result"] = json.dumps(fields["last_result"])
         sets = ", ".join(f"{k}=?" for k in fields)

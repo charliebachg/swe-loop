@@ -10,5 +10,8 @@ data/live/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+*.db
+*.db-wal
+*.db-shm
 dist/
 *.egg-info/

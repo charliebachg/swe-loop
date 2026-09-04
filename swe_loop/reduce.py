@@ -13,7 +13,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
-from swe_loop.store import Store
+from swe_loop.store import Store, plural
 
 
 @dataclass
@@ -243,6 +243,39 @@ def merge_on_github(
     return out
 
 
+def close_source_issue(
+    store: Store, ticket_id: str, github_token: str = "", patch: Any = None
+) -> str:
+    """The issue a ticket came from is closed when its change lands, so nobody has to tidy up
+    behind the loop. A ticket with no issue behind it, a scan finding for instance, has nothing
+    to close."""
+    import httpx
+
+    ref = (store.get_ticket(ticket_id) or {}).get("external_ref") or ""
+    if "#" not in ref:
+        return "no issue behind this ticket"
+    repo, number = ref.rsplit("#", 1)
+    if not number.isdigit():
+        return "no issue behind this ticket"
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "swe-loop"}
+    if github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
+    call = patch or (lambda u, b: httpx.patch(u, headers=headers, json=b, timeout=20).json())
+    try:
+        d = call(f"https://api.github.com/repos/{repo}/issues/{number}", {"state": "closed"})
+    except Exception as ex:  # noqa: BLE001 - shown on the ticket, never swallowed
+        return f"could not close issue #{number}: {type(ex).__name__}"
+    if (d or {}).get("state") == "closed":
+        store.log(
+            "merge",
+            f"issue #{number} closed",
+            ticket_id=ticket_id,
+            detail=f"{repo}#{number} · its change is on {store.get_ticket(ticket_id).get('source') or 'the base branch'}",
+        )
+        return f"issue #{number} closed"
+    return f"issue #{number} was not closed"
+
+
 def record_merge(
     store: Store, ticket_id: str, actor: str, pr_url: str | None = None
 ) -> dict[str, Any]:
@@ -322,7 +355,7 @@ def _github_review_outcome(
         ] or mine
     if "No Issues Found" in body and not inline:
         return "no issues"
-    return f"{len(inline)} comment(s)"
+    return plural(len(inline), "comment")
 
 
 def refresh_pr_states(store: Store, github_token: str = "", fetch: Any = None) -> int:
@@ -356,7 +389,7 @@ def refresh_pr_states(store: Store, github_token: str = "", fetch: Any = None) -
 
 def refresh_reviews(store: Store, client: Any, github_token: str = "", fetch: Any = None) -> int:
     """Read back every requested Devin Review. The request happens at the gate; the result
-    is read here so the Tracker and the Review page show it. Returns how many were updated."""
+    is read here so every ticket shows it. Returns how many were updated."""
     rows = store._all(
         "SELECT v.id, v.session_id, v.created_at, s.pull_request_url AS pr_url, s.work_order_id FROM verdicts v "
         "JOIN sessions s ON s.id = v.session_id WHERE v.review_severity LIKE 'requested%' "

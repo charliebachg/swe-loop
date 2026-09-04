@@ -14,7 +14,7 @@ from urllib.parse import quote
 
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.intake import ingest, normalize
-from swe_loop.store import Store, now
+from swe_loop.store import Store, now, plural
 
 ROOT = Path(__file__).resolve().parents[1]
 INVENTORY = ROOT / "data" / "inventory" / "2026-09-03"
@@ -207,10 +207,11 @@ def run_automation(
         )
         store.log(
             "intake",
-            f"{got['issues']} open issue(s) with label {label}; {len(got['new'])} new ticket(s)",
+            f"{plural(got['issues'], 'open issue')} with label {label}; "
+            f"{plural(len(got['new']), 'new ticket')}",
             detail=repo,
         )
-        log(f"intake: {got['issues']} issue(s), {len(got['new'])} new")
+        log(f"intake: {plural(got['issues'], 'issue')}, {len(got['new'])} new")
         if live and not store.get_setting("playbook_id.repair-pandas3"):
             from swe_loop.cli import apply_config
 
@@ -218,7 +219,7 @@ def run_automation(
             n = len(made["created"])
             store.log(
                 "triage",
-                f"the organisation was configured: {n} object(s) created",
+                f"the organisation was configured: {plural(n, 'object')} created",
                 detail="playbooks and Knowledge notes; anything already there was adopted",
             )
             log(f"apply-config: {n} created, {len(made['already_on_the_org'])} already there")
@@ -226,7 +227,7 @@ def run_automation(
         pid_tri = store.get_setting("playbook_id.triage-pandas3")
         verdicts = triage_all(store, client, cfg, inventory_path=inv, playbook_id=pid_tri)
         result["triaged"] = len(verdicts)
-        log(f"triage: {len(verdicts)} session(s)")
+        log(f"scoping: {plural(len(verdicts), 'session')}")
         pid_rep = store.get_setting("playbook_id.repair-pandas3")
         result.update(run_once(settings, cfg, store, client, playbook_id=pid_rep, log=log))
         store.finish_automation_run(rid, result)

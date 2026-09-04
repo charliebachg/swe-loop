@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from swe_loop import reduce
 from swe_loop.config import TargetConfig
 from swe_loop.devin import DevinClient, FakeTransport
 from swe_loop.dispatch import dispatch
@@ -173,3 +174,39 @@ def test_the_change_itself_is_readable_before_merging(tmp_path):
     # a refusal is shown, never swallowed
     bad = rd.pr_files("https://github.com/o/r/pull/7", "", fetch=lambda u: {"message": "Not Found"})
     assert bad[0]["error"] == "Not Found"
+
+
+def test_a_merge_closes_the_issue_the_ticket_came_from(tmp_path):
+    """Nobody should have to tidy up behind the loop: the issue closes when the change lands."""
+    st = Store(tmp_path / "s.sqlite")
+    st.upsert_ticket(
+        id="tkt_A",
+        source="github",
+        title="t",
+        status="merged",
+        external_ref="charliebachg/superset#4",
+    )
+    seen = {}
+
+    def patch(url, body):
+        seen["url"], seen["body"] = url, body
+        return {"state": "closed"}
+
+    out = reduce.close_source_issue(st, "tkt_A", "tok", patch=patch)
+    assert out == "issue #4 closed"
+    assert seen["url"] == "https://api.github.com/repos/charliebachg/superset/issues/4"
+    assert seen["body"] == {"state": "closed"}
+    assert any(e["event"] == "issue #4 closed" for e in st.timeline(ticket_id="tkt_A"))
+
+
+def test_a_ticket_with_no_issue_behind_it_closes_nothing(tmp_path):
+    """A scan files its own tickets; there is no issue to close and no call to make."""
+    st = Store(tmp_path / "s.sqlite")
+    st.upsert_ticket(id="tkt_sc1", source="scan", title="t", status="merged")
+
+    def patch(url, body):  # pragma: no cover - must never run
+        raise AssertionError("no issue, so no call")
+
+    assert reduce.close_source_issue(st, "tkt_sc1", "tok", patch=patch) == (
+        "no issue behind this ticket"
+    )

@@ -2,7 +2,9 @@ services:
   swe-loop:
     build: .
     ports:
-      - "8000:8000"
+      # loopback only: the dashboard has no sign-in, and its buttons merge to GitHub with
+      # whatever token is loaded. Change to "8000:8000" only on a network you trust.
+      - "127.0.0.1:8000:8000"
     env_file:
       - path: .env
         required: false
@@ -10,6 +12,6 @@ services:
       SWE_LOOP_MODE: ${SWE_LOOP_MODE:-replay}
     volumes:
       - ./data:/app/data
-      # live mode only: the gate checks the pull request out here and runs the acceptance
-      # commands through this clone's interpreters, which must be built for Linux inside it
+      # live mode only: the checks clone the pull request here and run the acceptance commands
+      # through this clone's interpreters, which must be built for Linux inside the container
       - ${SWE_LOOP_FORK:-../superset-fork}:/superset-fork
