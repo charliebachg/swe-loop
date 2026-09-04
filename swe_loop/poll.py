@@ -318,18 +318,41 @@ class Poller:
         return True
 
     def enforce_budget(self) -> list[str]:
-        """Terminate every live session when spend reaches the cap. Returns the ids terminated."""
+        """Terminate every live session when spend reaches the cap. Returns the ids terminated.
+
+        Which cap depends on how the plan bills. On an ACU-metered plan the API reports what was
+        consumed and the ACU cap is the one that counts. On a plan billed in credits it reports
+        0.0 for every session forever, so an ACU cap can never be reached and enforcing it would
+        be enforcing nothing: there, the dollar cap a person set on Settings is the real one, read
+        against the cost this app measures itself."""
+        from swe_loop import cost as cost_mod
+
         b = self.store.budget_state()
-        if b.get("cap") is None or b["spent"] < b["cap"]:
+        sp = cost_mod.spend(self.store)
+        if sp["metered"]:
+            cap, spent, unit = b.get("cap"), b["spent"], "ACU"
+        else:
+            try:
+                cap = float(self.store.get_setting("usd_cap") or 0) or None
+            except ValueError:
+                cap = None
+            spent, unit = sp.get("usd") or 0.0, "dollar"
+        if cap is None or spent < cap:
             return []
         stopped = []
         for s in self.store.live_sessions():
             self._terminate(
                 s["id"],
                 "budget",
-                f"ACU cap {b['cap']} reached at {b['spent']}; terminated and archived",
+                f"{unit} cap {cap:g} reached at {spent:g}; terminated and archived",
             )
             stopped.append(s["id"])
+        if stopped:
+            self.store.log(
+                "budget",
+                "the cap was reached, so every live session was stopped",
+                detail=f"{unit} cap {cap:g}, spend {spent:g}, {len(stopped)} stopped",
+            )
         return stopped
 
     def reconcile_reserved(self) -> dict[str, str]:

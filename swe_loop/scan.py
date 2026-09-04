@@ -73,7 +73,16 @@ def build_prompt(cfg: TargetConfig, limit: int) -> str:
         f"- Only the first {limit} are kept. Do not spend the budget on the easy ones.\n"
         "Don't:\n"
         f"- Touch any file, or anything under {', '.join(cfg.forbidden_paths)}.\n"
-        "- Open a pull request, push a branch, or comment anywhere.\n"
+        + (
+            "- Report anything in these files. Another change is already open against each of "
+            "them, so a finding there cannot be worked on: "
+            + ", ".join(cfg.scan.get("reserved_paths") or ())
+            + ". Read them if it helps you understand the code, but look elsewhere for what to "
+            "report.\n"
+            if cfg.scan.get("reserved_paths")
+            else ""
+        )
+        + "- Open a pull request, push a branch, or comment anywhere.\n"
         "- Report a site you have not read, or pad the list to reach the maximum.\n\n"
         "## Result\n"
         "Provide structured output matching the findings schema and call "
@@ -112,7 +121,8 @@ def file_findings(
     A finding already filed is left alone: scanning the same repository twice must not fill the
     board with duplicates."""
     forbidden = tuple(cfg.forbidden_paths)
-    new, known, refused = [], [], []
+    reserved = tuple(cfg.scan.get("reserved_paths") or ())
+    new, known, refused, taken = [], [], [], []
     findings = sorted(out.get("findings") or [], key=rank)
     dropped = 0
     if limit is not None and len(findings) > limit:
@@ -122,6 +132,11 @@ def file_findings(
         where = str(f.get("file") or "")
         if where.startswith(forbidden):
             refused.append(where)  # the scan was told to stay out; the loop does not relent
+            continue
+        if where in reserved:
+            # another piece of work owns this file. Two open changes to one file collide at the
+            # merge, so the finding is dropped here rather than left for a person to spot.
+            taken.append(where)
             continue
         tid = finding_id(f)
         if store.get_ticket(tid):
@@ -143,7 +158,13 @@ def file_findings(
             + clip(str(f.get("why") or ""), 120),
         )
         new.append(tid)
-    return {"new": new, "known": known, "refused": refused, "dropped": dropped}
+    return {
+        "new": new,
+        "known": known,
+        "refused": refused,
+        "taken": taken,
+        "dropped": dropped,
+    }
 
 
 def _close(store: Store, sid: str, outcome: str, **extra: Any) -> None:

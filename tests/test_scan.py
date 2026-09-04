@@ -142,9 +142,9 @@ def test_the_automation_carries_the_number(tmp_path, monkeypatch):
     app = build_app(Settings.from_env(), st, seed_replay=False)
     with TestClient(app) as c:
         a = st.get_automation("auto_scan")
-        assert a["max_findings"] == 3
+        assert a["max_findings"] == 5  # the seam says five; the page and the prompt follow it
         html = c.get("/automations?open=auto_scan").text
-        assert "at most 3 tickets a run" in html and "tickets per run" in html
+        assert "at most 5 tickets a run" in html and "tickets per run" in html
 
 
 def test_the_scan_session_is_visible_and_counted(tmp_path, monkeypatch):
@@ -227,3 +227,48 @@ def test_a_lost_session_can_be_picked_back_up(tmp_path):
     row = st.list_scan_sessions()[0]
     assert row["devin_session_id"] == "lost-1" and row["outcome"] == "filed"
     assert "picked the session back up" in " ".join(e["event"] for e in st.timeline(limit=20))
+
+
+def test_a_finding_in_a_file_another_change_owns_is_refused(tmp_path):
+    """Two open changes to one file collide at the merge. A scan that reports a file already
+    being worked on is dropped here, not left for a person to notice at merge time."""
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    out = {
+        "searched": "everything",
+        "findings": [
+            {
+                "file": "superset/charts/client_processing.py",
+                "line": 900,
+                "class": "inplace",
+                "why": "reserved: shard A is open against this file",
+                "title": "in a file another change owns",
+                "confidence": "certain",
+                "tests": [],
+            },
+            {
+                "file": "tests/unit_tests/x_test.py",
+                "line": 1,
+                "class": "inplace",
+                "why": "forbidden path",
+                "title": "under tests",
+                "confidence": "certain",
+                "tests": [],
+            },
+            {
+                "file": "superset/utils/excel.py",
+                "line": 42,
+                "class": "downcasting",
+                "why": "free ground",
+                "title": "somewhere nobody is working",
+                "confidence": "certain",
+                "tests": [],
+            },
+        ],
+    }
+    filed = scan.file_findings(st, cfg, out, limit=5)
+    assert filed["taken"] == ["superset/charts/client_processing.py"]
+    assert filed["refused"] == ["tests/unit_tests/x_test.py"]
+    assert len(filed["new"]) == 1
+    titles = [t["title"] for t in st.list_tickets()]
+    assert titles == ["somewhere nobody is working"]

@@ -292,3 +292,42 @@ def test_per_session_cap_from_the_budget_is_honoured(tmp_path):
     st.set_budget(acu_cap=300, per_session_cap=3)
     dispatch(st, client, wo, CFG)
     assert calls(client, "create_session")[0]["max_acu_limit"] == 3
+
+
+def test_the_dollar_cap_is_the_one_enforced_on_a_credit_plan(tmp_path, monkeypatch):
+    """acus_consumed is 0.0 on every session on a plan billed in credits, so an ACU cap can
+    never be reached. The cap a person set in dollars is the one that has to bite."""
+    from swe_loop import cost as cost_mod
+
+    st = Store(tmp_path / "s.sqlite")
+    st.set_budget(acu_cap=40, per_session_cap=6)
+    st.set_setting("usd_cap", "10")
+
+    class FakeClient:
+        def __init__(self):
+            self.terminated = []
+
+        def terminate(self, sid, archive=True):
+            self.terminated.append(sid)
+
+        def message(self, *a, **k):
+            pass
+
+    p = Poller(st, FakeClient(), CFG)
+
+    # under the cap: nothing is touched
+    monkeypatch.setattr(cost_mod, "spend", lambda _s: {"metered": False, "usd": 9.5})
+    assert p.enforce_budget() == []
+
+    # over it: every live session is stopped, even though acus_consumed is still 0.0
+    st.upsert_ticket(id="tkt_A", source="github", title="t", status="new")
+    wo = st.insert_work_order(
+        ticket_id="tkt_A", shard_id="A", files=["a.py"], tests=["t.py"], acceptance={}
+    )
+    sid = st.reserve_session(work_order_id=wo, playbook_id=None, tags=[])
+    st.bind_devin_session(sid, devin_session_id="dev1", url="")
+    st.update_session(sid, status="running", status_detail="working")
+    monkeypatch.setattr(cost_mod, "spend", lambda _s: {"metered": False, "usd": 10.4})
+    assert st.budget_state()["spent"] == 0.0  # the ACU number never moves on this plan
+    assert p.enforce_budget() == [sid]
+    assert any(e["event"].startswith("the cap was reached") for e in st.timeline())

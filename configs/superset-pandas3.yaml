@@ -57,7 +57,19 @@ scan:
   look_for: >-
     pandas 2 behaviour that changes under pandas 3: chained assignment and copy-on-write, the
     string dtype, stack and pivot, mixed-offset datetime parsing, and downcasting on replace
-  max_findings: 3
+  max_findings: 5
+  # Files another piece of work already owns. A scan may read them, but it may not file against
+  # them: two open changes to one file collide at the merge, and these carry work already in
+  # flight. The loop refuses such a finding rather than trusting the session to remember.
+  reserved_paths:
+    - superset/charts/client_processing.py
+    - superset/models/helpers.py
+    - superset/utils/pandas_postprocessing/pivot.py
+    - superset/utils/pandas_postprocessing/rolling.py
+    - superset/utils/pandas_postprocessing/utils.py
+    - superset/utils/pandas_postprocessing/aggregate.py
+    - superset/utils/pandas_postprocessing/histogram.py
+    - superset/utils/pandas_postprocessing/resample.py
   playbook: playbooks/scan-pandas3.md
 
 review:
