@@ -2869,6 +2869,13 @@ def report(
             ("minutes your engineers spent reviewing", "not instrumented in this run"),
             ("security findings", "no scanner runs in this loop"),
             ("continuous integration results", "the fork runs none"),
+            (
+                "what a session cost after this app stopped watching it",
+                (
+                    "cost is measured from our own polls, so a session nobody polled to the "
+                    "end counts as less than it was. The figure is a floor, not a total."
+                ),
+            ),
         ],
         "refused": [
             ("lines of code", "volume is not value"),

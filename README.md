@@ -171,7 +171,9 @@ measures the system, never a named engineer; the person who merges is recorded a
 Self-serve Devin plans are billed in dollar credits. The API reports `acus_consumed` as 0.0 for
 every session and the consumption endpoints return 0, verified on this organisation. So the loop
 measures cost itself: active minutes from its own polls (the gaps between polls while a session
-reported `working`, each gap capped at 60 seconds) times a rate per session kind. The console's
+reported `working`, each gap capped at 60 seconds) times a rate per session kind. That makes the
+figure a floor rather than a total: a session this app never polled to the end, because it was
+terminated or the process watching it died, counts as less than it was, and the Report says so. The console's
 per-session figures, entered on Settings or with `cost --set`, replace the computed dollars for
 those sessions and refine the rate for the rest. On an ACU-metered plan the same pages show ACU.
 
