@@ -2183,8 +2183,10 @@ def automations(
             )
             how = "by webhook"
         elif src == "schedule":
-            trig = "on a schedule"
-            how = r.get("schedule") or "no schedule set"
+            trig = f"reads {r['target']} itself and files what it finds"
+            how = "on click" + (
+                f"; a native Automation would run it {r['schedule']}" if r.get("schedule") else ""
+            )
         elif src == "manual":
             trig = "on click only"
             how = "the Run button"
@@ -2199,7 +2201,7 @@ def automations(
                     produced.append(tid)
         kind_label = {
             "repair": "event-based · default",
-            "scan": "scan · next version",
+            "scan": "finds the work itself",
             "custom": "event-based",
         }.get(r["kind"], r["kind"])
         autos.append(
