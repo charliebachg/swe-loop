@@ -67,6 +67,10 @@ scan:
   # security, performance, db-queries, test-coverage, dead-code, code-quality, telemetry,
   # accessibility, general, migration-docs. Only security runs without a profile.
   devin_area: security
+  # A profile can only be made in the Devin console: every write on the profile endpoints
+  # answers 405 and the API has no operation that creates one. Make it there, put its id here,
+  # and set devin_area to the profile's own scan type.
+  devin_profile_id:
   # Files another piece of work already owns. A scan may read them, but it may not file against
   # them: two open changes to one file collide at the merge, and these carry work already in
   # flight. The loop refuses such a finding rather than trusting the session to remember.

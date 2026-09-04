@@ -5,6 +5,7 @@ goes through the same scoping, routing, checks and review as work that arrived a
 
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from swe_loop import pages, scan
@@ -460,3 +461,38 @@ def test_an_unconfirmed_security_finding_keeps_its_detail_off_a_shared_screen(tm
     # a ticket from anywhere else is never touched by this
     st.upsert_ticket(id="tkt_x", source="scan", title="pandas thing at a.py:1", status="new")
     assert codescan.safe_title(st.get_ticket("tkt_x"), True) == "pandas thing at a.py:1"
+
+
+def test_a_non_security_scan_says_what_it_needs_before_devin_refuses_it(tmp_path):
+    """Only security runs without a scan profile. Devin answers 400 for the other nine, and a
+    profile cannot be made through the API at all: every write on the profile endpoints is 405
+    and the spec has no operation that creates one. Saying so here is cheaper than the round
+    trip, and tells a person where to go."""
+    from swe_loop import codescan
+
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    client = DevinClient(FakeTransport())
+
+    with pytest.raises(ValueError) as e:
+        codescan.run(Settings.from_env(), cfg, st, client, area="performance", log=lambda _m: None)
+    assert "needs a scan profile" in str(e.value) and "Devin console" in str(e.value)
+    assert not [c for c in client.t.calls if c[0] == "start_code_scan"]  # nothing was started
+
+    # with a profile it goes through, and the profile travels with the request
+    out = codescan.run(
+        Settings.from_env(),
+        cfg,
+        st,
+        client,
+        area="performance",
+        profile_id="prof-123",
+        log=lambda _m: None,
+    )
+    assert out["kind"] == "filed"
+    started = next(c for c in client.t.calls if c[0] == "start_code_scan")[1]
+    assert started == {
+        "repo_name": cfg.repo,
+        "scan_type": "performance",
+        "profile_id": "prof-123",
+    }

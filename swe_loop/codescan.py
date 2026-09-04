@@ -143,6 +143,7 @@ def run(
     client: Any,
     *,
     area: str | None = None,
+    profile_id: str | None = None,
     limit: int | None = None,
     sleep: Any = None,
     wall_clock: float = 3600.0,
@@ -152,15 +153,24 @@ def run(
     import time as _time
 
     area = area or cfg.scan.get("devin_area") or "security"
+    profile_id = profile_id or cfg.scan.get("devin_profile_id") or None
     if area not in AREAS:
         raise ValueError(f"{area} is not one of Devin's scan types: {', '.join(AREAS)}")
+    if area != "security" and not profile_id:
+        # Devin rejects this itself; saying so here costs nothing and reads better than a 400
+        raise ValueError(
+            f"a {area} scan needs a scan profile. Only security runs without one, and a profile "
+            "can only be made in the Devin console: every write on the profile endpoints is 405 "
+            "and the API offers no way to create one. Make it there, then put its id in the "
+            "seam as scan.devin_profile_id."
+        )
     limit = limit or int(cfg.scan.get("max_findings", 5))
     sleep = sleep or (
         (lambda s_: _time.sleep(min(s_, 0.05)))
         if getattr(client, "is_fake", False)
         else _time.sleep
     )
-    started = client.start_code_scan(repo_name=cfg.repo, scan_type=area)
+    started = client.start_code_scan(repo_name=cfg.repo, scan_type=area, profile_id=profile_id)
     scan_id = started.get("scan_id")
     sid = store.insert_scan_session(
         devin_session_id=scan_id,
@@ -170,7 +180,12 @@ def run(
         playbook_id=None,
         tags=[cfg.session.get("tags_prefix", "swe-loop"), "code_scan", area],
     )
-    store.log("scan", "Devin's scanner started", session_id=sid, detail=f"{area} on {cfg.repo}")
+    store.log(
+        "scan",
+        "Devin's scanner started",
+        session_id=sid,
+        detail=f"{area} on {cfg.repo}" + (f" · profile {profile_id}" if profile_id else ""),
+    )
     log(f"code scan {scan_id} started: {area} on {cfg.repo}")
 
     t0, wait, state = _time.monotonic(), 10.0, started

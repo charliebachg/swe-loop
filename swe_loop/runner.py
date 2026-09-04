@@ -178,7 +178,16 @@ def run_automation(
         if a["kind"] == "code_scan":
             from swe_loop import codescan
 
-            found = codescan.run(settings, cfg, store, client, limit=a.get("max_findings"), log=log)
+            found = codescan.run(
+                settings,
+                cfg,
+                store,
+                client,
+                # an automation may pin its own area; the seam is the default
+                area=(a.get("trigger") or {}).get("area"),
+                limit=a.get("max_findings"),
+                log=log,
+            )
             result["scan"] = found.get("kind")
             result["scan_id"] = found.get("scan", "")
             result["area"] = found.get("area", "")
