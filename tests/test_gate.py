@@ -216,3 +216,19 @@ def test_a_command_that_cds_into_devins_own_checkout_still_runs_here():
     assert kept == "echo one && cd /elsewhere && echo two"
     # a command that is only a cd is not emptied into nothing
     assert absolutize_command("cd /somewhere", root) == "cd /somewhere"
+
+
+def test_where_devin_chose_the_file_itself_a_difference_is_confirmed_not_failed(tmp_path):
+    """For work the loop scoped, a change outside the work order is a failure: the scope was
+    agreed before the work started. For a fix Devin found and made itself, the file it chose can
+    reasonably differ from the one the finding named, and often for the better. That is a
+    difference a person should see, not a failure."""
+    repo = make_repo(tmp_path)
+    st, sid = seed(tmp_path, branch="fix-outscope")
+    wo_id = st.get_session(sid)["work_order_id"]
+    st.conn.execute("UPDATE work_orders SET shard_id='remediation' WHERE id=?", (wo_id,))
+    st.conn.commit()
+    res = make_gate(st, tmp_path, repo, "fix-outscope").run_gate(sid)
+    assert res.scope_changed == ["other.py"]
+    assert res.tiers.get("T0") is True
+    assert not any("outside the work order" in r for r in res.reasons)

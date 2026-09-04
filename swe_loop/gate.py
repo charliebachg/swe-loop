@@ -50,6 +50,9 @@ class GateResult:
     # test files this change touched. Not a failure, but nothing goes to the base branch on
     # these until a person has looked at them.
     tests_touched: list[str] = field(default_factory=list)
+    # a fix that landed somewhere other than where the finding pointed. Only meaningful when
+    # nobody wrote the work order: for work the loop scoped itself, out of scope is a failure.
+    scope_changed: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -276,6 +279,13 @@ class Gate:
                 for f in changed
                 if f not in set(wo["files"]) and f not in forbidden and f not in tests
             ]
+            # Where the loop wrote the work order, a change outside it is a failure: the scope
+            # was agreed before the work started. Where Devin found the problem and fixed it
+            # itself, the file it chose can reasonably differ from the one the finding named,
+            # and often for the better. That is a difference a person should see, not a failure.
+            if wo["shard_id"] == "remediation" and out_of_scope:
+                res.scope_changed = out_of_scope
+                out_of_scope = []
             missing = [f for f in claim.get("files_changed", []) if not (path / f).exists()]
             t0_ok = not forbidden and not out_of_scope and not missing
             t0_report = (
@@ -414,6 +424,15 @@ def apply_result(res: GateResult, store: Store, client: DevinClient, poller: Any
             (f"requested:{review.get('review_id', 'n/a')}", res.session_id),
         )
         store.set_ticket_status(ticket_id, "reviewed")
+        if res.scope_changed:
+            store.insert_escalation(
+                ticket_id,
+                res.session_id,
+                "oracle_touched",
+                "the fix landed somewhere other than where the finding pointed: "
+                + ", ".join(res.scope_changed)
+                + ". Read it before merging.",
+            )
         if res.tests_touched:
             # The change passed every check, and one of the things it changed is a thing that
             # does the checking. That is for a person to confirm, so it is raised here and the

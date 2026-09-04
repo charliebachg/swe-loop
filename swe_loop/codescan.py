@@ -386,23 +386,34 @@ def gate_remediation(
     files = [where] if where else []
     root = Path(__file__).resolve().parents[1] / cfg.gate.get("repo_root", "../superset-fork")
     acceptance = acceptance_for(files, root)
-    wo = store.insert_work_order(
-        ticket_id=ticket_id,
-        shard_id="remediation",
-        files=files,
-        tests=[],
-        acceptance=acceptance,
-        est_size="XS",
-    )
-    sid = store.reserve_session(
-        work_order_id=wo, playbook_id=None, tags=[cfg.session.get("tags_prefix", "swe-loop")]
-    )
-    store.bind_devin_session(
-        sid,
-        devin_session_id=devin_session_id,
-        url=f"https://app.devin.ai/sessions/{devin_session_id}",
-        status="exit",
-    )
+    # Checking the same fix twice must not leave two of everything behind: the row for this
+    # Devin session is the one that gets re-checked.
+    existing = store.session_by_devin_id(devin_session_id)
+    if existing:
+        sid = existing["id"]
+        store.conn.execute(
+            "UPDATE work_orders SET files_json=?, acceptance_json=? WHERE id=?",
+            (json.dumps(files), json.dumps(acceptance), existing["work_order_id"]),
+        )
+        store.conn.commit()
+    else:
+        wo = store.insert_work_order(
+            ticket_id=ticket_id,
+            shard_id="remediation",
+            files=files,
+            tests=[],
+            acceptance=acceptance,
+            est_size="XS",
+        )
+        sid = store.reserve_session(
+            work_order_id=wo, playbook_id=None, tags=[cfg.session.get("tags_prefix", "swe-loop")]
+        )
+        store.bind_devin_session(
+            sid,
+            devin_session_id=devin_session_id,
+            url=f"https://app.devin.ai/sessions/{devin_session_id}",
+            status="exit",
+        )
     store.update_session(
         sid,
         status="exit",
