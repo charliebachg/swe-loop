@@ -569,6 +569,8 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
             notes=DEFAULT_NOTE,
         )
     sc = store.get_automation("auto_scan")
+    if sc and sc["kind"] == "scan" and not sc.get("max_findings"):
+        store.set_automation("auto_scan", max_findings=int(cfg.scan.get("max_findings", 3)))
     if sc and sc["availability"] == "next":
         # a store written before the scan existed: the row becomes the real thing
         store.conn.execute(
