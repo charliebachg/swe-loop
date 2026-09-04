@@ -463,6 +463,12 @@ def rerun_ctx(settings: Settings, cfg: TargetConfig, store: Store) -> dict[str, 
         "willPush": live and have_clone,
         "last": last,
         "canReoffer": live and have_clone,
+        "merged": ", ".join(
+            ref(t["number"])
+            for t in store.list_tickets("merged")
+            if t["id"].removeprefix("tkt_") in {s["id"] for s in rerun.shards()}
+        )
+        or "none yet",
         "lastLine": (
             (
                 f"shard {last['shard']}: {last.get('error')}"

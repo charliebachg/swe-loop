@@ -122,6 +122,12 @@ def reoffer_shard(
     out: dict[str, Any] = {"shard": shard, "ticket": tid, "at": now()}
     if not files or not baseline:
         raise ValueError(f"shard {shard} has no files or no baseline in the seam")
+    t = store.get_ticket(tid)
+    if not t or t["status"] != "merged":
+        raise ValueError(
+            f"shard {shard} is not merged, so there is nothing to offer again. "
+            "Offer it again only puts a change that already landed back in front of a person."
+        )
     root = (
         repo_root
         if repo_root is not None

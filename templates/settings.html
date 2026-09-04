@@ -32,7 +32,7 @@
       <button class="btn" type="submit" formaction="/settings/reoffer" {% if not rerun.canReoffer %}disabled{% endif %}>Offer it again</button>
       <span class="foot">{% if rerun.willPush %}live: the clone at <span class="mono">{{ rerun.clone }}</span> is restored and pushed{% elif rerun.live %}live, but no clone at <span class="mono">{{ rerun.clone }}</span>: only the store is reset{% else %}replay: only the store is reset; the repository is not touched{% endif %}</span>
     </form>
-    <p class="foot" style="margin-top:8px"><b>Offer it again</b> is for showing the merge step without waiting for a run. It takes the change that was already verified, puts the branch back to before it landed, and opens the same commit as a new pull request. No session is spent and the AI is asked for nothing.</p>
+    <p class="foot" style="margin-top:8px"><b>Reset shard</b> throws the fix away and reopens the issue, so the next run does the whole thing again from scratch: about twenty minutes and two sessions. <b>Offer it again</b> keeps the fix. It puts the branch back to before that change landed and opens the same verified commit as a new pull request, so the merge step can be shown in seconds with no session spent. It only works on a shard that is currently merged: {{ rerun.merged }}.</p>
     <p class="foot" style="margin-top:8px">last: {{ rerun.lastLine }}</p>
   </div>
   <div class="card"><h3>Budget <span class="who code">enforced by the poller</span></h3>

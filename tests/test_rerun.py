@@ -233,3 +233,13 @@ def test_offer_it_again_reopens_the_same_verified_change(fork, tmp_path):
         == "https://github.com/o/r/pull/99"
     )
     assert "offered again" in " ".join(e["event"] for e in st.timeline(ticket_id="tkt_D"))
+
+
+def test_offering_a_shard_that_is_not_merged_says_why(fork, tmp_path):
+    from swe_loop import rerun as rr
+
+    _origin, clone, cfg, _baseline = fork
+    st = Store(tmp_path / "s.sqlite")
+    synthesise(st, CFG, INVENTORY / "tickets.json", tmp_path)  # D is reviewed, not merged
+    with pytest.raises(ValueError, match="nothing to offer again"):
+        rr.reoffer_shard(Settings(mode="live", devin_api_key="x"), cfg, st, "D", repo_root=clone)
