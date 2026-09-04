@@ -256,3 +256,15 @@ def test_insights_mirrors_devin_and_invents_nothing(tmp_path):
     assert adv["issues"] == [] and adv["actions"] == [] and adv["analysed"] == 1
     # a field with one value everywhere is stated once, not given a column
     assert {"field": "origin", "value": "api"} in ins.constants(rows)
+
+
+def test_a_designed_page_returns_the_content_block_to_htmx(client):
+    """An HTMX request swaps into #page, so the response must not carry the frame with it.
+    Insights once returned the whole shell and drew a second sidebar inside the first."""
+    c, _st = client
+    for path in ("/", "/automations", "/tickets-page", "/report", "/devin/insights"):
+        whole = c.get(path).text
+        assert whole.count("<aside") == 1, path
+        fragment = c.get(path, headers={"HX-Request": "true"}).text
+        assert "<aside" not in fragment, path
+        assert "<!doctype html>" not in fragment.lower(), path
