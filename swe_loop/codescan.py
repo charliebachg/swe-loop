@@ -223,3 +223,31 @@ def summarise(store: Store) -> dict[str, Any]:
         k = str(f.get("severity") or "unrated")
         sev[k] = sev.get(k, 0) + 1
     return {"findings": len(rows), "by_severity": sev}
+
+
+# ---------------------------------------------------------------- showing them safely
+MASK_SETTING = "show_security_detail"
+
+
+def masked(store: Store) -> bool:
+    """Whether an unverified security finding hides its detail on screen.
+
+    On by default. These are claims about somebody else's production software that nobody has
+    confirmed, and this dashboard is meant to be put on a shared screen. Reading a file and line
+    out of it publishes an unreviewed vulnerability report with no disclosure process behind it.
+    A person who needs the detail opens the ticket; the setting turns it off for a private look.
+    """
+    return (store.get_setting(MASK_SETTING) or "") != "1"
+
+
+def is_unverified_security(t: dict[str, Any]) -> bool:
+    """A finding Devin's scanner reported and nobody has stood behind yet."""
+    return t.get("source") == "code_scan" and "SECURITY.md" in (t.get("router_reason") or "")
+
+
+def safe_title(t: dict[str, Any], hide: bool) -> str:
+    """What a row may say about a finding before a person has confirmed it."""
+    if not (hide and is_unverified_security(t)):
+        return t.get("title") or ""
+    kind = (t.get("class") or "").replace("-", " ").strip() or "a security finding"
+    return f"{kind}, detail withheld until someone confirms it"

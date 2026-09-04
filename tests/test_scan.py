@@ -429,3 +429,34 @@ def test_devins_findings_respect_the_same_boundaries_as_our_own(tmp_path):
     assert out["refused"] == ["tests/unit_tests/a_test.py"]
     assert out["taken"] == [cfg.scan["reserved_paths"][0]]
     assert len(out["new"]) == 1
+
+
+def test_an_unconfirmed_security_finding_keeps_its_detail_off_a_shared_screen(tmp_path):
+    """The dashboard goes on a screen other people can see. A file and a line read off it is an
+    unreviewed vulnerability report about somebody else's software, with no disclosure process
+    behind it, so the row says the kind and withholds the rest until someone confirms it."""
+    from swe_loop import codescan
+
+    st = Store(tmp_path / "s.sqlite")
+    st.upsert_ticket(
+        id="tkt_cs1",
+        source="code_scan",
+        title="IDOR in superset/views/sql_lab/views.py:164",
+        status="escalated",
+        cls="other-idor",
+    )
+    st.set_router_decision("tkt_cs1", "human_only", "... name the row in SECURITY.md ...")
+    t = st.get_ticket("tkt_cs1")
+
+    assert codescan.masked(st) is True  # withheld unless a person turns it off
+    hidden = codescan.safe_title(t, True)
+    assert "sql_lab" not in hidden and "164" not in hidden
+    assert hidden == "other idor, detail withheld until someone confirms it"
+    # the detail is still there for whoever needs it
+    assert codescan.safe_title(t, False) == t["title"]
+    st.set_setting(codescan.MASK_SETTING, "1")
+    assert codescan.masked(st) is False
+
+    # a ticket from anywhere else is never touched by this
+    st.upsert_ticket(id="tkt_x", source="scan", title="pandas thing at a.py:1", status="new")
+    assert codescan.safe_title(st.get_ticket("tkt_x"), True) == "pandas thing at a.py:1"

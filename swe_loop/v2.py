@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-from swe_loop import charts, cost, ops, pages, rates
+from swe_loop import charts, codescan, cost, ops, pages, rates
 from swe_loop import reduce as reduce_mod
 from swe_loop import report as report_mod
 from swe_loop.config import Settings, TargetConfig
@@ -1649,6 +1649,7 @@ def tickets(store: Store, cfg: TargetConfig, q: dict[str, str], note: str = "") 
     view = q.get("view") if q.get("view") in dict(VIEWS) else "list"
     f = q.get("f", "all")
     open_ids = {x for x in (q.get("open") or "").split(",") if x}
+    hide_sec = codescan.masked(store)
     extra = {"view": view if view != "list" else None, "f": f if f != "all" else None}
     tr = tracker(store, cfg, q, base="/tickets-page", extra=extra)
 
@@ -1704,7 +1705,9 @@ def tickets(store: Store, cfg: TargetConfig, q: dict[str, str], note: str = "") 
         )
         r["summary"] = _summary(t, r)
         r["source"] = t.get("source") or ""
-        r["title"] = i.get("title") or t.get("title") or r["id"]
+        # An unverified security finding does not put a file and a line on a shared screen.
+        r["title"] = codescan.safe_title(t, hide_sec) or i.get("title") or r["id"]
+        r["withheld"] = hide_sec and codescan.is_unverified_security(t)
         r["age"] = _age(t.get("created_at"))
         n_s = i.get("sessions", 0)
         r["nSessions"] = f"{n_s} session{'s' if n_s != 1 else ''}"
