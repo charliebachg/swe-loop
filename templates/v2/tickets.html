@@ -40,6 +40,8 @@
             </div>
             {% if r.open %}{% include "v2/_ticket_run.html" %}{% endif %}
           </div>
+{% endfor %}
+        </div>
         {% if g.aside %}
         <details style="margin-top:8px">
           <summary style="cursor:pointer;font-size:12.5px;color:#8f97a3;list-style:none">{{ g.asideNote }} &#9662;</summary>
@@ -56,8 +58,7 @@
             {% endfor %}
           </div>
         </details>
-        {% endif %}{% endfor %}
-        </div>
+        {% endif %}
         {% endif %}
         {% endfor %}
         {% else %}

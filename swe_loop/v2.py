@@ -1616,6 +1616,8 @@ def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
         # work began has an escalation that says what happened, and the routing note from
         # before that is no longer the reason it is sitting here
         why = (row.get("escalations") or [{}])[-1].get("reason") or t.get("router_reason") or ""
+        # the names we gave the acceptance commands are ours, not something to read on a page
+        why = re.sub(r"\b[a-z0-9]+(?:_[a-z0-9]+){2,}:\s*", "", why)
         return plain("Needs you: " + clip(why or "a person decides", 160))
     if st == "new":
         return (

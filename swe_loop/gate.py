@@ -362,9 +362,15 @@ class Gate:
                     # command comes from the work order, which a repair session cannot edit, so
                     # sending this back would ask it to fix something it has no reach over and it
                     # would fail again on the next attempt, and every attempt after that.
+                    # the trace is in the log, which the page links to; the reason is a sentence
+                    said = ""
+                    for ln in reversed(output.strip().splitlines()):
+                        if ln.strip() and not ln.startswith((" ", "\t", "Traceback")):
+                            said = ln.strip()
+                            break
                     infra.append(
                         f"{name}: the command is not valid, so nothing ran. "
-                        + (output.strip()[-300:] or "pytest reported a usage error")
+                        + (said[:160] or "the test runner rejected it")
                     )
                 elif not ok:
                     t1_ok = False
