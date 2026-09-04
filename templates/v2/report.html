@@ -101,7 +101,7 @@
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <span style="{{ LBL }}">The log</span>
             <span style="font-size:12px;color:#8f97a3">everything the system did, in order, as it happened</span>
-            <span style="display:flex;gap:4px;margin-left:auto">{% for f in logFilter %}<button hx-get="{{ f.set }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="padding:0 8px;border-radius:11px;border:1px solid {% if f.on %}#2457a8{% else %}#d6d2c9{% endif %};background:{% if f.on %}#2457a8{% else %}#fff{% endif %};color:{% if f.on %}#fff{% else %}#14181f{% endif %};{{ MONO }};line-height:20px;cursor:pointer">{{ f.label }}</button>{% endfor %}</span>
+            <span style="display:flex;gap:4px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end;max-width:70%">{% for f in logFilter %}<button hx-get="{{ f.set }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="padding:0 8px;border-radius:11px;border:1px solid {% if f.on %}#2457a8{% else %}#d6d2c9{% endif %};background:{% if f.on %}#2457a8{% else %}#fff{% endif %};color:{% if f.on %}#fff{% else %}#14181f{% endif %};{{ MONO }};line-height:20px;cursor:pointer">{{ f.label }}</button>{% endfor %}</span>
             <button hx-get="{{ logToggle }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="border:0;background:none;padding:0;color:#2457a8;font:12.5px/1.4 'Instrument Sans',system-ui,sans-serif;cursor:pointer">{{ logToggleLabel }}</button>
           </div>
           <div style="margin-top:10px;display:flex;flex-direction:column;gap:2px;{% if logOpen %}max-height:520px;overflow-y:auto{% endif %}">

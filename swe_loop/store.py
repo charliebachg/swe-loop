@@ -390,14 +390,21 @@ class Store:
             "UPDATE tickets SET router_decision=?, router_reason=?, status=?, updated_at=? WHERE id=?",
             (decision, reason, status, now(), ticket_id),
         )
-        self.log("route", decision, ticket_id=ticket_id, detail=reason)
-        if decision != "devin":
-            self.insert_escalation(
-                ticket_id,
-                None,
-                "human_only" if decision == "human_only" else "router_refused",
-                reason,
-            )
+        self.log(
+            "route",
+            {
+                "devin": "given to the AI",
+                "human_only": "handed to your team",
+                "refuse": "set aside for now",
+            }[decision],
+            ticket_id=ticket_id,
+            detail=reason,
+        )
+        # Only work that is actually waiting on somebody raises an escalation. Setting a ticket
+        # aside because a file is busy asks nothing of anyone, so it does not belong in the queue
+        # of things a person has to deal with.
+        if decision == "human_only":
+            self.insert_escalation(ticket_id, None, "human_only", reason)
 
     def get_ticket(self, ticket_id: str) -> dict[str, Any] | None:
         return self._one("SELECT * FROM tickets WHERE id=?", ticket_id)
