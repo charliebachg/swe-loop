@@ -96,6 +96,122 @@ class Repo:
         return r
 
 
+def reoffer_shard(
+    settings: Settings,
+    cfg: TargetConfig,
+    store: Store,
+    shard: str,
+    *,
+    repo_root: Path | None = None,
+    files: list[str] | None = None,
+    runner: Runner = subprocess.run,
+    open_pr: Callable[..., Any] | None = None,
+    log: Callable[[str], None] = lambda m: None,
+) -> dict[str, Any]:
+    """Put a merged change back in front of a person, unchanged, as a new pull request.
+
+    This spends no session and asks the AI for nothing. It takes the work already verified, puts
+    the base branch back to where it was before that work landed, and offers the same commit
+    again. It exists so the merge step can be shown or rehearsed without waiting for a whole run.
+    """
+    tid = f"tkt_{shard}"
+    files = files if files is not None else shard_files(shard)
+    baseline = str(cfg.rerun.get("baseline") or "")
+    prefix = str(cfg.rerun.get("branch_prefix") or "swe-loop/")
+    base = cfg.base_branch
+    out: dict[str, Any] = {"shard": shard, "ticket": tid, "at": now()}
+    if not files or not baseline:
+        raise ValueError(f"shard {shard} has no files or no baseline in the seam")
+    root = (
+        repo_root
+        if repo_root is not None
+        else (ROOT / cfg.gate.get("repo_root", "../superset-fork")).resolve()
+    )
+    if not (root / ".git").exists():
+        raise RuntimeError(f"no clone at {root}")
+    repo = Repo(root, settings.github_token, runner)
+    if repo.git("status", "--porcelain").stdout.strip():
+        raise RuntimeError(f"the clone at {root} has local changes; refusing")
+
+    repo.git("fetch", "--quiet", "origin", base)
+    repo.git("checkout", "--quiet", base)
+    repo.git("reset", "--quiet", "--hard", f"origin/{base}")
+    fix = repo.git("rev-parse", "HEAD").stdout.strip()
+    out["fix_commit"] = fix[:10]
+    # the branch carries the work exactly as it was verified
+    repo.git("push", "--quiet", "--force", "origin", f"{fix}:refs/heads/{prefix}{shard}")
+    # the base branch goes back to before it landed
+    repo.git("checkout", "--quiet", baseline, "--", *files)
+    if repo.git("diff", "--cached", "--quiet", check=False).returncode != 0:
+        repo.git(
+            "-c",
+            "user.name=swe-loop",
+            "-c",
+            "user.email=swe-loop@users.noreply.github.com",
+            "commit",
+            "--quiet",
+            "-m",
+            f"chore: offer shard {shard} again, unchanged, for a walk-through",
+        )
+        repo.git("push", "--quiet", "origin", f"{base}:{base}")
+        out["base_restored"] = True
+    else:
+        out["base_restored"] = False
+
+    body = (
+        "The same change that was verified earlier, offered again so the merge step can be shown."
+        f" No session was spent: this is commit {fix[:10]} exactly as it was checked."
+    )
+    make = open_pr or _create_pr
+    pr = make(cfg.repo, f"{prefix}{shard}", base, settings.github_token, body, shard)
+    out["pr"] = pr
+    if pr.startswith("http"):
+        store.conn.execute("DELETE FROM human_actions WHERE ticket_id=? AND kind='merge'", (tid,))
+        store.conn.execute(
+            "UPDATE sessions SET pull_request_url=?, pr_state=NULL WHERE work_order_id IN "
+            "(SELECT id FROM work_orders WHERE ticket_id=?)",
+            (pr, tid),
+        )
+        store.conn.execute(
+            "UPDATE work_orders SET status='devin' WHERE ticket_id=? AND status='merged'", (tid,)
+        )
+        store.set_ticket_status(tid, "reviewed")
+        store.conn.commit()
+        store.log(
+            "merge",
+            f"shard {shard} offered again, unchanged",
+            ticket_id=tid,
+            detail=f"{pr} · commit {fix[:10]} · no session spent",
+        )
+    log(f"offered again: {pr}")
+    store.set_setting("rerun.last", json.dumps(out))
+    return out
+
+
+def _create_pr(repo: str, head: str, base: str, token: str, body: str, shard: str) -> str:
+    import httpx
+
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "swe-loop"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        r = httpx.post(
+            f"https://api.github.com/repos/{repo}/pulls",
+            headers=headers,
+            json={
+                "title": f"fix(pandas): shard {shard}, offered again for a walk-through",
+                "head": head,
+                "base": base,
+                "body": body,
+            },
+            timeout=30,
+        )
+        d = r.json()
+    except Exception as ex:  # noqa: BLE001 - reported on the page
+        return f"could not open a pull request: {type(ex).__name__}"
+    return d.get("html_url") or str(d.get("message", "GitHub refused"))[:160]
+
+
 def reset_shard(
     settings: Settings,
     cfg: TargetConfig,

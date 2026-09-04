@@ -462,11 +462,19 @@ def rerun_ctx(settings: Settings, cfg: TargetConfig, store: Store) -> dict[str, 
         "clone": str(root),
         "willPush": live and have_clone,
         "last": last,
+        "canReoffer": live and have_clone,
         "lastLine": (
             (
                 f"shard {last['shard']}: {last.get('error')}"
                 if last.get("error")
-                else f"shard {last['shard']} at {last.get('at', '')[:16].replace('T', ' ')}: repository {last.get('repo')}"
+                else (
+                    f"shard {last['shard']} at {last.get('at', '')[:16].replace('T', ' ')}: "
+                    + (
+                        f"offered again as {last['pr']}"
+                        if last.get("pr")
+                        else f"repository {last.get('repo')}"
+                    )
+                )
                 + (", pushed" if last.get("pushed") else "")
                 + (", old repair branch deleted" if last.get("branch_deleted") else "")
                 + (

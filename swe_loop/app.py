@@ -440,6 +440,24 @@ def build_app(
             st.set_setting("rerun.last", json.dumps({"shard": shard, "error": str(ex)[:300]}))
         return RedirectResponse("/settings#rerun", status_code=303)
 
+    @app.post("/settings/reoffer")
+    async def settings_reoffer(request: Request) -> RedirectResponse:
+        """Offer a merged change again, unchanged, so the merge step can be shown without waiting
+        for a whole run. No session is spent."""
+        form = parse_qs((await request.body()).decode())
+        shard = (form.get("shard") or [""])[0].strip().upper()
+        st: Store = request.app.state.store
+        client = request.app.state.client
+        if not shard or shard not in {s["id"] for s in rerun.shards()}:
+            raise HTTPException(status_code=400, detail="pick a shard the loop can repair")
+        if not (settings.live and not client.is_fake):
+            raise HTTPException(status_code=409, detail="only in live mode; there is no repository")
+        try:
+            rerun.reoffer_shard(settings, cfg, st, shard)
+        except (RuntimeError, ValueError) as ex:
+            st.set_setting("rerun.last", json.dumps({"shard": shard, "error": str(ex)[:300]}))
+        return RedirectResponse("/settings#rerun", status_code=303)
+
     @app.post("/settings/budget")
     async def settings_budget(request: Request) -> RedirectResponse:
         form = parse_qs((await request.body()).decode())

@@ -177,3 +177,59 @@ def test_reset_reopens_the_issue_the_merge_closed(fork, tmp_path):
     )
     # the real call is attempted with no token, and whatever it answers is reported, never hidden
     assert out["issue"] != "not touched"
+
+
+def test_offer_it_again_reopens_the_same_verified_change(fork, tmp_path):
+    """The merge step has to be showable without paying for a whole run. Offering again puts the
+    base branch back and opens the same commit as a new pull request, spending nothing."""
+    from swe_loop import rerun as rr
+
+    _origin, clone, cfg, _baseline = fork
+    st = Store(tmp_path / "s.sqlite")
+    synthesise(st, CFG, INVENTORY / "tickets.json", tmp_path)
+    st.record_human_action("tkt_D", "merge", "someone")
+    st.set_ticket_status("tkt_D", "merged")
+    seen = {}
+
+    def fake_pr(repo, head, base, token, body, shard):
+        seen.update(repo=repo, head=head, base=base, body=body)
+        return "https://github.com/o/r/pull/99"
+
+    out = rr.reoffer_shard(
+        Settings(mode="live", devin_api_key="x"),
+        cfg,
+        st,
+        "D",
+        repo_root=clone,
+        open_pr=fake_pr,
+    )
+    assert out["pr"] == "https://github.com/o/r/pull/99" and out["base_restored"]
+    assert seen["head"] == "swe-loop/D" and seen["base"] == "master"
+    assert "No session was spent" in seen["body"]
+    # the branch carries the fix, the base no longer does
+    branch = subprocess.run(
+        ["git", "show", "origin/swe-loop/D:superset/models/helpers.py"],
+        cwd=str(clone),
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout
+    base = subprocess.run(
+        ["git", "show", "origin/master:superset/models/helpers.py"],
+        cwd=str(clone),
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout
+    assert "utc=True" in branch and "utc=True" not in base
+    # the ticket is offered to a person again, and no session was created
+    assert st.get_ticket("tkt_D")["status"] == "reviewed"
+    assert st._all("SELECT * FROM human_actions WHERE ticket_id='tkt_D'") == []
+    assert (
+        st._one(
+            "SELECT pull_request_url AS u FROM sessions WHERE work_order_id IN "
+            "(SELECT id FROM work_orders WHERE ticket_id='tkt_D')"
+        )["u"]
+        == "https://github.com/o/r/pull/99"
+    )
+    assert "offered again" in " ".join(e["event"] for e in st.timeline(ticket_id="tkt_D"))
