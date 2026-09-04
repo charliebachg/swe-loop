@@ -758,3 +758,52 @@ def test_a_watcher_tick_never_starts_a_scan_of_its_own(tmp_path, monkeypatch):
     assert out["scan"] == "nothing scheduled"
     assert not [c for c in client.t.calls if c[0] == "start_code_scan"]
     assert not st.list_tickets()
+
+
+def test_a_finding_we_read_before_is_not_reported_as_the_schedules_work(tmp_path):
+    """A cap leaves findings read but unfiled. Those are not what a schedule produced.
+
+    Treating them as new work puts a run on the board that nothing on Devin's side caused, logs
+    "the schedule scanned the new commits" when it did not, and wakes the whole pipeline on a
+    timer that never fired. It cost a real run before this test existed.
+    """
+    from swe_loop import codescan
+
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    settings = Settings.from_env()
+    client = DevinClient(FakeTransport())
+    two = [
+        {
+            "finding_id": f"sfind-{i}",
+            "title": f"finding {i}",
+            "severity": "high",
+            "file_path": f"superset/f{i}.py",
+            "line": 1,
+        }
+        for i in range(2)
+    ]
+    client.t._findings = two
+
+    # a scan that read two findings but was only allowed to file one
+    codescan.run(settings, cfg, st, client, limit=1, log=lambda _m: None)
+    assert len(st.list_tickets()) == 1, "the cap held"
+
+    # looking again finds nothing Devin has not already reported
+    out = codescan.adopt(settings, cfg, st, client, limit=5, log=lambda _m: None)
+    assert out["kind"] == "none", "an unfiled finding is not a scan result"
+    assert len(st.list_tickets()) == 1
+
+    # but a finding Devin had not reported before is
+    client.t._findings = two + [
+        {
+            "finding_id": "sfind-actuallynew",
+            "title": "after the new commits",
+            "severity": "high",
+            "file_path": "superset/new.py",
+            "line": 1,
+        }
+    ]
+    out2 = codescan.adopt(settings, cfg, st, client, limit=5, log=lambda _m: None)
+    assert out2["kind"] == "adopted"
+    assert len(st.list_tickets()) > 1

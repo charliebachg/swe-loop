@@ -287,12 +287,24 @@ def adopt(
     # work can arrive as findings on a scan we already hold rather than as a scan we do not.
     # Both are the same event and both have to be looked for.
     again = []
+    rows = {c["devin_session_id"]: c for c in store.list_scan_sessions()}
     for s in on_org:
         sid_scan = s.get("scan_id")
         if sid_scan not in ours or str(s.get("status")) not in TERMINAL:
             continue
-        fresh = file_findings(store, cfg, client.code_scan_findings(sid_scan), limit)
-        if fresh["new"]:
+        # "new" here means new to Devin's scan, not merely absent from our board. A finding we
+        # read before and left unfiled because a cap was reached is not the schedule's doing, and
+        # saying it was would put a run on the board that nothing on Devin's side caused.
+        seen = {
+            finding_id(f)
+            for f in json.loads(rows[sid_scan].get("findings_json") or "{}").get("findings", [])
+        }
+        current = client.code_scan_findings(sid_scan)
+        if not [f for f in current if finding_id(f) not in seen]:
+            continue
+        store.update_scan_session(rows[sid_scan]["id"], findings={"findings": current})
+        fresh = file_findings(store, cfg, current, limit)
+        if fresh["new"] or fresh["known"]:
             row = next(
                 (
                     c
@@ -307,7 +319,7 @@ def adopt(
                 session_id=row["id"] if row else None,
                 detail=f"{plural(len(fresh['new']), 'new finding')} on {sid_scan}",
             )
-            log(f"{sid_scan}: {len(fresh['new'])} new since we last looked")
+            log(f"{sid_scan}: {len(fresh['new'])} new since Devin last scanned it")
             again.append({"kind": "filed", "scan": sid_scan, "area": s.get("scan_type"), **fresh})
 
     if not theirs and not again:
