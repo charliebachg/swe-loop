@@ -40,7 +40,23 @@
             </div>
             {% if r.open %}{% include "v2/_ticket_run.html" %}{% endif %}
           </div>
-          {% endfor %}
+        {% if g.aside %}
+        <details style="margin-top:8px">
+          <summary style="cursor:pointer;font-size:12.5px;color:#8f97a3;list-style:none">{{ g.asideNote }} &#9662;</summary>
+          <div style="background:#faf9f6;border:1px solid #ecebe6;border-radius:10px;overflow:hidden;margin-top:8px">
+            {% for r in g.aside %}
+            <div style="display:grid;grid-template-columns:62px 1fr auto;gap:14px;padding:11px 16px;align-items:start;{% if not loop.last %}border-bottom:1px solid #f0efe9{% endif %}">
+              <a href="{{ r.toggle }}" style="height:20px;padding:0 6px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font:600 11px/1 'JetBrains Mono',monospace;white-space:nowrap;background:#fff;color:#8f97a3;box-shadow:inset 0 0 0 1.5px #e2dfd8">{{ r.ref }}</a>
+              <div style="min-width:0">
+                <div style="font-size:13px;color:#626b78;text-wrap:pretty">{{ r.title }}</div>
+                <div style="font-size:12px;color:#8f97a3;margin-top:2px;text-wrap:pretty">{{ r.summary }}</div>
+              </div>
+              <span style="{{ PILL }};background:#f0efe9;color:#8f97a3;white-space:nowrap">waiting</span>
+            </div>
+            {% endfor %}
+          </div>
+        </details>
+        {% endif %}{% endfor %}
         </div>
         {% endif %}
         {% endfor %}

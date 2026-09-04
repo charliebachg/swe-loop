@@ -1612,9 +1612,11 @@ def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
         why = t.get("router_reason") or "the loop set it aside"
         return plain(clip(why[0].upper() + why[1:] if why else why, 170))
     if st == "escalated" or (route and route != "devin"):
-        return plain(
-            "For your team to decide: " + clip(t.get("router_reason") or "a person decides", 150)
-        )
+        # why it stopped, not why it was routed: a ticket the loop sent to a person after the
+        # work began has an escalation that says what happened, and the routing note from
+        # before that is no longer the reason it is sitting here
+        why = (row.get("escalations") or [{}])[-1].get("reason") or t.get("router_reason") or ""
+        return plain("Needs you: " + clip(why or "a person decides", 160))
     if st == "new":
         return (
             "A session is reading the issue now and deciding what the work is."
@@ -1760,7 +1762,18 @@ def tickets(store: Store, cfg: TargetConfig, q: dict[str, str], note: str = "") 
             }
         )
     groups[0]["rows"].extend(r for r in rows if r["id"] not in placed)
+    # A finding nobody has taken on is not a ticket. It is kept so the same place is not filed
+    # twice, and so it can be picked up when whatever is in its way lands, but it does not
+    # belong in a list of work: nothing is happening to it and nothing is being asked of anyone.
     for g in groups:
+        aside = [r for r in g["rows"] if r["route"] == "refuse"]
+        g["rows"] = [r for r in g["rows"] if r["route"] != "refuse"]
+        g["aside"] = aside
+        g["asideNote"] = (
+            plural(len(aside), "finding") + " set aside until the file each one needs is free"
+            if aside
+            else ""
+        )
         g["count"] = str(len(g["rows"]))
     return {
         "sm": summary,

@@ -88,12 +88,16 @@ def decide(shard: dict[str, Any], cfg: TargetConfig, verdict: dict[str, Any] | N
     advisory = [h for h in (mine or []) if isinstance(h, dict)] if not blocking else []
     if silent or advisory or (verdict or {}).get("review") == "required":
         review = "required"
-    reason = f"{len(files)} file(s), {shard.get('site_count', len(files))} site(s), acceptance command present"
+    n_sites = shard.get("site_count", len(files))
+    reason = (
+        f"{plural(len(files), 'file')}, {plural(n_sites, 'place')}, "
+        "and commands that say whether the fix worked"
+    )
     if silent:
         reason += f"; {len(silent)} site(s) warned but did not break: silent behaviour change, review required"
     if advisory:
         reason += (
-            f"; {len(advisory)} note(s) for whoever reviews it, so the change is written but a "
+            f"; {plural(len(advisory), 'note')} for whoever reviews it, so the change is written but a "
             "person signs it off"
         )
     if review == "required" and "review" not in reason:
