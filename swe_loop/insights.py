@@ -15,7 +15,7 @@ from swe_loop.store import Store
 
 # Fields that were the same on every session we have run. They are facts about the setup rather
 # than measurements, so the page states them once instead of giving each a column of one value.
-CONSTANT = ("origin", "devin_mode", "category", "subcategory")
+CONSTANT = ("origin", "devin_mode", "category", "subcategory", "session_size")
 
 
 def refresh(store: Store, client: Any, session_ids: list[str] | None = None) -> int:

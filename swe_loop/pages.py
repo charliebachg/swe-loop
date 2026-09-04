@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from markupsafe import Markup, escape
+
 from swe_loop import codescan, connect, ops
 from swe_loop import reduce as reduce_mod
 from swe_loop.config import Settings, TargetConfig
@@ -927,7 +929,7 @@ def playbooks(store: Store, cfg: TargetConfig, client: DevinClient | None) -> di
     used_by = {
         "pb_triage": ("the triage step", "/tickets-page?view=pipeline"),
         "pb_repair": ("every repair session", "/devin/sessions"),
-        "pb_scan": ("the Scan automation", "/automations"),
+        "pb_scan": ("the Scan agent automation", "/automations"),
     }
     rows = []
     for p in store.list_playbooks():
@@ -978,6 +980,29 @@ def playbook_detail(store: Store, pid: str) -> dict[str, Any] | None:
     }
 
 
+def _first_para(body: str) -> str:
+    """The opening paragraph of a note, not its opening line: markdown wraps a sentence over
+    several lines, and taking one of them cuts the sentence in half."""
+    para: list[str] = []
+    for raw in body.splitlines():
+        line = raw.strip()
+        if not line:
+            if para:
+                break
+            continue
+        if line.startswith("#"):
+            continue
+        para.append(line)
+    return " ".join(para)
+
+
+def _md_inline(text: str) -> Markup:
+    """Backticked spans read as code on the page rather than as stray backticks."""
+    import re as _re
+
+    return Markup(_re.sub(r"`([^`]+)`", r"<code>\1</code>", escape(text)))
+
+
 def knowledge(store: Store, settings: Settings, cfg: TargetConfig | None = None) -> dict[str, Any]:
     """The notes a session is given when it works on this repository, and whether each one is
     on the organisation where a session can reach it. Devin does not report which notes a
@@ -986,12 +1011,11 @@ def knowledge(store: Store, settings: Settings, cfg: TargetConfig | None = None)
 
     notes = []
     for n in load_notes():
-        first = next((ln.strip() for ln in n.body.splitlines() if ln.strip()), "")
         notes.append(
             {
                 "name": n.name,
                 "trigger": n.trigger_description,
-                "summary": clip(first, 180),
+                "summary": _md_inline(clip(_first_para(n.body), 180)),
                 "body": n.body,
                 "lines": len([ln for ln in n.body.splitlines() if ln.strip()]),
                 # whether a session can actually reach it: the note exists on the organisation

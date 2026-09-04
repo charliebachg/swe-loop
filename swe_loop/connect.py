@@ -162,7 +162,7 @@ def run_checks(
         Check(
             "gate",
             "where the checks run",
-            why or f"clone and both test environments ready at {root}",
+            why or f"clone and both test environments ready in {root.name}/",
             "missing" if why else "ok",
             "each pull request is copied here and the project's own commands are run against it",
         )
@@ -172,15 +172,28 @@ def run_checks(
         Check(
             "budget",
             "budget",
-            f"Devin's limit {b['per_session_cap']:.0f} ACU per session · run cap {b['cap']:.0f} ACU on a metered plan"
-            if b.get("cap")
-            else "no cap set",
-            "ok" if b.get("cap") else "missing",
-            f"budget row; spent {b['spent']}",
+            _budget_line(store, b),
+            "ok" if b.get("cap") or b.get("usd_cap") else "missing",
+            "the poller stops the run at the cap and terminates every live session",
         )
     )
     _CACHE[key] = (time.monotonic(), out)
     return out
+
+
+def _budget_line(store: Any, b: dict[str, Any]) -> str:
+    """What the run may spend. On a plan billed in credits the cap is dollars, so quoting an ACU
+    cap here would name a unit this organisation is never charged in."""
+    from swe_loop import cost as cost_mod
+
+    sp = cost_mod.spend(store)
+    per = f"Devin's limit {b['per_session_cap']:.0f} ACU per session"
+    if sp["metered"]:
+        return f"{per} · run cap {b['cap']:.0f} ACU" if b.get("cap") else per
+    usd_cap = store.get_setting("usd_cap")
+    if usd_cap:
+        return f"{per} · run cap ${float(usd_cap):.0f}, spent ${sp['usd'] or 0:.2f}"
+    return f"{per} · no spend cap set"
 
 
 def clear_cache() -> None:

@@ -41,20 +41,23 @@
       <button class="btn" type="submit">Save</button>
       <span class="foot">{% if cost.metered %}spent so far {{ s.budget.spent }} ACU{% else %}spent so far {{ acuSpent }}{% endif %} · at the cap every live session is terminated and archived · the per-session limit is Devin's own ceiling, sent with every session</span>
     </form>
-    <h3 style="margin-top:18px">Cost <span class="who code">measured by us; the plan reports no ACU</span></h3>
-    <p class="foot">This organisation is on a self-serve plan, billed in dollar credits. The API reports 0 ACU for every session. The console lists dollars per session; enter them below. Minutes the AI was actively working are measured from our own polls: <b>{{ cost.active_min }} min</b> across {{ cost.n_sessions }} session{% if cost.n_sessions != 1 %}s{% endif %}{% if cost.usd is not none %}, <b>${{ cost.usd }}</b>{% if cost.rate %} at ${{ "%.3f" | format(cost.rate) }} per active minute{% endif %}{% else %}. Sessions without a console figure are priced by minutes at the rate for their kind{% endif %}.</p>
-    <form method="post" action="/settings/session-cost" style="margin:8px 0 14px">
-      <table>
-        <tr><th>session</th><th>Devin id</th><th class="num">AI minutes</th><th>console figure, USD</th></tr>
-        {% for r in cost_rows %}<tr><td>{{ r.label }}</td><td class="mono">{{ r.devin_id[:12] }}</td><td class="num">{{ r.minutes }}</td><td><input name="usd_{{ r.devin_id }}" type="number" step="0.01" min="0" value="{{ '%.2f' | format(r.usd) if r.usd is not none else '' }}" placeholder="{{ r.est or '' }}" style="padding:4px 6px;border:1px solid var(--rule);border-radius:4px;width:100px"></td></tr>{% endfor %}
-      </table>
-      <div style="margin-top:8px;display:flex;gap:10px;align-items:center"><button class="btn primary" type="submit">Save session costs</button><span class="foot">from the console's usage list, one figure per session; a grey placeholder is the figure our rate gives for that session; the console's number replaces it{% if cost.console_read_at %} · last read {{ cost.console_read_at }}. A session that keeps working costs more afterwards, so a figure taken then is a floor now{% endif %}</span></div>
-    </form>
-    <form method="post" action="/settings/credits" style="display:flex; gap:10px; align-items:end; flex-wrap:wrap">
-      <label style="font-size:12px;color:var(--muted)">credits used so far, USD, from the console<br><input name="credits_usd" type="number" step="0.01" min="0" value="{{ cost.credits_usd if cost.credits_usd is not none else '' }}" placeholder="e.g. 12.40" style="padding:6px 8px;border:1px solid var(--rule);border-radius:4px;width:160px"></label>
-      <button class="btn primary" type="submit">Calibrate</button>
-      <span class="foot">the figure and the minutes measured at that moment are kept; every later minute is priced at the same rate</span>
-    </form>
   </div>
+</div>
+
+<div class="card">
+  <h3>Cost <span class="who code">measured by us; the plan reports no ACU</span></h3>
+  <p class="foot">This organisation is on a self-serve plan, billed in dollar credits. The API reports 0 ACU for every session. The console lists dollars per session; enter them below. Minutes the AI was actively working are measured from our own polls: <b>{{ cost.active_min }} min</b> across {{ cost.n_sessions }} session{% if cost.n_sessions != 1 %}s{% endif %}{% if cost.usd is not none %}, <b>${{ cost.usd }}</b>{% if cost.rate %} at ${{ "%.3f" | format(cost.rate) }} per active minute{% endif %}{% else %}. Sessions without a console figure are priced by minutes at the rate for their kind{% endif %}.</p>
+  <form method="post" action="/settings/session-cost" style="margin:8px 0 14px">
+    <table>
+      <tr><th>session</th><th>Devin id</th><th class="num">AI minutes</th><th>console figure, USD</th></tr>
+      {% for r in cost_rows %}<tr><td>{{ r.label }}</td><td class="mono">{{ r.devin_id[:12] }}</td><td class="num">{{ r.minutes }}</td><td><input name="usd_{{ r.devin_id }}" type="number" step="0.01" min="0" value="{{ '%.2f' | format(r.usd) if r.usd is not none else '' }}" placeholder="{{ r.est or '' }}" style="padding:4px 6px;border:1px solid var(--rule);border-radius:4px;width:100px"></td></tr>{% endfor %}
+    </table>
+    <div style="margin-top:8px;display:flex;gap:10px;align-items:center"><button class="btn primary" type="submit">Save session costs</button><span class="foot">from the console's usage list, one figure per session; a grey placeholder is the figure our rate gives for that session; the console's number replaces it{% if cost.console_read_at %} · last read {{ cost.console_read_at }}. A session that keeps working costs more afterwards, so a figure taken then is a floor now{% endif %}</span></div>
+  </form>
+  <form method="post" action="/settings/credits" style="display:flex; gap:10px; align-items:end; flex-wrap:wrap">
+    <label style="font-size:12px;color:var(--muted)">credits used so far, USD, from the console<br><input name="credits_usd" type="number" step="0.01" min="0" value="{{ cost.credits_usd if cost.credits_usd is not none else '' }}" placeholder="e.g. 12.40" style="padding:6px 8px;border:1px solid var(--rule);border-radius:4px;width:160px"></label>
+    <button class="btn primary" type="submit">Calibrate</button>
+    <span class="foot">the figure and the minutes measured at that moment are kept; every later minute is priced at the same rate</span>
+  </form>
 </div>
 {% endblock %}

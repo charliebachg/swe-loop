@@ -66,6 +66,59 @@ Cost so far: $14.97 across nine sessions, 48 minutes of active AI work, five of 
 from the console and the rest at the rate those five imply. Every session counts, including the
 ones that only read a ticket and the one that went to a person.
 
+## Why an agent
+
+**Detection was never the missing piece.** Three tools were already running on
+`apache/superset#42671` and none of them moved it. Dependabot opened the pull request and stopped,
+because its job ends where code changes begin; the repository's own `.github/dependabot.yml`
+carries a hand-written list of major upgrades the bot must skip, React among them, each with a
+comment saying the application does not support it yet. A review bot read the diff on day one and
+described the migration correctly, naming the file and the line. CI went red and stayed red. A
+month later the pull request was exactly where it started.
+
+So the gap is not finding the work. It is doing it, and being able to trust what comes back.
+
+**Doing it cannot be scripted, and this repository proves it rather than asserting it.** pandas
+ships no official migration tool, and its own guidance is a loop: switch the deprecation warnings
+on, fix what fires, run it again, review what is left. A codemod is open loop. It applies a rule
+and exits, and it never sees the result.
+
+The work order for `client_processing.py` carried pandas' own prescribed remedy, quoted out of the
+warning text: call `result.infer_objects(copy=False)`. The acceptance command rejected it. On 2.3.3
+the `FutureWarning` is raised inside `replace` before any chained call can run, and `copy=` is
+itself deprecated on 3.0.5. The session iterated to
+`df.mask(df == "SUPERSET_PANDAS_NAN").infer_objects()`, clean on both versions
+([#13](https://github.com/charliebachg/superset/pull/13)). The published rule is right in general
+and wrong in this file. No static analysis finds that, because finding it means running the test
+and reading what came back.
+
+**And the work waits.** A change here opens a pull request, waits for checks, collects review
+remarks, and revises. On `#00002` and `#00003` Devin Review's remarks went back into the repair
+session that wrote the code, which revised, and the gate re-ran the acceptance commands before
+anyone saw it. `#00001` waited on a person: its scoping session declined and asked a question, a
+maintainer answered on the issue, and that answer woke the same session, which re-scoped in under
+two minutes with everything it already knew. A process that exits when its command finishes cannot
+do either.
+
+**The gate is what makes the volume safe.** It is easy to point a model at 351 call sites and
+produce 351 pull requests nobody can review. Every change here is checked out into a worktree the
+session cannot write to, diffed for the paths a session may not touch, and run against the ticket's
+own acceptance commands on both pandas versions. Work that does not pass never reaches a person.
+That is the property that makes it reasonable to run sessions in parallel at all, and it is why
+sessions are bounded by cost and shards are disjoint by file.
+
+There was also no scan to consume. `pytest.ini` sets `filterwarnings = ignore`, so the instrument
+that would have produced the finding was switched off. Step zero was building the detector,
+`swe_loop/detect/`, which turns 351 static call sites into the 25 that change behaviour and hands
+each one to a session with the test that surfaced it attached.
+
+None of this is an argument that the agent should be trusted, and most of this repository is
+deliberately not an agent. The detector, the router, the shard caps, the gate and every number on
+the Report are code. Ticket `#00004` is the other half of the same point: fifteen test files assert
+pandas 2 results, whether a test or the code is wrong is a product decision, and the system refused
+it and said why. The agent is the part that reads a failing test and decides what to do about it.
+Everything around it exists to check that decision.
+
 ## Run it
 
 Replay mode needs no credentials. It renders the app from the recorded run.

@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
+from markupsafe import Markup, escape
+
 from swe_loop import charts, codescan, cost, ops, pages, rates
 from swe_loop import reduce as reduce_mod
 from swe_loop import report as report_mod
@@ -344,6 +346,16 @@ def _pct(x: Any, cap: Any) -> str:
         return "0"
 
 
+def _session_price(usd: tuple[float | None, str] | None, minutes: float) -> str:
+    """What this session cost. Devin's own scans run sub-sessions we never poll and the console
+    does not itemise them, so there is nothing to show and nothing is better than a false zero."""
+    if usd is None or usd[0] is None:
+        return f"{minutes:.1f} min"
+    if usd[1] == "rate" and minutes <= 0:
+        return "not priced"
+    return f"${usd[0]:.2f}"
+
+
 def _short_status(status: str | None, detail: str | None, delivered: bool) -> str:
     """One word for the pill: what the session is doing, not the raw pair."""
     d = detail or ""
@@ -356,7 +368,11 @@ def _short_status(status: str | None, detail: str | None, delivered: bool) -> st
     if d == "usage_limit_exceeded":
         return "too large"
     if d in ("terminated", "error", "inactivity", "out_of_credits"):
-        return d
+        return {
+            "terminated": "stopped",
+            "inactivity": "stalled",
+            "out_of_credits": "out of credits",
+        }.get(d, d)
     if status in ("running", "claimed"):
         return "working"
     return status or "reserved"
@@ -391,13 +407,21 @@ def cost_rows(store: Store) -> list[dict[str, Any]]:
         }
 
     out = []
+    parts: dict[str, list[str]] = {}
+    for w in store._all("SELECT ticket_id, id FROM work_orders ORDER BY rowid"):
+        parts.setdefault(w["ticket_id"], []).append(w["id"])
     for r in store._all("SELECT * FROM sessions ORDER BY created_at"):
         wo = store.get_work_order(r["work_order_id"]) or {}
         tid = wo.get("ticket_id", "")
         shard = wo.get("shard_id", "")
         label = "wrote the fix for " + ref(nums.get(tid))
-        if shard:
-            label += f", part {shard}"
+        # the part is worth naming only when the ticket was split; the internal id never is
+        sibling = parts.get(tid, [])
+        if len(sibling) > 1:
+            if len(shard) == 1 and shard.isalpha():
+                label += f", shard {shard.upper()}"
+            elif wo.get("id") in sibling:
+                label += f", part {sibling.index(wo['id']) + 1} of {len(sibling)}"
         out.append(
             row(
                 r["devin_session_id"],
@@ -572,6 +596,7 @@ def insights(store: Store, q: dict[str, str] | None = None) -> dict[str, Any]:
         "sizeChart": charts.histogram([(d["label"], d["n"], d["too_big"]) for d in sizes], w=300),
         "tools": tools,
         "constants": ins.constants(rows),
+        "showSize": len({(r.get("session_size") or "") for r in rows}) > 1,
         "noPlaybook": nopb,
         "advice": adv,
         "adviceEmpty": not (adv["issues"] or adv["actions"] or adv["prompts"] or adv["notes"]),
@@ -741,7 +766,11 @@ def frame(settings: Settings, cfg: TargetConfig, store: Store, active: str) -> d
         "spentLabel": (
             f"ACU spent · cap {per_label} per session"
             if sp["metered"]
-            else "spent, every session counted"
+            else (
+                f"spent · {plural(sp['n_unpriced'], 'session')} we cannot price"
+                if sp.get("n_unpriced")
+                else "spent, every session counted"
+            )
         ),
         "costHead": "ACU of cap" if sp["metered"] else "cost · AI minutes",
         "perSession": f"{b['per_session_cap']:.0f}"
@@ -1580,12 +1609,30 @@ _WORD_RE = re.compile(r"\b(" + "|".join(w for w, _ in PLAIN_WORDS) + r")\b", re.
 _WORD_MAP = dict(PLAIN_WORDS)
 
 
+_ABS_PATH_RE = re.compile(r"/(?:[A-Za-z0-9._@+-]+/){2,}[A-Za-z0-9._@+-]+")
+_KEEP_SEGMENTS = 4
+
+
+def shorten_paths(text: str) -> str:
+    """Absolute paths reach the store from the machine the checks ran on. A reader needs the end
+    of the path, not somebody's home directory and the folders above it."""
+
+    def tail(m: re.Match[str]) -> str:
+        parts = m.group(0).strip("/").split("/")
+        if len(parts) <= _KEEP_SEGMENTS:
+            return m.group(0)
+        return ".../" + "/".join(parts[-_KEEP_SEGMENTS:])
+
+    return _ABS_PATH_RE.sub(tail, text)
+
+
 def plain(text: str) -> str:
     """Recorded reasons carry the vocabulary of the code that wrote them. Readers do not."""
     for a, b in PLAIN_PHRASES:
         text = text.replace(a, b)
     text = _WORD_RE.sub(lambda m: _WORD_MAP[m.group(1).lower()], text)
-    return text.replace("1 comments", "1 comment").replace("1 places", "1 place")
+    text = text.replace("1 comments", "1 comment").replace("1 places", "1 place")
+    return shorten_paths(text)
 
 
 def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
@@ -1987,7 +2034,7 @@ def tracker(
                 "tier": e["tier"],
                 "cmd": (e["command"] or "").split(": ", 1)[0]
                 if e["tier"] == "T1"
-                else e["command"],
+                else shorten_paths(e["command"] or ""),
                 "exit": str(e["exit_code"]),
                 **pill("ok" if e["passed"] else "bad"),
             }
@@ -2165,11 +2212,7 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
                 "acu": (
                     _fmt_acu(s.get("acus"))
                     if metered
-                    else (
-                        f"${usd_rows[s['id']][0]:.2f}"
-                        if usd_rows.get(s["id"], (None, ""))[0] is not None
-                        else f"{mins.get(s['id'], 0.0):.1f} min"
-                    )
+                    else _session_price(usd_rows.get(s["id"]), mins.get(s["id"], 0.0))
                 ),
                 "cap": (
                     f"{TRIAGE_ACU_CAP if is_triage else cap:.0f}"
@@ -2177,6 +2220,7 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
                     else (
                         f"{mins.get(s['id'], 0.0):.0f} min"
                         if usd_rows.get(s["id"], (None,))[0] is not None
+                        and mins.get(s["id"], 0.0) > 0
                         else ""
                     )
                 ),
@@ -2214,7 +2258,7 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
                     else {
                         "pass": "passed",
                         "fail": "failed",
-                        "missing_evidence": "could not be checked",
+                        "missing_evidence": "not verified",
                     }.get(gate or "", gate or "not run")
                 ),
                 "gateBg": PL["gate"][1]
@@ -2307,7 +2351,7 @@ def _drawer(store: Store, sid: str, cap: float) -> dict[str, Any]:
         "evidence": [
             {
                 "tier": e["tier"],
-                "cmd": e["command"],
+                "cmd": shorten_paths(e["command"] or ""),
                 "exit": str(e["exit_code"]),
                 **pill("ok" if e["passed"] else "bad"),
                 "log": (e.get("output_path") or "").rsplit("/", 1)[-1][:14] or "·",
@@ -2542,7 +2586,11 @@ def automations(
             if a["routed"]
             else "Nothing is waiting for a run."
         )
-        + ("" if a["live"] else " · replay: sessions are simulated, the gate is skipped"),
+        + (
+            ""
+            if a["live"]
+            else " · replay: sessions are played back from a recording, so the checks do not re-run"
+        ),
         "cap": a["cap"],
         "playbookNames": a["playbook_names"],
         "triggerChoices": a["trigger_choices"],
@@ -2551,6 +2599,12 @@ def automations(
 
 
 # ---------------------------------------------------------------------------- playbooks
+def _code(text: str) -> Markup:
+    """A playbook is written in markdown, so show its backticked spans as code rather than
+    leaving the backticks on the page."""
+    return Markup(re.sub(r"`([^`]+)`", r"<code>\1</code>", escape(text)))
+
+
 def _sections(body: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     cur: dict[str, Any] | None = None
@@ -2578,6 +2632,8 @@ def _sections(body: str) -> list[dict[str, Any]]:
     for s in out:
         s["ordered"] = bool(s["ordered"] and s["items"])
         s["unordered"] = bool(not s["ordered"] and s["items"])
+        s["paras"] = [_code(x) for x in s["paras"]]
+        s["items"] = [_code(x) for x in s["items"]]
     return out
 
 
@@ -2632,7 +2688,7 @@ def playbooks(
                         if "## Overview" in d.get("body", "")
                         else d.get("body", "")[:400]
                     )
-                    + " It runs when the Scan automation is switched on; nothing runs before that."
+                    + " It runs when the Scan agent automation is switched on; nothing runs before that."
                 )
                 if is_next
                 else "",

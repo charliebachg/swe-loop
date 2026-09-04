@@ -175,12 +175,17 @@ def spend(store: Store) -> dict[str, Any]:
     n_console = sum(1 for r in priced if r.get("cost_usd") is not None)
     usd_total = 0.0
     any_usd = False
+    unpriced = 0
     for kind, rows in (("rep", sessions), ("tri", tri), ("scn", scn)):
         for r in rows:
-            u, _src = session_usd(store, r, kind, kind_rates)
+            u, src = session_usd(store, r, kind, kind_rates)
             if u is not None:
                 usd_total += u
                 any_usd = True
+            # a session we never polled and the console never itemised: it ran, and we have no
+            # figure for it. Counting it as zero would understate the bill.
+            if r.get("cost_usd") is None and src == "rate" and u is not None and u <= 0:
+                unpriced += 1
     minutes = active_s / 60.0
     cal = calibration(store)
     return {
@@ -191,6 +196,7 @@ def spend(store: Store) -> dict[str, Any]:
         "usd": round(usd_total, 2) if any_usd else None,
         "usd_console": round(usd_console, 2),
         "n_console": n_console,
+        "n_unpriced": unpriced,
         "console_read_at": (store.get_setting("cost.console_read_at") or "")[:16].replace("T", " "),
         "n_sessions": len(sessions) + len(tri) + len(scn),
         "rate": rate,

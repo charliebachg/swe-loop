@@ -16,7 +16,7 @@
   </table>
   {% endif %}
   {% if d.acceptance %}
-  <div class="acc" style="margin-top:10px"><b>Acceptance</b> <span class="foot">the gate re-runs these itself, from a clean checkout</span>
+  <div class="acc" style="margin-top:10px"><b>Acceptance</b> <span class="foot">re-run by us, from a clean checkout</span>
     {% for k, v in d.acceptance.items() %}<pre class="code"><b>{{ k }}</b>  {{ v }}</pre>{% endfor %}</div>
   {% endif %}
   {% if d.files %}<p class="foot" style="margin-top:10px"><b>files:</b> <span class="mono">{{ d.files | join(', ') }}</span></p>{% endif %}

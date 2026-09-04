@@ -107,7 +107,7 @@ def test_tickets_page_groups_by_source(client):
 def test_tracker_rows_stages_and_merge(client):
     c, st = client
     html = c.get("/tracker?open=tkt_A,tkt_B,tkt_D,tkt_E").text
-    assert 'id="tkt_D"' in html and "the session said" in html and "the gate found" in html
+    assert 'id="tkt_D"' in html and "the session said" in html and "the checks found" in html
     assert "retries 1" in html  # D failed T1 once and passed on retry
     assert "Merged by a person" in html  # A and B
     assert "Ready to merge" in html  # C and D
