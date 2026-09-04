@@ -496,3 +496,20 @@ def test_a_non_security_scan_says_what_it_needs_before_devin_refuses_it(tmp_path
         "scan_type": "performance",
         "profile_id": "prof-123",
     }
+
+
+def test_one_repository_can_be_searched_in_more_than_one_area(tmp_path):
+    """The area is a run-time choice, so the same repository can be read for a migration one day
+    and for performance the next, without a session ever being told which defects to find."""
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    mig = scan.build_prompt(cfg, 5, [], area="migration")
+    perf = scan.build_prompt(cfg, 5, [], area="performance")
+    assert "in the migration area" in mig and "in the performance area" in perf
+    assert "repeated queries where one would answer" in perf
+    assert "Not a security review" in perf
+    # neither one hands over a list of defect classes
+    for p in (mig, perf):
+        for defect in ("chained assignment", "string dtype", "N+1", "SELECT *"):
+            assert defect not in p
+    # the seam's own area is the default
+    assert "in the migration area" in scan.build_prompt(cfg, 5, [])

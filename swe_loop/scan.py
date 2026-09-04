@@ -53,7 +53,9 @@ def finding_id(f: dict[str, Any]) -> str:
     return "tkt_sc" + hashlib.sha256(key).hexdigest()[:8]
 
 
-def build_prompt(cfg: TargetConfig, limit: int, known: list[str] | None = None) -> str:
+def build_prompt(
+    cfg: TargetConfig, limit: int, known: list[str] | None = None, area: str | None = None
+) -> str:
     """The instruction a scan session is given.
 
     It names an area to search and never the defects to search for. Handing over the classes we
@@ -61,8 +63,9 @@ def build_prompt(cfg: TargetConfig, limit: int, known: list[str] | None = None) 
     can only rediscover the inventory has found nothing. What it is given instead is the list of
     sites already on the board, so it can tell a new place from one that is already someone's
     job."""
-    area = cfg.scan.get("area", "")
-    says = cfg.scan.get("area_says") or f"behaviour that changes in the {cfg.name} upgrade"
+    areas = cfg.scan.get("areas") or {}
+    area = area or cfg.scan.get("area", "")
+    says = areas.get(area) or cfg.scan.get("area_says") or f"what matters in the {area} area"
     versions = cfg.session.get("version_range", "")
     seen = "\n".join(f"  - {k}" for k in (known or []))
     return (
@@ -122,16 +125,20 @@ def known_sites(store: Store) -> list[str]:
 
 
 def build_spec(
-    cfg: TargetConfig, limit: int, playbook_id: str | None, known: list[str] | None = None
+    cfg: TargetConfig,
+    limit: int,
+    playbook_id: str | None,
+    known: list[str] | None = None,
+    area: str | None = None,
 ) -> SessionSpec:
     return SessionSpec(
-        prompt=build_prompt(cfg, limit, known),
+        prompt=build_prompt(cfg, limit, known, area),
         tags=(cfg.session.get("tags_prefix", "swe-loop"), "scan"),
         repos=(cfg.repo,),
         max_acu_limit=min(SCAN_ACU_CAP, cfg.max_acu_limit),
         structured_output_schema=load_schema(),
         playbook_id=playbook_id,
-        title=f"scan {cfg.repo}",
+        title=f"scan {cfg.repo}: {area or cfg.scan.get('area', '')}",
     )
 
 
@@ -354,6 +361,7 @@ def run_scan(
     *,
     limit: int | None = None,
     playbook_id: str | None = None,
+    area: str | None = None,
     sleep: Any = None,
     wall_clock: float = 3600.0,
     log: Any = print,
@@ -367,7 +375,7 @@ def run_scan(
         if getattr(client, "is_fake", False)
         else _time.sleep
     )
-    spec = build_spec(cfg, limit, playbook_id, known_sites(store))
+    spec = build_spec(cfg, limit, playbook_id, known_sites(store), area)
     state = client.start(spec)
     sid = _record(store, state, spec.tags, playbook_id)
     store.log(

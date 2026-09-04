@@ -59,6 +59,20 @@ scan:
   # rediscover our own inventory is not finding anything. Devin's own code scans take a
   # scan_type from a fixed list of areas for the same reason.
   area: migration
+  # What each area means in this repository. The scan is told one of these and never a list of
+  # defects; which kinds of thing live in the area is the session's to work out.
+  areas:
+    migration: >-
+      behaviour that changes when this repository moves between the two library versions named
+      below. What that looks like in this code is the session's to work out
+    performance: >-
+      work this application does that it does not need to do: repeated queries where one would
+      answer, work inside a loop that could be done once, whole tables read to count a row,
+      dataframe operations that copy more than they need. Read the Python backend. Not a
+      security review, and not a style review
+    db-queries: >-
+      database access this application performs inefficiently or more often than it needs to,
+      in the models, the connectors and the data access layer. Not a security review
   area_says: >-
     behaviour that changes when this repository moves between the two library versions named
     below. What that looks like in this code is the session's to work out

@@ -156,6 +156,7 @@ def run_automation(
     log: Callable[[str], None] = print,
     fetch: Fetch | None = None,
     stop_after: str | None = None,
+    area: str | None = None,
 ) -> dict[str, Any]:
     """The whole loop for one automation: intake, triage, route, repair, gate, review.
 
@@ -208,9 +209,11 @@ def run_automation(
                 client,
                 limit=a.get("max_findings"),
                 playbook_id=store.get_setting("playbook_id.scan-pandas3"),
+                area=area,
                 log=log,
             )
             result["scan"] = found.get("kind")
+            result["area"] = area or cfg.scan.get("area", "")
             result["session"] = found.get("session", "")
             result["taken"] = len(found.get("taken", []))
             result["dropped"] = found.get("dropped", 0)

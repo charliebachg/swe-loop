@@ -94,7 +94,14 @@ def cmd_automation(args: argparse.Namespace) -> int:
     print(
         json.dumps(
             runner.run_automation(
-                settings, cfg, store, client, args.id, log=print, stop_after=args.stop_after
+                settings,
+                cfg,
+                store,
+                client,
+                args.id,
+                log=print,
+                stop_after=args.stop_after,
+                area=args.area,
             )
         )
     )
@@ -630,6 +637,7 @@ def main(argv: list[str] | None = None) -> int:
     co.set_defaults(fn=cmd_cost)
     au = sub.add_parser("automation")
     au.add_argument("--id", default="auto_repair", help="which automation to run")
+    au.add_argument("--area", help="which area a scan searches in; the seam's own area by default")
     au.add_argument(
         "--stop-after",
         choices=["intake"],
