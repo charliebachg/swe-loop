@@ -5,6 +5,7 @@ import dataclasses
 from pathlib import Path
 
 from swe_loop import cli
+from swe_loop import reduce as reduce_mod
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.store import Store
 
@@ -226,3 +227,58 @@ def test_a_github_error_object_reads_as_unreadable_not_as_a_crash():
         _github_review_outcome("https://github.com/o/r/pull/1", "tok", fetch=lambda u: err) is None
     )
     assert fetch_review_remarks("https://github.com/o/r/pull/1", "tok", fetch=lambda u: err) == []
+
+
+def test_a_spent_round_stays_spent_across_runs(tmp_path, monkeypatch):
+    """The follow-up round is per ticket, not per run. Once the remarks went back and the
+    reviewer still commented, a later run leaves them for the merger instead of waking the
+    session again; and a pull request already marked ready is not marked again."""
+    st = _store_with_requested_review(tmp_path)
+    cfg = dataclasses.replace(CFG, review={"wait_s": 600, "followup": "auto", "max_rounds": 1})
+    reduce_mod.remember_review_policy(st, cfg)
+    # the earlier run: review read back with a remark, sent back once, re-reviewed, one remark left
+    sid = st._one("SELECT id FROM sessions")["id"]
+    st.conn.execute("UPDATE verdicts SET review_severity='completed:1 comment'")
+    st.conn.commit()
+    st.log("review", "1 review remark sent back to the session", ticket_id="tkt_D")
+    st.insert_verdict(
+        session_id=sid,
+        gate_result="pass",
+        decision="pass",
+        reason="re-gated after the review",
+        tree_hash="t2",
+        review_severity="completed:1 comment",
+    )
+    st.set_ticket_status("tkt_D", "reviewed")
+    assert cli._tickets_with_remarks(st) == [], "the round is spent; nothing goes back again"
+
+    calls = []
+    import swe_loop.followup as fu
+
+    monkeypatch.setattr(
+        fu, "review_followup", lambda *a, **k: calls.append(a[3]) or {"kind": "resent"}
+    )
+    marked = []
+    monkeypatch.setattr(cli, "set_pr_draft", lambda pr, tok, draft: marked.append(pr) or "ready")
+    out = cli.settle_reviews(
+        Settings(mode="live", devin_api_key="x"),
+        cfg,
+        st,
+        _Client([]),
+        log=lambda m: None,
+        sleep=lambda s: None,
+        clock=_Clock(),
+    )
+    assert calls == [] and out["followups"] == 0
+    assert marked == ["https://github.com/x/y/pull/7"], "marked ready once"
+    # the next run: nothing to mark again
+    out2 = cli.settle_reviews(
+        Settings(mode="live", devin_api_key="x"),
+        cfg,
+        st,
+        _Client([]),
+        log=lambda m: None,
+        sleep=lambda s: None,
+        clock=_Clock(),
+    )
+    assert marked == ["https://github.com/x/y/pull/7"] and out2.get("ready_for_review", 0) == 0

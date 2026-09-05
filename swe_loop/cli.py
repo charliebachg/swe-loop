@@ -225,7 +225,10 @@ def _tickets_with_remarks(store: Store) -> list[tuple[str, str]]:
         sev = r["review_severity"] or ""
         remarks = sev.startswith("completed:") and "no issues" not in sev and "comment" in sev
         done = store.get_setting(f"followup.done.{r['vid']}")
-        if remarks and not done and r["ticket_id"] not in [t for t, _ in out]:
+        # a round already spent on this ticket stays spent across runs: the remarks that remain
+        # are the merger's to weigh, which is what readiness says too
+        spent = reduce_mod.review_settled(store, r["ticket_id"], sev)
+        if remarks and not done and not spent and r["ticket_id"] not in [t for t, _ in out]:
             out.append((r["ticket_id"], r["vid"]))
     return out
 
@@ -290,11 +293,18 @@ def settle_reviews(
         rounds += 1
         deadline = clock() + wait_s
     for t in store.list_tickets():
+        if t["status"] == "merged":
+            continue
         r = readiness(store, t["id"])
         if not r.ready:
             continue
         for pr in r.pr_urls:
+            # once is enough: a pull request marked ready stays ready, and a dozen identical
+            # lines a run is noise on the timeline
+            if store.get_setting(f"pr.ready.{pr}"):
+                continue
             state = set_pr_draft(pr, settings.github_token, False)
+            store.set_setting(f"pr.ready.{pr}", now())
             store.log(
                 "review",
                 "pull request marked ready for your team",
