@@ -2873,12 +2873,11 @@ def _plain_funnel(rows: list[tuple[str, int, Any]]) -> list[tuple[str, int, int]
     names = {
         "tickets decided": "jobs taken on",
         "routed to Devin": "given to the AI",
-        "refused or human-only": "handed to your team",
-        "sessions created": "the AI started work",
-        "sessions terminal": "the AI finished",
         "gate passed": "passed our checks",
-        "gate failed at least once (retried or escalated)": "failed our checks",
         "human-merged": "merged by your team",
+        "to your team, or waiting": "to your team, or waiting",
+        "not passed yet": "not passed yet",
+        "waiting for a merge": "waiting for a merge",
     }
     out: list[tuple[str, int, int]] = []
     for label, n, drop in rows:

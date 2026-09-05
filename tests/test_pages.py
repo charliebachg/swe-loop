@@ -338,7 +338,6 @@ def test_no_page_or_drawer_shows_a_machine_path(tmp_path, monkeypatch):
     """The checks run on somebody's machine and their output carries that machine's home
     directory. Every page and every session drawer shortens such paths to their tail; a home
     directory on a shared screen is a leak, whatever else it says."""
-    import json
 
     from fastapi.testclient import TestClient
 

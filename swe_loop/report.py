@@ -113,15 +113,23 @@ def build(
 
     # ---- row 2
     board = store._all(Q["board"])
+    # one unit, tickets, at every stage, and every drop is the difference between two stages,
+    # so the funnel can only narrow. A stage that counted sessions beside one that counted
+    # tickets once read 10, then 12, then 11.
+    taken, given, passed, merged = (
+        f["tickets"],
+        f["tickets_with_session"],
+        f["tickets_latest_pass"],
+        f["human_merged"],
+    )
     funnel = [
-        ("tickets decided", f["tickets"], None),
-        ("routed to Devin", f["routed_to_devin"], None),
-        ("refused or human-only", f["refused_or_human"], "drop"),
-        ("sessions created", f["sessions_created"], None),
-        ("sessions terminal", f["sessions_terminal"], None),
-        ("gate passed", f["gate_passed"], None),
-        ("gate failed at least once (retried or escalated)", f["gate_failed"], "drop"),
-        ("human-merged", f["human_merged"], None),
+        ("tickets decided", taken, None),
+        ("to your team, or waiting", max(taken - given, 0), "drop"),
+        ("routed to Devin", given, None),
+        ("not passed yet", max(given - passed, 0), "drop"),
+        ("gate passed", passed, None),
+        ("waiting for a merge", max(passed - merged, 0), "drop"),
+        ("human-merged", merged, None),
     ]
     sites = load_sites(inventory_dir)
     product = [s for s in sites if s.get("where") == "superset"]

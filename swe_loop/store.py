@@ -1235,6 +1235,18 @@ class Store:
             "human_merged": c(
                 "SELECT COUNT(DISTINCT ticket_id) AS n FROM human_actions WHERE kind='merge'"
             ),
+            # the same unit at every stage, tickets, so the funnel can only narrow
+            "tickets_with_session": c(
+                "SELECT COUNT(DISTINCT w.ticket_id) AS n FROM sessions s "
+                "JOIN work_orders w ON w.id = s.work_order_id WHERE s.devin_session_id IS NOT NULL"
+            ),
+            "tickets_latest_pass": c(
+                "SELECT COUNT(DISTINCT w.ticket_id) AS n FROM sessions s "
+                "JOIN work_orders w ON w.id = s.work_order_id "
+                "JOIN verdicts v ON v.id = (SELECT id FROM verdicts v2 WHERE v2.session_id = s.id "
+                "ORDER BY v2.created_at DESC, v2.rowid DESC LIMIT 1) "
+                "WHERE v.gate_result = 'pass'"
+            ),
         }
 
 

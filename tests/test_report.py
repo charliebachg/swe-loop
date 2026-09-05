@@ -35,7 +35,16 @@ def test_view_model_has_the_six_rows_with_denominators(tmp_path):
     )
     assert h["budget"]["cap"] == 300 and h["budget"]["spent"] > 0
     names = [n for n, _, _ in vm["funnel"]]
-    assert "refused or human-only" in names and "human-merged" in names
+    assert "to your team, or waiting" in names and "human-merged" in names
+    # one unit at every stage and every drop a difference, so the funnel only narrows
+    stages = [n for label, n, drop in vm["funnel"] if drop is None]
+    assert stages == sorted(stages, reverse=True), stages
+    for (label, n, drop), (_l2, n2, _d2) in zip(vm["funnel"], vm["funnel"][1:]):
+        if drop == "drop":
+            continue
+        nxt = vm["funnel"][vm["funnel"].index((label, n, drop)) + 2 :][:1]
+        if nxt:
+            assert n - n2 == nxt[0][1], (label, n, n2, nxt)
     assert vm["burndown"]["product"] == 10 and vm["burndown"]["test_only"] == 15
     assert vm["burndown"]["fixed"] > 0 and vm["burndown"]["human"] >= 15
     assert len(vm["receipts"]) == 4
