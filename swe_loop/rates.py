@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from swe_loop.store import Store
@@ -206,7 +207,9 @@ def claim_vs_check(store: Store) -> list[dict[str, Any]]:
                     "passed": bool(e["passed"]),
                     "tree": (e["tree_hash"] or "")[:12],
                     "digest": (e["output_digest"] or "")[:12],
-                    "log": f"/evidence/{e['id']}" if e.get("output_path") else "",
+                    "log": f"/evidence/{e['id']}"
+                    if e.get("output_path") and Path(e["output_path"]).exists()
+                    else "",
                 }
             )
     return out
@@ -259,7 +262,11 @@ def system(store: Store) -> list[dict[str, Any]]:
         return {"k": k, "v": v, "note": note}
 
     return [
-        m("Sessions run", str(len(sess) + len(tri) + len(scans)), "every kind, all counted"),
+        m(
+            "Sessions run",
+            str(len(sess) + len(tri) + len(scans)),
+            "started and recorded by this app",
+        ),
         m(
             "Checks re-run here",
             f"{sum(1 for e in ev if e['passed'])} of {len(ev)}",

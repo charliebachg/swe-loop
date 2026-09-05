@@ -1128,7 +1128,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         ),
         {
             "n": str(verified),
-            "of": f"of {len(decided)} planned",
+            "of": f"of {store.funnel()['tickets_with_session']} given to the AI",
             "label": "fixed, re-tested and shipped",
             "color": PL["ok"][0] if verified else FAINT,
             "pct": None,
@@ -1181,9 +1181,12 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         + [("scn", x) for x in store.list_scan_sessions()]
     )
     quiet = 0
+    wo_ticket = {w["id"]: w["ticket_id"] for t in tickets for w in store.work_orders_for(t["id"])}
     for kind, x in all_sessions:
-        # a scan is not opened against a ticket, so nobody could have answered it
-        if kind == "scn" or x.get("ticket_id") not in helped:
+        # a scan is not opened against a ticket, so nobody could have answered it; a repair
+        # session's ticket is the one its work order belongs to
+        tid = wo_ticket.get(x.get("work_order_id")) if kind == "rep" else x.get("ticket_id")
+        if kind == "scn" or tid not in helped:
             quiet += 1
     oldest_wait = None
     for e in store.list_escalations():
@@ -2381,9 +2384,11 @@ def sessions(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, An
                 "elapsed": s.get("elapsed") or "",
                 "eta": s.get("eta") or "",
                 "bg": "#eef2f9" if s["id"] == drawer_id else "#fff",
-                "open": url("/devin/sessions", drawer=s["id"])
-                if not is_triage
-                else url("/tickets-page", open=s["ticket"]),
+                "open": (
+                    url("/tickets-page", open=s["ticket"])
+                    if is_triage
+                    else ("" if s.get("kind") == "scan" else url("/devin/sessions", drawer=s["id"]))
+                ),
             }
         )
     d = (
@@ -2446,6 +2451,16 @@ def _drawer(store: Store, sid: str, cap: float) -> dict[str, Any]:
         if out
         else "no structured output",
         "gate": last["gate_result"] if last else "pending",
+        "state": (
+            "finished"
+            if s.get("terminal_at")
+            and (s.get("status_detail") or "") in ("finished", "waiting_for_user", "inactivity")
+            else (
+                f"stopped: {s.get('status_detail')}"
+                if s.get("terminal_at")
+                else f"{s.get('status') or 'new'}/{s.get('status_detail') or 'starting'}"
+            )
+        ),
         "decision": last["decision"] if last else "",
         "review": (last.get("review_severity") or "not requested") if last else "",
         "gateNote": shorten_paths(last.get("reason") or "") if last else "the gate has not run",
@@ -3069,7 +3084,7 @@ def report(
             "rows": [
                 {
                     "label": r["label"],
-                    "n": str(r["n"]),
+                    "n": f"{r['n']} of {r.get('of', of)}" if r.get("of", of) else str(r["n"]),
                     "color": INK if r["n"] else FAINT,
                     "pct": _pct(r["n"], r.get("of", of)) if r.get("of", of) else "0",
                 }
@@ -3108,7 +3123,7 @@ def report(
             acc["rows"],
             "read from the pull requests themselves, so one you close shows up here. "
             + (
-                f"{acc['mergers']} person merged them"
+                f"{acc['mergers']} {'person' if acc['mergers'] == 1 else 'people'} merged them"
                 + (
                     f", in {acc['merge_events']} sittings."
                     if acc["merge_events"] > 1

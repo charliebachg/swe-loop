@@ -31,7 +31,7 @@ def client(tmp_path, monkeypatch):
 def test_home_tiles_inbox_and_next_trigger(client):
     c, _st = client
     html = c.get("/").text
-    assert "fixes that needed no help" in html and "planned" in html
+    assert "fixes that needed no help" in html and "given to the AI" in html
     assert (
         "Needs you" in html
         and ">Merge<" in html

@@ -38,7 +38,7 @@
             {% if c.open %}
             <div style="margin-top:14px;display:flex;flex-direction:column;gap:6px;border-top:1px solid #f0efe9;padding-top:12px">
               {% for r in c.rows %}
-              <div style="display:grid;grid-template-columns:1fr 34px;gap:8px;align-items:center;font-size:12.5px">
+              <div style="display:grid;grid-template-columns:1fr 68px;gap:8px;align-items:center;font-size:12.5px">
                 <span style="min-width:0;color:#626b78;text-wrap:pretty">{{ r.label }}</span>
                 <span style="text-align:right;{{ MONO }};color:{{ r.color }};font-variant-numeric:tabular-nums">{{ r.n }}</span>
               </div>
