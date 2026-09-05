@@ -2623,7 +2623,6 @@ def automations(
                     if r.get("max_acu")
                     else ("set on Devin's side" if r["kind"] == "code_scan" else "none")
                 ),
-                "conc": str(r["concurrency"]),
                 "lastRun": (
                     f"last run {r['last_run'][:16].replace('T', ' ')}"
                     if r.get("last_run")

@@ -126,8 +126,10 @@ do either.
 produce 351 pull requests nobody can review. Every change here is checked out into a worktree the
 session cannot write to, diffed for the paths a session may not touch, and run against the ticket's
 own acceptance commands on both pandas versions. Work that does not pass never reaches a person.
-That is the property that makes it reasonable to run sessions in parallel at all, and it is why
-sessions are bounded by cost and shards are disjoint by file.
+That is the property that makes it reasonable to run many sessions at all, and it is why
+sessions are bounded by cost and shards are disjoint by file. This loop dispatches them one after
+another and waits for each; Devin itself runs sessions side by side, and nothing in the design
+depends on the order.
 
 There was also no scan to consume. `pytest.ini` sets `filterwarnings = ignore`, so the instrument
 that would have produced the finding was switched off. Step zero was building the detector,
@@ -243,7 +245,7 @@ event (GitHub webhook: a dependency bot's PR, a labelled issue, a failed check)
   ▼ ticket store      SQLite    the row exists before any session does
   ▼ route             code      policy from configs/*.yaml: refuse, human-only, or Devin, with the reason
   ▼ shard             code      one file in one shard; caps by files and call sites
-  ▼ repair sessions   Devin     parallel, bounded by max_acu_limit, typed by structured_output_schema
+  ▼ repair sessions   Devin     one per shard, one after another, bounded by max_acu_limit, typed by structured_output_schema
   ▼ gate              code      T0: the tests were not touched, the change is in scope
                                  T1: every acceptance command re-run from a clean checkout, by this process
   ▼ Devin Review      Devin     requested only on work the gate passed; remarks go back to the session
