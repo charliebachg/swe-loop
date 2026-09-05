@@ -2219,7 +2219,7 @@ def tracker(
                 "gate": verdict["gate_result"] if verdict else "pending",
                 "decision": verdict["decision"] if verdict else "",
                 "review": verdict.get("review_severity") or "not requested" if verdict else "",
-                "gateNote": (verdict.get("reason") or "") if verdict else "",
+                "gateNote": shorten_paths(verdict.get("reason") or "") if verdict else "",
                 "isMerged": bool(r["merged"]),
                 "isReady": bool(r["ready"]) and not r["merged"],
                 "mergeUrl": f"/tickets/{r['id']}/merge-form",
@@ -2231,7 +2231,7 @@ def tracker(
                     {
                         "kind": KIND_PLAIN.get(e["kind"], e["kind"].replace("_", " ")),
                         **pill("bad" if not e.get("resolved_at") else "na"),
-                        "reason": e["reason"],
+                        "reason": shorten_paths(e["reason"] or ""),
                         "time": _hhmmss(e["created_at"]),
                     }
                     for e in r.get("escalations") or []
@@ -2448,7 +2448,7 @@ def _drawer(store: Store, sid: str, cap: float) -> dict[str, Any]:
         "gate": last["gate_result"] if last else "pending",
         "decision": last["decision"] if last else "",
         "review": (last.get("review_severity") or "not requested") if last else "",
-        "gateNote": (last.get("reason") or "") if last else "the gate has not run",
+        "gateNote": shorten_paths(last.get("reason") or "") if last else "the gate has not run",
         "timeline": [ev(e) for e in det.get("timeline") or []][-60:],
         "evidence": [
             {
@@ -2466,7 +2466,7 @@ def _drawer(store: Store, sid: str, cap: float) -> dict[str, Any]:
                 "gate": v["gate_result"],
                 **pill("gate" if v["gate_result"] == "pass" else "bad"),
                 "decision": v["decision"],
-                "reason": v.get("reason") or "",
+                "reason": shorten_paths(v.get("reason") or ""),
             }
             for v in verdicts
         ],

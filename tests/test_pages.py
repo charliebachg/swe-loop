@@ -332,3 +332,54 @@ def test_a_replayed_store_has_numbered_tickets_before_a_page_is_drawn(tmp_path, 
     numbers = [t.get("number") for t in st.list_tickets()]
     assert numbers and all(n for n in numbers), f"a ticket arrived with no number: {numbers}"
     assert "#-----" not in r.text
+
+
+def test_no_page_or_drawer_shows_a_machine_path(tmp_path, monkeypatch):
+    """The checks run on somebody's machine and their output carries that machine's home
+    directory. Every page and every session drawer shortens such paths to their tail; a home
+    directory on a shared screen is a leak, whatever else it says."""
+    import json
+
+    from fastapi.testclient import TestClient
+
+    from swe_loop.app import build_app
+    from swe_loop.config import Settings
+    from swe_loop.store import Store
+
+    monkeypatch.delenv("DEVIN_API_KEY", raising=False)
+    st = Store(tmp_path / "p.sqlite")
+    app = build_app(Settings.from_env(), st)
+    with TestClient(app) as c:
+        # plant a machine path where the audits found one: a verdict's reason and an escalation
+        sid = st._all("SELECT id FROM sessions LIMIT 1")[0]["id"]
+        st.conn.execute(
+            "UPDATE verdicts SET reason=? WHERE session_id=?",
+            (
+                'File "/Users/someone/Desktop/private/superset-fork/.venv-p3/lib/x.py", line 1800',
+                sid,
+            ),
+        )
+        tid = st.list_tickets()[0]["id"]
+        st.insert_escalation(
+            tid,
+            sid,
+            "review_blocked",
+            "Traceback in /Users/someone/Desktop/private/superset-fork/a.py",
+        )
+        st.conn.commit()
+        pages = [
+            "/",
+            "/tickets-page",
+            f"/tickets-page?open={tid}",
+            "/report",
+            "/report?checks=1&log=1",
+            "/automations",
+            "/devin/sessions",
+            "/devin/insights",
+            "/settings",
+        ]
+        pages += [f"/devin/sessions?drawer={r['id']}" for r in st._all("SELECT id FROM sessions")]
+        for path in pages:
+            html = c.get(path).text
+            assert "/Users/" not in html, path
+            assert "someone/Desktop" not in html, path
