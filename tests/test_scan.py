@@ -327,7 +327,7 @@ def test_the_prompt_names_an_area_and_never_the_defects_to_look_for():
     sheet. A finder that can only rediscover the inventory has found nothing."""
     cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
     p = scan.build_prompt(cfg, 5, ["superset/a.py:1"])
-    assert "in the migration area" in p
+    assert f"in the {cfg.scan['area']} area" in p
     # the taxonomy our own inventory used must not appear anywhere in the instruction
     for defect in (
         "chained assignment",
@@ -512,7 +512,7 @@ def test_one_repository_can_be_searched_in_more_than_one_area(tmp_path):
         for defect in ("chained assignment", "string dtype", "N+1", "SELECT *"):
             assert defect not in p
     # the seam's own area is the default
-    assert "in the migration area" in scan.build_prompt(cfg, 5, [])
+    assert f"in the {cfg.scan['area']} area" in scan.build_prompt(cfg, 5, [])
 
 
 def test_devin_fixes_its_own_finding_and_the_loop_checks_the_result(tmp_path):

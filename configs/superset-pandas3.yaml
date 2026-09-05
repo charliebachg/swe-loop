@@ -62,7 +62,10 @@ scan:
   # turns the session into a grep for an answer we already had, and a finder that can only
   # rediscover our own inventory is not finding anything. Devin's own code scans take a
   # scan_type from a fixed list of areas for the same reason.
-  area: migration
+  # The migration area found what there was to find on this fork; the product sites are fixed
+  # and merged. The scan agent now reads for performance, the area whose four findings on
+  # 2026-09-04 were all fixed and merged. Switch back to `migration` on a fresh fork.
+  area: performance
   # What each area means in this repository. The scan is told one of these and never a list of
   # defects; which kinds of thing live in the area is the session's to work out.
   areas:

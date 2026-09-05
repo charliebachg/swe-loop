@@ -2612,7 +2612,7 @@ def automations(
             trig = (
                 f"Devin's own scanner reads {r['target']} and reports what it finds"
                 if r["kind"] == "code_scan"
-                else f"reads {r['target']} itself and files what it finds"
+                else f"reads {r['target']} itself for {cfg.scan.get('area', 'the area in the config')} and files what it finds"
             )
             if r.get("devin_automation_id"):
                 # Devin holds the recurrence; ours is the button that runs it out of turn
