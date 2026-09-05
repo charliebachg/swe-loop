@@ -2,7 +2,7 @@
   <h3>{{ d.id }}{% if d.issue_url %} <a class="mono" href="{{ d.issue_url }}" target="_blank" style="text-transform:none;letter-spacing:0">issue #{{ d.issue }}</a>{% endif %} <a href="/tracker#{{ d.id }}" style="text-transform:none;letter-spacing:0;margin-left:auto">track →</a></h3>
   <p style="margin:0 0 8px;font-weight:600">{{ d.title }}</p>
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-    {% if d.route == "devin" %}<span class="pill p-devin">routed to Devin</span>{% elif d.route == "human_only" %}<span class="pill p-bad">routed to a person</span>{% elif d.route %}<span class="pill p-bad">{{ d.route }}</span>{% else %}<span class="pill p-na">not scoped yet</span>{% endif %}
+    {% if d.route == "devin" %}<span class="pill p-devin">routed to Devin</span>{% elif d.route == "human_only" %}<span class="pill p-bad">routed to a person</span>{% elif d.route %}<span class="pill p-bad">{{ d.route }}</span>{% else %}<span class="pill p-na">not routed yet</span>{% endif %}
     <span class="pill {{ d.pill }}">{{ d.status }}</span>{% if d.review == "required" %}<span class="pill p-gate">review required</span>{% endif %}
     <span class="pill p-na">source: {{ d.source }}</span>
   </div>

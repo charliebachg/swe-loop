@@ -45,16 +45,30 @@ def validate_verdict(verdict: Any) -> list[str]:
 def build_prompt(ticket: dict[str, Any], cfg: TargetConfig, inventory_path: str | None) -> str:
     """What / How / Result, in the shape Devin's prompting guide uses."""
     ext = ticket.get("external_ref") or ticket["id"]
-    what = (
-        f"In `{cfg.repo}` on branch `{cfg.base_branch}`, read ticket {ext}: {ticket['title']}.\n"
-        f"Decide how the {cfg.name} migration work in this ticket should be carried out. "
-        f"Do not change any code."
-    )
-    inv = (
-        f"The inventory is at `{inventory_path}`."
-        if inventory_path
-        else "There is no inventory file; derive sites from the ticket."
-    )
+    from_scan = (ticket.get("source") or "") in ("scan", "code_scan")
+    if from_scan:
+        # a finding from a scan is one place in the code. Its scope is that place: the inventory
+        # of the migration is somebody else's list, and a session handed it once scheduled the
+        # whole migration alongside a Slack rendering bug (superset-demo, 2026-09-06)
+        what = (
+            f"In `{cfg.repo}` on branch `{cfg.base_branch}`, read ticket {ext}: {ticket['title']}.\n"
+            "This ticket is one finding from a scan of the repository. Decide how that finding, and "
+            "only that finding, should be fixed. Its scope is the file and the lines the ticket names; "
+            "do not add other files, other findings or other work you notice on the way. "
+            "Do not change any code."
+        )
+        inv = "There is no inventory for this ticket; the sites are the ticket's own."
+    else:
+        what = (
+            f"In `{cfg.repo}` on branch `{cfg.base_branch}`, read ticket {ext}: {ticket['title']}.\n"
+            f"Decide how the {cfg.name} migration work in this ticket should be carried out. "
+            f"Do not change any code."
+        )
+        inv = (
+            f"The inventory is at `{inventory_path}`."
+            if inventory_path
+            else "There is no inventory file; derive sites from the ticket."
+        )
     how = "\n".join(
         [
             "Do:",

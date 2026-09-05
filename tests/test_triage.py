@@ -166,3 +166,28 @@ def test_a_second_verdict_sets_the_first_plans_work_orders_aside(tmp_path):
     assert len(live) == 2, "exactly one plan's worth of work orders can be dispatched"
     assert readiness(st, "tkt_pu42671").shards == 2
     assert any("set aside" in e["event"] for e in st.timeline(limit=20))
+
+
+def test_a_scan_ticket_is_scoped_to_its_own_finding():
+    """A finding from a scan is one place in the code. Its triage prompt names that place and
+    forbids widening; the migration inventory is not handed to it. A ticket from the migration
+    issues keeps the inventory."""
+    from swe_loop.triage import build_prompt
+
+    finding = {
+        "id": "tkt_sc1",
+        "source": "scan",
+        "title": "SlackMixin._get_body re-renders the table on every row",
+        "external_ref": "",
+    }
+    p = build_prompt(finding, CFG, "https://example.invalid/inventory.json")
+    assert "one finding from a scan" in p and "only that finding" in p
+    assert "example.invalid" not in p and "no inventory for this ticket" in p
+    issue = {
+        "id": "tkt_A",
+        "source": "github",
+        "title": "pandas 3: shard A",
+        "external_ref": "o/r#1",
+    }
+    q = build_prompt(issue, CFG, "https://example.invalid/inventory.json")
+    assert "example.invalid" in q and "one finding from a scan" not in q

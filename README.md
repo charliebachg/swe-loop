@@ -219,7 +219,12 @@ can push to, which for a repository you do not own means a fork. Three things ar
 on your side; nothing here is shared.
 
 1. **Your fork to your Devin.** Fork this project's target repository, `charliebachg/superset`,
-   into your account. Install the Devin GitHub App on it with "Only select repositories".
+   into your account; GitHub offers no Fork on a repository you already own, so in that case create
+   an empty repository and push the code into it. Then install the Devin GitHub App on it, in
+   Devin's settings under Integrations, GitHub, keeping "Only select repositories". This is a
+   different attachment from a GitHub token's repository list, and it is the one that lets a
+   session push: without it the repair session writes and verifies the fix and then reports a 403
+   on the push, and the loop hands the ticket to a person.
 2. **Your Devin to this app.** In your Devin organisation, Settings, Service users: create one
    and copy its `cog_` key and the organisation id. Copy `.env.example` to `.env`, fill in
    `DEVIN_API_KEY` and `DEVIN_ORG_ID`, set `SWE_LOOP_MODE=live`. Optionally a fine-grained
@@ -229,7 +234,9 @@ on your side; nothing here is shared.
 
 Then give it work. Forks carry no issues, so either file one on your fork with the `swe-loop` label,
 which the app sees within two minutes and files as a ticket, or open Automations and click Run on
-the scan agent, which finds work itself. Issues #1 and #4 on `charliebachg/superset` are kept open
+the scan agent, which finds work itself. The label is the whole signal: an issue without it is
+invisible to the loop on purpose, and a run then reports "0 open issues with label swe-loop" and
+stops. Create the label on a fresh repository first; it does not travel with a fork. Issues #1 and #4 on `charliebachg/superset` are kept open
 on purpose as standing demo issues; copy one to your fork to see the loop take a real one. Run on
 "Issues from repo" scopes it, fixes it, checks it, has Devin Review read it, and the pull request
 opens on your fork, because that is where your Devin can push. The merge is yours to click.
@@ -253,7 +260,10 @@ session never touched, through interpreters it controls. That needs a local clon
 install` calls, about twenty minutes. Settings shows whether the clone is ready. Without it, a
 live run still scopes and fixes; the pull request then comes to a person with "the checks could
 not run here" on the ticket, never an implied pass, and Devin Review is not asked until they have. In Docker, point `SWE_LOOP_FORK` at a clone whose two environments were built
-inside the container.
+inside the container. One rule for Docker: read the store from inside the container
+(`docker exec <container> python -c ...`), never with a host `sqlite3` on the bind-mounted file
+while the container runs; SQLite's shared memory does not cross that boundary and the container
+loses its view of the database until it is restarted.
 
 The command line does the same things as the pages:
 

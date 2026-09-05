@@ -2019,7 +2019,7 @@ def _ticket_panel(store: Store, tid: str, f: str, q: dict[str, str]) -> dict[str
         else (
             {"label": "routed to a person", **pill("person")}
             if route
-            else {"label": "not scoped yet", **pill("na")}
+            else {"label": "not routed yet", **pill("na")}
         ),
         {"label": d["status"], **pill(st_kind)},
         {"label": f"source: {d.get('source', '')}", **pill("na")},
