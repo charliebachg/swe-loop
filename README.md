@@ -221,7 +221,6 @@ python -m swe_loop triage --ticket tkt_A --answer "..."   # answer a question; w
 python -m swe_loop run                      # route, dispatch, poll, gate, review, reduce: one pass
 python -m swe_loop review-followup --ticket tkt_B         # send Devin Review's remarks back, re-gate
 python -m swe_loop cost --set 58d404d2=1.78 # the console's figure for a session
-python -m swe_loop reset-shard --shard D    # put one shard back to its unfixed state, on the fork and in the store
 python -m swe_loop record data/replay/run.json            # capture the run for replay, redacted
 python -m swe_loop receipts                 # the table at the top of this file, from the store
 python -m swe_loop schedule                 # hand the code scan's recurrence to Devin, switched off
@@ -280,7 +279,7 @@ agent: each step says who does it, the AI or a person, and every session is pric
 | **Devin · Playbooks** | the instructions each kind of session follows and the shape its answer must have. Add one and attach it to an automation |
 | **Devin · Knowledge** | the notes a session is given about the repository, when each is read, and which of them are on the organisation where a session can reach them |
 | **Devin · Insights** | the sessions as Devin records them: how many messages each took, how big it judged the piece, what it says the work touched, which sessions ran with no playbook, and its own analysis of what to change. Nothing on this page is our measurement, which is what separates it from the Report |
-| **Settings** (gear) | the connected repository, what a session may never touch, the budget caps, the console's dollars per session, live connection checks, and Rerun a shard: one button puts a fixed shard back to its unfixed state on the repository and in the store, so the next Run does the whole thing again for real |
+| **Settings** (gear) | the connected repository, what a session may never touch, the budget caps, the console's dollars per session, and live connection checks |
 
 The Report answers the question an engineering leader asks: *how would I know this is
 working?* Every number is a count with its denominator beside it, never a percentage on its own

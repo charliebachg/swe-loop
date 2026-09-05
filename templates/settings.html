@@ -22,17 +22,6 @@
   <div class="card"><h3>More about the organisation <span class="who code">read only</span></h3>
     <p class="foot">Read only: this is the organisation's own configuration, not ours. Every review Devin ran is shown on the ticket it belongs to.</p>
   </div>
-  <div class="card" id="rerun"><h3>Rerun a shard <span class="who code">the repository and the store, together</span></h3>
-    <p class="foot">Running the loop again on a shard that is already fixed would show nothing: the sessions would find the work done. A reset puts one shard back to its broken state. On the repository, its files return to the base branch as it was before any fix landed{% if rerun.baseline %} (commit <span class="mono">{{ rerun.baseline }}</span>){% endif %}, the change is committed and pushed to <span class="mono">{{ rerun.repo }}</span> <span class="mono">{{ rerun.base }}</span>, and the old repair branch is deleted. In the store, every row about the ticket is snapshotted to a file and forgotten. The issue stays open, so the next Run on Automations picks it up as new and does the whole loop again for real.</p>
-    <form method="post" action="/settings/reset-shard" style="display:flex; gap:10px; align-items:end; flex-wrap:wrap">
-      <label style="font-size:12px;color:var(--muted)">shard<br><select name="shard" style="padding:6px 8px;border:1px solid var(--rule);border-radius:6px">{% for sh in rerun.shards %}<option value="{{ sh.id }}" {% if sh.id == rerun.default %}selected{% endif %}>{{ sh.id }} · {{ sh.files | join(', ') }}</option>{% endfor %}</select></label>
-      <button class="btn primary" type="submit">Reset shard</button>
-      <button class="btn" type="submit" formaction="/settings/reoffer" {% if not rerun.canReoffer %}disabled{% endif %}>Offer it again</button>
-      <span class="foot">{% if rerun.willPush %}live: the clone at <span class="mono">{{ rerun.clone }}</span> is restored and pushed{% elif rerun.live %}live, but no clone at <span class="mono">{{ rerun.clone }}</span>: only the store is reset{% else %}replay: only the store is reset; the repository is not touched{% endif %}</span>
-    </form>
-    <p class="foot" style="margin-top:8px"><b>Reset shard</b> throws the fix away and reopens the issue, so the next run does the whole thing again from scratch: about twenty minutes and two sessions. <b>Offer it again</b> keeps the fix. It puts the branch back to before that change landed and opens the same verified commit as a new pull request, so the merge step can be shown in seconds with no session spent. It only works on a shard that is currently merged: {{ rerun.merged }}.</p>
-    <p class="foot" style="margin-top:8px">last: {{ rerun.lastLine }}</p>
-  </div>
   <div class="card"><h3>Budget <span class="who code">enforced by the poller</span></h3>
     <form method="post" action="/settings/budget" style="display:flex; gap:10px; align-items:end; flex-wrap:wrap">
       {% if cost.metered %}<label style="font-size:12px;color:var(--muted)">ACU cap for the run<br><input name="acu_cap" type="number" step="1" min="1" value="{{ s.budget.cap | int if s.budget.cap else 300 }}" style="padding:6px 8px;border:1px solid var(--rule);border-radius:6px;width:120px"></label>

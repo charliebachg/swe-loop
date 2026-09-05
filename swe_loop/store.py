@@ -970,32 +970,6 @@ class Store:
             ),
         }
 
-    def forget_ticket(self, ticket_id: str) -> int:
-        """Delete every row about one ticket. Returns the number of rows removed. Used by a
-        shard reset; the caller snapshots first."""
-        d = self.ticket_dump(ticket_id)
-        n = sum(len(v) for v in d.values())
-        sids = [s["id"] for s in d["sessions"]]
-        tsids = [t["id"] for t in d["triage_sessions"]]
-        with self.tx() as c:
-
-            def rm(sql: str, ids: list[str]) -> None:
-                if ids:
-                    c.execute(sql.replace("?", ",".join("?" for _ in ids)), ids)
-
-            rm("DELETE FROM timeline WHERE session_id IN (?)", sids + tsids)
-            c.execute("DELETE FROM timeline WHERE ticket_id=?", (ticket_id,))
-            rm("DELETE FROM evidence WHERE session_id IN (?)", sids)
-            rm("DELETE FROM verdicts WHERE session_id IN (?)", sids)
-            rm("DELETE FROM sessions WHERE id IN (?)", sids)
-            c.execute("DELETE FROM triage_sessions WHERE ticket_id=?", (ticket_id,))
-            c.execute("DELETE FROM work_orders WHERE ticket_id=?", (ticket_id,))
-            c.execute("DELETE FROM escalations WHERE ticket_id=?", (ticket_id,))
-            c.execute("DELETE FROM human_actions WHERE ticket_id=?", (ticket_id,))
-            c.execute("DELETE FROM events WHERE ticket_id=?", (ticket_id,))
-            c.execute("DELETE FROM tickets WHERE id=?", (ticket_id,))
-        return n
-
     def get_setting(self, key: str, default: str | None = None) -> str | None:
         row = self._one("SELECT value FROM settings WHERE key=?", key)
         return row["value"] if row else default

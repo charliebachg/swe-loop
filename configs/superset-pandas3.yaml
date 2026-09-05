@@ -111,9 +111,3 @@ review:
   # gated and reviewed again, once. manual: a person runs `review-followup` when they choose.
   followup: auto
   max_rounds: 1
-
-rerun:
-  # Reset a shard for a live rerun: its files go back to this commit (the base branch before any fix
-  # landed), the old repair branch is deleted, and the store forgets the ticket. The issue stays open.
-  baseline: 452817f2a1
-  branch_prefix: swe-loop/

@@ -722,65 +722,6 @@ def insights(
     }
 
 
-def rerun_ctx(settings: Settings, cfg: TargetConfig, store: Store) -> dict[str, Any]:
-    """What the Reset button will do, and what the last reset did."""
-    from swe_loop import rerun
-
-    last_raw = store.get_setting("rerun.last")
-    last = json.loads(last_raw) if last_raw else None
-    where = cfg.gate.get("repo_root", "../superset-fork")
-    root = (ROOT / where).resolve()
-    have_clone = (root / ".git").exists()
-    live = settings.live
-    return {
-        "shards": rerun.shards(),
-        "default": "D",
-        "baseline": cfg.rerun.get("baseline", ""),
-        "base": cfg.base_branch,
-        "repo": cfg.repo,
-        "live": live,
-        "haveClone": have_clone,
-        # the configured location, never this machine's absolute path
-        "clone": where,
-        "willPush": live and have_clone,
-        "last": last,
-        "canReoffer": live and have_clone,
-        "merged": ", ".join(
-            ref(t["number"])
-            for t in store.list_tickets("merged")
-            if t["id"].removeprefix("tkt_") in {s["id"] for s in rerun.shards()}
-        )
-        or "none yet",
-        "lastLine": (
-            (
-                f"shard {last['shard']}: {last.get('error')}"
-                if last.get("error")
-                else (
-                    f"shard {last['shard']} at {last.get('at', '')[:16].replace('T', ' ')}: "
-                    + (
-                        f"offered again as {last['pr']}"
-                        if last.get("pr")
-                        else f"repository {last.get('repo')}"
-                    )
-                )
-                + (", pushed" if last.get("pushed") else "")
-                + (", old repair branch deleted" if last.get("branch_deleted") else "")
-                + (
-                    f", issue {last['issue']}"
-                    if last.get("issue") not in (None, "not touched")
-                    else ""
-                )
-                + " · "
-                + plural(last.get("store_rows", 0), "store row")
-                + " forgotten"
-                + (f" · snapshot {last.get('snapshot')}" if last.get("snapshot") else "")
-            )
-            if last
-            else "never reset"
-        ),
-    }
-
-
 def _usd_cap(store: Store) -> float | None:
     """The spend cap a person set on Settings, in dollars; none until set."""
     try:

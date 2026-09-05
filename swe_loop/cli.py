@@ -184,15 +184,6 @@ def cmd_automation(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_reset_shard(args: argparse.Namespace) -> int:
-    from swe_loop.rerun import reset_shard
-
-    settings, cfg, store, _ = _ctx()
-    out = reset_shard(settings, cfg, store, args.shard.upper(), push=not args.no_push, log=print)
-    print(json.dumps(out))
-    return 0
-
-
 def cmd_budget(args: argparse.Namespace) -> int:
     _, cfg, store, _ = _ctx()
     per = args.per_session if args.per_session is not None else cfg.max_acu_limit
@@ -749,10 +740,6 @@ def main(argv: list[str] | None = None) -> int:
     sc.add_argument("--on", action="store_true", help="start it switched on; off by default")
     sc.add_argument("--remove", action="store_true", help="take the schedule off Devin")
     sc.set_defaults(fn=cmd_schedule)
-    rs = sub.add_parser("reset-shard")
-    rs.add_argument("--shard", required=True, help="the shard letter, e.g. D")
-    rs.add_argument("--no-push", action="store_true", help="restore in the local clone only")
-    rs.set_defaults(fn=cmd_reset_shard)
     sub.add_parser("receipts").set_defaults(fn=cmd_receipts)
     ig = sub.add_parser(
         "insights", help="ask Devin to analyse finished sessions and keep the result"

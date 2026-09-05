@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from swe_loop import connect, cost, ops, pages, replay, rerun, runner, v2
+from swe_loop import connect, cost, ops, pages, replay, runner, v2
 from swe_loop import reduce as reduce_mod
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.devin import DevinClient
@@ -529,7 +529,6 @@ def build_app(
             cost=cost.spend(request.app.state.store),
             cost_rows=v2.cost_rows(request.app.state.store),
             usdCap=v2._usd_cap(st),
-            rerun=v2.rerun_ctx(settings, cfg, st),
             s=pages.settings_page(settings, cfg, st, request.app.state.client, with_checks=False),
         )
 
@@ -576,42 +575,6 @@ def build_app(
                 raise HTTPException(status_code=400, detail=f"{key}: not a number") from ex
             st.set_session_cost(key[4:], usd)
         return RedirectResponse("/settings", status_code=303)
-
-    @app.post("/settings/reset-shard")
-    async def settings_reset_shard(request: Request) -> RedirectResponse:
-        """Put one shard back to its broken state, on the repository and in the store, so the
-        next Run does it again for real."""
-        form = parse_qs((await request.body()).decode())
-        shard = (form.get("shard") or [""])[0].strip().upper()
-        if not shard or shard not in {s["id"] for s in rerun.shards()}:
-            raise HTTPException(status_code=400, detail="pick a shard the loop can repair")
-        if request.app.state.run_lock.locked():
-            raise HTTPException(status_code=409, detail="a run is in progress; reset after it")
-        st: Store = request.app.state.store
-        client = request.app.state.client
-        try:
-            rerun.reset_shard(settings, cfg, st, shard, push=settings.live and not client.is_fake)
-        except (RuntimeError, ValueError) as ex:
-            st.set_setting("rerun.last", json.dumps({"shard": shard, "error": str(ex)[:300]}))
-        return RedirectResponse("/settings#rerun", status_code=303)
-
-    @app.post("/settings/reoffer")
-    async def settings_reoffer(request: Request) -> RedirectResponse:
-        """Offer a merged change again, unchanged, so the merge step can be shown without waiting
-        for a whole run. No session is spent."""
-        form = parse_qs((await request.body()).decode())
-        shard = (form.get("shard") or [""])[0].strip().upper()
-        st: Store = request.app.state.store
-        client = request.app.state.client
-        if not shard or shard not in {s["id"] for s in rerun.shards()}:
-            raise HTTPException(status_code=400, detail="pick a shard the loop can repair")
-        if not (settings.live and not client.is_fake):
-            raise HTTPException(status_code=409, detail="only in live mode; there is no repository")
-        try:
-            rerun.reoffer_shard(settings, cfg, st, shard)
-        except (RuntimeError, ValueError) as ex:
-            st.set_setting("rerun.last", json.dumps({"shard": shard, "error": str(ex)[:300]}))
-        return RedirectResponse("/settings#rerun", status_code=303)
 
     @app.post("/settings/budget")
     async def settings_budget(request: Request) -> RedirectResponse:
