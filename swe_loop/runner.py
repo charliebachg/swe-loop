@@ -273,8 +273,12 @@ def run_automation(
         )
         store.log(
             "intake",
-            f"{plural(got['issues'], 'open issue')} with label {label}; "
-            f"{plural(len(got['new']), 'new ticket')}",
+            (
+                f"{plural(got['issues'], 'finding')} read; "
+                if a["kind"] in ("scan", "code_scan")
+                else f"{plural(got['issues'], 'open issue')} with label {label}; "
+            )
+            + f"{plural(len(got['new']), 'new ticket')}",
             detail=repo,
         )
         log(f"intake: {plural(got['issues'], 'issue')}, {len(got['new'])} new")

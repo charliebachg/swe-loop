@@ -26,7 +26,12 @@ def _ts(iso: str | None) -> datetime | None:
 
 
 def _active_from_events(events: list[dict[str, Any]], start: str | None, end: str | None) -> float:
-    """Seconds the session was `working` between consecutive observations, each gap capped."""
+    """Seconds the session was `working` between consecutive observations, each gap capped.
+    A session this loop never polled has no observations, and a start and an end alone measure
+    nothing: the answer is zero, which the pages show as "not priced", not one capped gap
+    dressed up as a minute of work."""
+    if not events:
+        return 0.0
     pts: list[tuple[datetime, bool]] = []
     t0 = _ts(start)
     if t0:

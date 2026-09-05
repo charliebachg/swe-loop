@@ -1002,11 +1002,8 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         (len(reviewed), f"{len(reviewed)} reviewed"),
         (len(merged), f"{len(merged)} shipped · {len(ready)} waiting for you"),
     ]
-    fixed_sessions = [
-        x
-        for x in sess
-        if x["terminal_at"] and x["status_detail"] in ("finished", "waiting_for_user")
-    ]
+    # a fix is written when there is a pull request to read, whatever the session's last status
+    with_pr = [x for x in sess if x.get("pull_request_url")]
     verified_sessions = [
         x for x in passed if (store.latest_verdict(x["id"]) or {}).get("review_severity")
     ]
@@ -1021,11 +1018,11 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         ),
         (
             len(verdicts),
-            f"{len(verdicts)} plan{'s' if len(verdicts) != 1 else ''} · {len(to_devin)} to the AI · {len(to_person)} to your team",
+            f"{len(verdicts)} plan{'s' if len(verdicts) != 1 else ''} written · {len(to_devin)} given to the AI",
         ),
         (
-            len(fixed_sessions),
-            f"{len(fixed_sessions)} pull request{'s' if len(fixed_sessions) != 1 else ''} opened",
+            len(with_pr),
+            f"{len(with_pr)} pull request{'s' if len(with_pr) != 1 else ''} opened",
         ),
         (
             len(verified_sessions),
