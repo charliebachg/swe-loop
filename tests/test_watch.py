@@ -249,13 +249,27 @@ def test_a_look_at_github_files_a_ticket_for_a_new_labelled_issue_and_starts_not
     assert len(st.timeline(limit=5000)) == before_tl + 1
 
 
-def test_no_token_means_github_is_not_looked_at(tmp_path, monkeypatch):
+def test_no_token_still_looks_at_a_public_repository(tmp_path, monkeypatch):
+    """A reviewer with a Devin key and no GitHub token must still see a labelled issue become a
+    ticket: the repository is public and GitHub answers anonymous reads."""
     st = _store(tmp_path)
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    seen: list[dict[str, str]] = []
+
+    def fetch(url, headers):
+        seen.append(headers)
+        return []
+
     w = Watcher(
-        _live_settings(monkeypatch), CFG, st, _client_with_schedule(False), threading.Lock()
+        _live_settings(monkeypatch),
+        CFG,
+        st,
+        _client_with_schedule(False),
+        threading.Lock(),
+        fetch=fetch,
     )
-    assert w.look_for_issues()["looked"] is False
+    out = w.look_for_issues()
+    assert out["looked"] is True and seen and "Authorization" not in seen[0]
 
 
 def test_an_observed_run_keeps_the_finish_time_it_was_given(tmp_path):

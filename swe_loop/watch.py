@@ -142,10 +142,9 @@ class Watcher:
 
     # ------------------------------------------------------------------ issues on GitHub
     def _issue_automations(self) -> list[dict[str, Any]]:
-        """The enabled automations that start from issues on a repository, when there is a way
-        to read that repository."""
-        if not (getattr(self.settings, "github_token", "") or self.fetch):
-            return []
+        """The enabled automations that start from issues on a repository. A public repository is
+        read without a token: GitHub allows sixty anonymous calls an hour and a look every two
+        minutes uses thirty. A token only raises that ceiling."""
         return [
             a
             for a in self.store.list_automations()
