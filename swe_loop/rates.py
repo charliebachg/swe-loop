@@ -208,11 +208,17 @@ def claim_vs_check(store: Store) -> list[dict[str, Any]]:
                     "tree": (e["tree_hash"] or "")[:12],
                     "digest": (e["output_digest"] or "")[:12],
                     "log": f"/evidence/{e['id']}"
-                    if e.get("output_path") and Path(e["output_path"]).exists()
+                    if e.get("output_path") and _log_exists(e["output_path"])
                     else "",
                 }
             )
     return out
+
+
+def _log_exists(output_path: str) -> bool:
+    """A recording writes output_path relative to the repository; a live run writes it absolute."""
+    p = Path(output_path)
+    return (p if p.is_absolute() else Path(__file__).resolve().parents[1] / p).exists()
 
 
 def window(store: Store) -> str:

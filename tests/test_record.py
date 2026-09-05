@@ -137,3 +137,35 @@ def test_record_ships_the_check_logs_scrubbed_and_leaves_the_person_out(tmp_path
     assert st2.insight("dev-q")["analysis"]["issues"][0]["title"] == "x"
     assert st2.list_automation_runs("auto_q")[0]["result"] == {"issues": 1}
     assert st2.get_setting("person.name") is None
+
+
+def test_a_recorded_log_opens_from_a_fresh_clone(tmp_path, monkeypatch):
+    """The Report links a check's log only where the file exists, and the evidence route serves a
+    log that travelled with a recording, whose path is relative to the repository."""
+    from fastapi.testclient import TestClient
+
+    from swe_loop.app import build_app
+    from swe_loop.config import Settings
+
+    monkeypatch.delenv("DEVIN_API_KEY", raising=False)
+    st = Store(tmp_path / "c.sqlite")
+    app = build_app(Settings.from_env(), st)
+    root = Path(__file__).resolve().parents[1]
+    with TestClient(app) as c:
+        ev = st._all("SELECT * FROM evidence LIMIT 1")[0]
+        rel = Path("data") / "replay" / "evidence" / ev["session_id"] / "00-test.log"
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text("recorded log\n")
+        try:
+            st.conn.execute("UPDATE evidence SET output_path=? WHERE id=?", (str(rel), ev["id"]))
+            st.conn.commit()
+            html = c.get("/report?checks=1").text
+            assert f"/evidence/{ev['id']}" in html
+            r = c.get(f"/evidence/{ev['id']}")
+            assert r.status_code == 200 and "recorded log" in r.text
+        finally:
+            (root / rel).unlink()
+            try:
+                (root / rel).parent.rmdir()
+            except OSError:
+                pass

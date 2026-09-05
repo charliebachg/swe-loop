@@ -843,9 +843,16 @@ def build_app(
         row = app.state.store._one("SELECT * FROM evidence WHERE id=?", eid)
         if not row or not row["output_path"]:
             raise HTTPException(status_code=404)
-        p = Path(row["output_path"]).resolve()
-        root = (ROOT / cfg.gate.get("evidence_dir", "data/live/evidence")).resolve()
-        if not p.is_relative_to(root) or not p.exists():
+        # a relative output_path is relative to the repository, which is how a recording writes it
+        raw = Path(row["output_path"])
+        p = (raw if raw.is_absolute() else ROOT / raw).resolve()
+        # logs live under the live evidence directory or travel with a recording under data/replay
+        roots = (
+            (ROOT / cfg.gate.get("evidence_dir", "data/live/evidence")).resolve(),
+            (ROOT / "data" / "replay" / "evidence").resolve(),
+            (Path(settings.replay_dir) / "evidence").resolve(),
+        )
+        if not any(p.is_relative_to(r) for r in roots) or not p.exists():
             raise HTTPException(status_code=404, detail="the log is not on this machine")
         head = (
             f"# {row['command']}\n# exit {row['exit_code']} · tree {row['tree_hash']}\n"
