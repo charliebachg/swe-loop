@@ -98,10 +98,16 @@ def shard_letters(repo: str, tickets_json: Path = INVENTORY / "tickets.json") ->
 
 
 def intake_issues(
-    store: Store, cfg: TargetConfig, issues: list[dict[str, Any]], *, source_repo: str
+    store: Store,
+    cfg: TargetConfig,
+    issues: list[dict[str, Any]],
+    *,
+    source_repo: str,
+    quiet: bool = False,
 ) -> dict[str, Any]:
     """Every issue becomes a ticket with status new, once. A ticket the store already has is
-    left exactly as it is."""
+    left exactly as it is. quiet=True is for a look that repeats every couple of minutes: a new
+    ticket is still written to the timeline, the same skipped issue is not written again."""
     letters = shard_letters(source_repo)
     parent = parent_number(source_repo)
     exclude = {lbl.lower() for lbl in (cfg.trigger.get("exclude_labels") or [])}
@@ -113,6 +119,8 @@ def intake_issues(
         labels = {(lbl.get("name") or "").lower() for lbl in (issue.get("labels") or [])}
         if (parent is not None and number == parent) or (labels & exclude):
             skipped += 1
+            if quiet:
+                continue
             store.log(
                 "intake",
                 f"issue #{number} skipped",

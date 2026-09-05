@@ -9,9 +9,11 @@ show the agent's behaviour from the agent's own record, not from our poller's gu
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from typing import Any
 
-from swe_loop.store import Store
+from swe_loop.store import Store, now
 
 # Fields that were the same on every session we have run. They are facts about the setup rather
 # than measurements, so the page states them once instead of giving each a column of one value.
@@ -25,6 +27,65 @@ def refresh(store: Store, client: Any, session_ids: list[str] | None = None) -> 
         if r.get("session_id"):
             store.put_insight(r["session_id"], r)
     return len(rows)
+
+
+def written(row: dict[str, Any] | None) -> bool:
+    """Whether Devin's analysis of the session has been written. The classification arrives on
+    its own with every session; the issues, timeline and action items only after someone asks."""
+    a = (row or {}).get("analysis") or {}
+    return bool(a.get("issues") or a.get("timeline") or a.get("action_items"))
+
+
+def generate(
+    store: Store,
+    client: Any,
+    session_ids: list[str],
+    *,
+    wait_s: float = 240.0,
+    every: float = 10.0,
+    sleep: Callable[[float], None] = time.sleep,
+    log: Callable[[str], None] = lambda _m: None,
+) -> dict[str, Any]:
+    """Ask Devin to analyse these sessions, then wait for the analyses and keep them. Free on
+    Devin's side. Returns which sessions were written, which were already, which never came."""
+    asked: list[str] = []
+    already: list[str] = []
+    for sid in session_ids:
+        r = client.generate_insights(sid)
+        (already if r.get("status") == "already_exists" else asked).append(sid)
+        log(f"insights: {sid[:12]} {r.get('status', 'asked')}")
+    pending = set(session_ids)
+    waited = 0.0
+    while pending:
+        refresh(store, client, sorted(pending))
+        pending = {sid for sid in pending if not written(store.insight(sid))}
+        if not pending or waited >= wait_s:
+            break
+        sleep(every)
+        waited += every
+    done = [sid for sid in session_ids if sid not in pending]
+    for sid in pending:
+        if sid in already:
+            # Devin says the analysis exists and returns it empty; asking again changes nothing,
+            # so the page stops offering to ask
+            store.set_setting(f"insights.empty.{sid}", now())
+    for sid in done:
+        store.set_setting(f"insights.empty.{sid}", "")
+        store.log(
+            "insights",
+            "Devin's analysis of the session was written",
+            session_id=_row_id(store, sid),
+            detail=sid,
+        )
+    return {"asked": asked, "already": already, "written": done, "missing": sorted(pending)}
+
+
+def _row_id(store: Store, devin_id: str) -> str | None:
+    for table in ("sessions", "triage_sessions", "scan_sessions"):
+        rows = store._all(f"SELECT id FROM {table} WHERE devin_session_id=?", devin_id)
+        if rows:
+            return rows[0]["id"]
+    return None
 
 
 def known_ids(store: Store) -> list[str]:
@@ -101,7 +162,7 @@ def advice(rows: list[dict[str, Any]]) -> dict[str, Any]:
             )
         if a.get("note_usage"):
             notes.append({"session": sid, "url": r.get("url", ""), "text": _text(a["note_usage"])})
-    done = sum(1 for r in rows if r.get("analysis_status") == "completed")
+    done = sum(1 for r in rows if written(r))
     return {
         "issues": issues,
         "actions": actions,

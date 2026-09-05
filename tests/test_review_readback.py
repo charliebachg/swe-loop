@@ -92,6 +92,9 @@ def test_home_lists_the_mergers_notes(tmp_path, monkeypatch):
     )
     st.conn.execute("UPDATE verdicts SET review_severity='completed:3 comment(s)'")
     st.conn.commit()
+    # remarks the loop has already sent back once: its follow-up round is used, so what the
+    # reviewer still says is for the person who merges
+    st.log("review", "3 review remarks sent back to the session", ticket_id="tkt_D")
     mn = merge_notes(st, "tkt_D")
     assert mn["reviews"] == ["PR #7: 3 comment(s)"] and mn["notes"][0]["site"] == "boxplot.py:138"
     app = build_app(Settings.from_env(), st, seed_replay=False)
@@ -99,3 +102,32 @@ def test_home_lists_the_mergers_notes(tmp_path, monkeypatch):
         html = c.get("/").text
     assert "PR #7: 3 comments · 1 note for you" in html  # the inbox row
     assert "boxplot.py:138: root cause outside the piece" in html  # hover text, in plain words
+
+
+def test_remarks_the_loop_will_still_answer_do_not_make_a_ticket_ready(tmp_path, monkeypatch):
+    """Devin Review left comments and the loop has not sent them back yet. The session will get
+    them, the checks will run again, the reviewer will read again. Nothing is ready for a person,
+    and neither Home nor the ticket card may say so."""
+    from fastapi.testclient import TestClient
+
+    from swe_loop.app import build_app
+    from swe_loop.config import Settings
+    from swe_loop.reduce import readiness
+
+    monkeypatch.delenv("DEVIN_API_KEY", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    st, _sid = _seed(tmp_path)
+    st.conn.execute("UPDATE verdicts SET review_severity='completed:1 comment'")
+    st.conn.commit()
+    app = build_app(Settings.from_env(), st, seed_replay=False)
+    with TestClient(app) as c:
+        assert readiness(st, "tkt_D").ready is False
+        home = c.get("/").text
+        assert "ready to merge" not in home.split("Needs you")[-1].split("Where each issue is")[0]
+        card = c.get("/tickets-page?open=tkt_D").text
+        assert "Ready for you" not in card and "in review" in card
+        assert "The remarks go back to the session" in card
+        # once the round is used, the same remarks are the merger's to weigh
+        st.log("review", "1 review remark sent back to the session", ticket_id="tkt_D")
+        assert readiness(st, "tkt_D").ready is True
+        assert "Ready for you" in c.get("/tickets-page?open=tkt_D").text

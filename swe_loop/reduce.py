@@ -76,6 +76,50 @@ def merge_notes(store: Store, ticket_id: str) -> dict[str, Any]:
     return {"reviews": reviews, "notes": notes}
 
 
+def review_is_clean(severity: str | None) -> bool:
+    """Devin Review finished and left nothing to answer: `completed:no issues` or a count of
+    zero. A count above zero, an unknown outcome or a review still requested is not clean."""
+    sev = severity or ""
+    if not sev.startswith("completed:"):
+        return False
+    rest = sev.split(":", 1)[1].strip()
+    if "no issues" in rest:
+        return True
+    n = rest.split(" ")[0]
+    return n.isdigit() and int(n) == 0
+
+
+def review_settled(store: Store, ticket_id: str, severity: str | None) -> bool:
+    """Whether the review round is over for this ticket. A clean review is. A review with remarks
+    is over only when the loop will not send them back again: follow-up is manual, or the rounds
+    the seam allows have been used. Until then the remarks are the session's to answer, not a
+    person's to weigh, and the ticket is not ready."""
+    if review_is_clean(severity):
+        return True
+    if not (severity or "").startswith("completed:"):
+        return False
+    if (store.get_setting("review.followup") or "auto") != "auto":
+        return True
+    try:
+        rounds = int(store.get_setting("review.max_rounds") or 1)
+    except ValueError:
+        rounds = 1
+    done = store._one(
+        "SELECT COUNT(*) AS n FROM timeline WHERE ticket_id=? AND layer='review' "
+        "AND event LIKE '%sent back to the session'",
+        ticket_id,
+    )["n"]
+    return done >= rounds
+
+
+def remember_review_policy(store: Store, cfg: Any) -> None:
+    """The readiness rule needs the seam's follow-up policy and has no config in hand, so the
+    app and the CLI write it to the store when they start."""
+    rv = getattr(cfg, "review", None) or {}
+    store.set_setting("review.followup", str(rv.get("followup", "manual")))
+    store.set_setting("review.max_rounds", str(int(rv.get("max_rounds", 1))))
+
+
 def readiness(store: Store, ticket_id: str) -> TicketReadiness:
     t = store.get_ticket(ticket_id)
     r = TicketReadiness(ticket_id, t["status"])
@@ -90,14 +134,19 @@ def readiness(store: Store, ticket_id: str) -> TicketReadiness:
             r.verified += 1
             if p["pull_request_url"]:
                 r.pr_urls.append(p["pull_request_url"])
+    # reviewed means the reviewer has finished and left nothing for the session to answer. A
+    # review with comments is not the end of the loop's work: the remarks go back to the session,
+    # the checks run again, and the reviewer reads again. Only then is there nothing left but the
+    # merge, which is the one thing a person does.
     r.reviewed = t["status"] == "merged" or (
         t["status"] == "reviewed"
         and r.verified > 0
         and all(
-            (
-                ((_latest_pass(store, wo["id"]) or {}).get("verdict") or {}).get("review_severity")
-                or ""
-            ).startswith("completed:")
+            review_settled(
+                store,
+                ticket_id,
+                ((_latest_pass(store, wo["id"]) or {}).get("verdict") or {}).get("review_severity"),
+            )
             for wo in store.work_orders_for(ticket_id)
             if wo["status"] not in ("split", "refuse", "human_only")
         )

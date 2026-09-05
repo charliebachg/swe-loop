@@ -18,9 +18,10 @@ GREEN, RED, AMBER, PURPLE, TEAL, BLUE = (
 )
 
 
-def _svg(w: int, h: int, body: str, title: str = "") -> str:
+def _svg(w: int, h: int, body: str, title: str = "", align: str = "") -> str:
     t = f"<title>{escape(title)}</title>" if title else ""
-    return f'<svg viewBox="0 0 {w} {h}" width="100%" height="{h}" role="img" style="display:block;overflow:visible">{t}{body}</svg>'
+    par = f' preserveAspectRatio="{align}"' if align else ""
+    return f'<svg viewBox="0 0 {w} {h}" width="100%" height="{h}" role="img"{par} style="display:block;overflow:visible">{t}{body}</svg>'
 
 
 def sparkline(values: list[float], color: str, w: int = 220, h: int = 36, title: str = "") -> str:
@@ -251,3 +252,63 @@ def bars(
                 f'<rect class="bar" x="{x:.1f}" y="{h - 4}" width="{bw:.1f}" height="2" rx="1" fill="{GREY}"><title>{escape(label)}: 0</title></rect>'
             )
     return _svg(w, h, "".join(out))
+
+
+def series(
+    values: list[float],
+    labels: list[str],
+    color: str,
+    unit: str = "",
+    w: int = 1160,
+    h: int = 150,
+) -> str:
+    """One metric over time, as bars: a rule at zero, the largest bin labelled at the top left,
+    a few dates along the bottom, and a hover title on every bin. Zero bins are drawn as a faint
+    dash so the axis reads as continuous time and not as missing data."""
+    n = len(values)
+    pad_l, pad_b, pad_t = 6, 18, 14
+    base = h - pad_b
+    if n == 0:
+        return _svg(
+            w,
+            h,
+            f'<line x1="0" y1="{base}" x2="{w}" y2="{base}" stroke="{RULE}"/>',
+            align="xMinYMid meet",
+        )
+    top = max(values) or 1.0
+    gap = 3.0
+    bw = max((w - pad_l * 2 - gap * (n - 1)) / n, 1.0)
+    out = [
+        f'<line x1="0" y1="{base}" x2="{w}" y2="{base}" stroke="{RULE}"/>',
+        f'<line x1="0" y1="{pad_t}" x2="{w}" y2="{pad_t}" stroke="{GREY}" stroke-dasharray="2 4"/>',
+    ]
+    shown_top = (
+        f"{top:.2f}" if unit == "$" else (f"{top:.1f}" if top != int(top) else f"{int(top)}")
+    )
+    out.append(
+        f'<text x="{pad_l}" y="{pad_t - 4}" font-size="10" fill="{FAINT}" style="{MONO}">'
+        f"{'$' if unit == '$' else ''}{shown_top}{'' if unit in ('', '$') else ' ' + unit}</text>"
+    )
+    for i, v in enumerate(values):
+        x = pad_l + i * (bw + gap)
+        label = labels[i] if i < len(labels) else ""
+        shown = f"{v:.2f}" if unit == "$" else (f"{v:.1f}" if v != int(v) else f"{int(v)}")
+        text = f"{escape(label)}: {'$' if unit == '$' else ''}{shown}{'' if unit in ('', '$') else ' ' + unit}"
+        if v > 0:
+            bh = (base - pad_t) * v / top
+            out.append(
+                f'<rect class="bar" x="{x:.1f}" y="{base - bh:.1f}" width="{bw:.1f}" height="{bh:.1f}" rx="2" fill="{color}"><title>{text}</title></rect>'
+            )
+        else:
+            out.append(
+                f'<rect class="bar" x="{x:.1f}" y="{base - 2}" width="{bw:.1f}" height="2" rx="1" fill="{GREY}"><title>{text}</title></rect>'
+            )
+    # a few dates along the bottom: first, last, and up to three between
+    ticks = sorted({0, n - 1, *(round(k * (n - 1) / 4) for k in (1, 2, 3))}) if n > 1 else [0]
+    for i in ticks:
+        x = pad_l + i * (bw + gap) + bw / 2
+        anchor = "start" if i == 0 else ("end" if i == n - 1 else "middle")
+        out.append(
+            f'<text x="{x:.1f}" y="{h - 4}" font-size="10" fill="{FAINT}" text-anchor="{anchor}" style="{MONO}">{escape(labels[i] if i < len(labels) else "")}</text>'
+        )
+    return _svg(w, h, "".join(out), align="xMinYMid meet")

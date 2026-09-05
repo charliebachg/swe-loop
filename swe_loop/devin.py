@@ -255,6 +255,11 @@ class HttpTransport:
         params: dict[str, Any] = {"session_ids": list(session_ids)} if session_ids else {}
         return self._paged("/sessions/insights", params)
 
+    def generate_insights(self, session_id: str) -> dict[str, Any]:
+        """Ask Devin to write its analysis of one finished session. Free; about a minute; the
+        answer says `already_exists` when it was written before."""
+        return self._req("POST", f"/sessions/{session_id}/insights/generate")
+
     def list_automations(self) -> list[dict[str, Any]]:
         return self._paged("/automations", {})
 
@@ -495,6 +500,41 @@ class FakeTransport:
         self._sessions[session_id]["terminated"] = True
         return {"ok": True, "archived": archive}
 
+    def generate_insights(self, session_id: str) -> dict[str, Any]:
+        self.calls.append(("generate_insights", session_id))
+        s = self._sessions.get(session_id)
+        if s is None:
+            raise DevinError(404, "no such session")
+        ins = s["fixture"].setdefault("insights", {})
+        if (ins.get("analysis") or {}).get("issues"):
+            return {"session_id": session_id, "status": "already_exists"}
+        # the fixture may carry the analysis Devin would write; else a small one stands in
+        ins["analysis"] = s["fixture"].get("insights_analysis") or {
+            **(ins.get("analysis") or {}),
+            "issues": [
+                {
+                    "id": "iss-1",
+                    "label": "environment",
+                    "impact": "low",
+                    "title": "Acceptance commands reference environments the clone lacks",
+                    "issue": "The commands name .venv-p2 and .venv-p3, which the session could not run.",
+                }
+            ],
+            "action_items": [
+                {
+                    "issue_id": "iss-1",
+                    "type": "knowledge",
+                    "action_item": "Say in the knowledge note that the acceptance commands are run by the loop, not by the session.",
+                }
+            ],
+            "timeline": [
+                {"title": "Knowledge notes fetched", "description": "Three notes.", "color": "blue"}
+            ],
+            "suggested_prompt": None,
+            "note_usage": None,
+        }
+        return {"session_id": session_id, "status": "started"}
+
     def list_insights(self, session_ids: list[str] | None = None) -> list[dict[str, Any]]:
         self.calls.append(("list_insights", session_ids))
         out = []
@@ -699,6 +739,9 @@ class DevinClient:
 
     def insights(self, session_ids: list[str]) -> dict[str, dict[str, Any]]:
         return {i["session_id"]: i for i in self.t.list_insights(session_ids)}
+
+    def generate_insights(self, session_id: str) -> dict[str, Any]:
+        return self.t.generate_insights(session_id)
 
     def review_pr(self, pr_url: str) -> dict[str, Any]:
         return self.t.create_pr_review(pr_url)

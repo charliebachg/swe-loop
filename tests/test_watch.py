@@ -191,3 +191,68 @@ def test_stop_is_honoured_promptly(tmp_path, monkeypatch, enabled):
     w.stop()
     assert w.alive is False
     assert all(s <= 2.0 for s in slept)
+
+
+def test_a_look_at_github_files_a_ticket_for_a_new_labelled_issue_and_starts_nothing(
+    tmp_path, monkeypatch
+):
+    """The issue-driven automation is looked after by the same thread: a new issue with the
+    label becomes a ticket and one run row that says so; the next look, with nothing new, leaves
+    no row and no timeline line. No session is started either way."""
+    st = _store(tmp_path)
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp_test")
+    settings = _live_settings(monkeypatch)
+    issue = {
+        "number": 77,
+        "title": "pandas 3: an example issue filed by hand",
+        "body": "",
+        "labels": [{"name": "swe-loop"}],
+        "html_url": "https://github.com/charliebachg/superset/issues/77",
+    }
+    calls: list[str] = []
+
+    def fetch(url, headers):
+        calls.append(url)
+        assert headers["Authorization"] == "Bearer ghp_test"
+        return [
+            issue,
+            {"number": 78, "pull_request": {}, "labels": [{"name": "swe-loop"}]},
+            # the tracking issue: skipped every time, written to the timeline never
+            {"number": 6, "title": "pandas 3 tracking", "labels": [{"name": "swe-loop"}]},
+        ]
+
+    client = _client_with_schedule(enabled=False)
+    before_runs = len(st.list_automation_runs("auto_repair"))
+    before_tl = len(st.timeline(limit=5000))
+    w = Watcher(settings, CFG, st, client, threading.Lock(), fetch=fetch)
+    assert w.start() is False, "a fake Devin client is never watched"
+
+    out = w.look_for_issues()
+
+    assert out["looked"] is True and len(out["new_tickets"]) == 1
+    assert "labels=swe-loop" in calls[0] and "charliebachg/superset" in calls[0]
+    runs = st.list_automation_runs("auto_repair")
+    assert len(runs) == before_runs + 1
+    assert runs[0]["result"]["stopped_after"] == "intake"
+    assert runs[0]["result"]["started_by"] == "a new issue on GitHub"
+    tid = out["new_tickets"][0]
+    assert st.get_ticket(tid)["status"] == "new"
+    assert not st.list_triage_sessions(), "nothing was scoped"
+    assert not [c for c in client.t.calls if c[0] == "create_session"]
+    lines = [e for e in st.timeline(limit=5000)[before_tl:] if e["layer"] == "intake"]
+    assert len(lines) == 1 and lines[0]["ticket_id"] == tid, "one line, the ticket's own"
+
+    # the same repository again: nothing new, nothing written
+    again = w.look_for_issues()
+    assert again["new_tickets"] == []
+    assert len(st.list_automation_runs("auto_repair")) == before_runs + 1
+    assert len(st.timeline(limit=5000)) == before_tl + 1
+
+
+def test_no_token_means_github_is_not_looked_at(tmp_path, monkeypatch):
+    st = _store(tmp_path)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    w = Watcher(
+        _live_settings(monkeypatch), CFG, st, _client_with_schedule(False), threading.Lock()
+    )
+    assert w.look_for_issues()["looked"] is False

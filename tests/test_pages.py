@@ -202,7 +202,10 @@ def test_capability_pages_render_real_state(client):
     # Insights mirrors Devin's own record; with no insights fetched it says so rather
     # than inventing numbers of ours
     assert "read from Devin's own record and not measured by us" in html
-    assert "No insights stored yet" in html
+    # every session the loop started is listed, with Generate where Devin's analysis is not written
+    assert (
+        "0 of" in html and ">Generate<" in html and ">View<" not in html.split("Every session")[-1]
+    )
     body = html.split("<main", 1)[-1]
     assert "ACU per session" not in body and ">ACU<" not in body  # nothing this plan cannot report
     for path in (
@@ -253,9 +256,11 @@ def test_insights_mirrors_devin_and_invents_nothing(tmp_path):
     assert ins.tools(rows) == [{"name": "pandas", "n": 1}, {"name": "pytest", "n": 1}]
     # a session with no playbook is a configuration gap the page must surface
     assert [s["session"] for s in ins.no_playbook(rows)] == ["abc123de"]
-    # empty analysis is reported as empty, never filled with a number of ours
+    # a classification alone is not an analysis: nothing is counted as analysed until Devin
+    # has written its issues, timeline or action items
     adv = ins.advice(rows)
-    assert adv["issues"] == [] and adv["actions"] == [] and adv["analysed"] == 1
+    assert adv["issues"] == [] and adv["actions"] == [] and adv["analysed"] == 0
+    assert ins.written(rows[0]) is False
     # a field with one value everywhere is stated once, not given a column
     assert {"field": "origin", "value": "api"} in ins.constants(rows)
 

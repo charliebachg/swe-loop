@@ -698,6 +698,12 @@ class Store:
         )
         self.conn.commit()
 
+    def insight(self, devin_session_id: str) -> dict[str, Any] | None:
+        rows = self._all(
+            "SELECT payload_json FROM insights WHERE devin_session_id=?", devin_session_id
+        )
+        return json.loads(rows[0]["payload_json"]) if rows else None
+
     def insights(self) -> list[dict[str, Any]]:
         """Every stored insight, newest session first."""
         out = []

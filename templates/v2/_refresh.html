@@ -1,1 +1,1 @@
-{% if refreshUrl %}<div hx-get="{{ refreshUrl }}" hx-trigger="every {{ refreshEvery }}" hx-target="#page" hx-swap="innerHTML" style="display:none"></div>{% endif %}
+{% if refreshUrl %}<div hx-get="{{ refreshUrl }}" hx-trigger="every {{ refreshEvery }} [!document.querySelector('#page details[open] form, #page form:focus-within')]" hx-target="#page" hx-swap="innerHTML" style="display:none"></div>{% endif %}

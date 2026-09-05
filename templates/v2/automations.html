@@ -46,10 +46,10 @@
                 </div>
               </div>
               {% if a.open %}
-              <div style="border-top:1px solid #ecebe6;padding:16px 18px 18px 48px;background:#faf9f6;display:grid;grid-template-columns:1fr 1fr;gap:18px 26px;align-items:start">
-                <div style="grid-column:1 / -1;font-size:13.5px;text-wrap:pretty">{{ a.desc }}{% if a.notes %} <span style="color:#626b78">{{ a.notes }}</span>{% endif %}</div>
+              <div style="border-top:1px solid #ecebe6;padding:14px 18px 16px 48px;background:#faf9f6;display:grid;grid-template-columns:1fr 1fr;gap:14px 26px;align-items:start">
+                <div style="grid-column:1 / -1;font-size:13px;color:#626b78;text-wrap:pretty">{{ a.desc }}</div>
                 <div style="background:#fff;border:1px solid #e2dfd8;border-radius:10px;overflow:hidden">
-                  {% for k in a.rows %}<div style="display:grid;grid-template-columns:120px 1fr;gap:12px;padding:8px 14px;border-bottom:1px solid #ecebe6;font-size:13px;align-items:baseline"><span style="{{ LBL }}">{{ k.k }}</span>{% if k.lazy %}<span hx-get="{{ k.lazy }}" hx-trigger="load" hx-swap="outerHTML" style="color:#8f97a3;text-wrap:pretty">reading the organisation…</span>{% else %}<span style="{% if k.mono %}font:12px/1.5 'JetBrains Mono',monospace;{% endif %}text-wrap:pretty;min-width:0;overflow-wrap:anywhere">{{ k.v }}</span>{% endif %}</div>{% endfor %}
+                  {% for k in a.rows %}<div style="display:grid;grid-template-columns:112px 1fr;gap:12px;padding:7px 14px;{% if not loop.last %}border-bottom:1px solid #ecebe6;{% endif %}font-size:12.5px;align-items:baseline"><span style="{{ LBL }}">{{ k.k }}</span>{% if k.lazy %}<span hx-get="{{ k.lazy }}" hx-trigger="load" hx-swap="outerHTML" style="color:#8f97a3;text-wrap:pretty">reading the organisation…</span>{% else %}<span style="{% if k.mono %}font:12px/1.5 'JetBrains Mono',monospace;{% endif %}text-wrap:pretty;min-width:0;overflow-wrap:anywhere">{{ k.v }}</span>{% endif %}</div>{% endfor %}
                 </div>
                 <div>
                   <div style="{{ LBL }};margin-bottom:6px">runs</div>
@@ -57,7 +57,6 @@
                     {% for r in a.runs %}<div style="display:grid;grid-template-columns:110px 70px 1fr auto;gap:10px;padding:8px 14px;border-bottom:1px solid #ecebe6;font-size:12.5px;align-items:baseline"><span style="font:11.5px/1.5 'JetBrains Mono',monospace;color:#626b78">{{ r.when }}</span><span style="font:11.5px/1.5 'JetBrains Mono',monospace;color:#8f97a3">{{ r.took }}</span><span style="text-wrap:pretty">{{ r.line }}</span><span style="display:inline-block;padding:0 8px;border-radius:10px;font:600 11px/18px 'Instrument Sans',system-ui,sans-serif;background:{{ r.bg }};color:{{ r.fg }}">{{ r.status }}</span></div>{% endfor %}
                     {% if not a.hasRuns %}<div style="padding:10px 14px;font-size:12.5px;color:#8f97a3">Not run from this page yet.</div>{% endif %}
                   </div>
-                  {% if a.produced %}<div style="{{ LBL }};margin:12px 0 6px">tickets it created</div><div style="display:flex;gap:6px;flex-wrap:wrap">{% for t in a.produced %}<a href="{{ t.go }}" style="font:500 12px/1.4 'JetBrains Mono',monospace;color:{{ t.color }};border:1px solid #e2dfd8;border-radius:6px;padding:2px 8px;background:#fff">{{ t.id }}</a>{% endfor %}</div>{% endif %}
                 </div>
               </div>
               {% endif %}

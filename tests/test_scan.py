@@ -145,7 +145,7 @@ def test_the_automation_carries_the_number(tmp_path, monkeypatch):
         a = st.get_automation("auto_scan")
         assert a["max_findings"] == 5  # the seam says five; the page and the prompt follow it
         html = c.get("/automations?open=auto_scan").text
-        assert "at most 5 tickets a run" in html and "tickets per run" in html
+        assert "at most 5 tickets a run" in html  # the header line; there is no settings table
 
 
 def test_the_scan_session_is_visible_and_counted(tmp_path, monkeypatch):

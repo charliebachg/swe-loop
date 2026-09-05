@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -125,12 +126,15 @@ STAGE5 = [
 ]
 STAGE5_ACTOR = ["code", "devin", "devin", "gate", "person"]
 BRAND = "Backstop"
-SIZE_HOURS = {"XS": 0.5, "S": 1.0, "M": 3.0, "L": 8.0, "XL": 20.0}
-HUMAN_HELP = (
-    "Engineer time for the same change, from the size the AI gave each fix when it scoped it: "
-    "XS half an hour, S one hour, M three hours, L eight, XL twenty. It is that estimate and "
-    "nothing more, so read it as a rough scale, not as time saved."
-)
+SOURCE_PLAIN = {"github": "issues", "scan": "scan agent", "code_scan": "security scan"}
+
+
+def source_tag(t: dict[str, Any] | None) -> str:
+    """Where a ticket came from, in the words the Automations page uses."""
+    src = (t or {}).get("source") or ""
+    return SOURCE_PLAIN.get(src, src or "")
+
+
 KIND_PLAIN = {
     "human_only": "needs you",
     "refuse": "waiting",
@@ -501,7 +505,77 @@ def _usd_or_min(store: Store, row: dict[str, Any], kind: str, rates: dict[str, f
     return f"{secs / 60.0:.0f} min"
 
 
-def insights(store: Store, q: dict[str, str] | None = None) -> dict[str, Any]:
+def _analysis_detail(r: dict[str, Any]) -> dict[str, Any]:
+    """Devin's written analysis of one session, shaped for the page: the problems it hit with
+    their impact, what it says is worth doing and of what kind, the timeline it wrote, the prompt
+    it would have preferred, and how the knowledge notes served it."""
+    from swe_loop import insights as ins
+
+    a = r.get("analysis") or {}
+    impact_colour = {"high": PL["bad"][0], "medium": PL["run"][0], "low": FAINT}
+    issues = [
+        {
+            "title": i.get("title") or i.get("label") or "issue",
+            "label": (i.get("label") or "").replace("_", " "),
+            "impact": (i.get("impact") or "").lower(),
+            "color": impact_colour.get((i.get("impact") or "").lower(), FAINT),
+            "text": i.get("issue") or ins._text(i),
+        }
+        for i in a.get("issues") or []
+        if isinstance(i, dict)
+    ]
+    actions = [
+        {
+            "type": (i.get("type") or "other").replace("_", " "),
+            "text": i.get("action_item") or ins._text(i),
+        }
+        for i in a.get("action_items") or []
+        if isinstance(i, dict)
+    ]
+    timeline = [
+        {"title": i.get("title") or "", "text": i.get("description") or ""}
+        for i in a.get("timeline") or []
+        if isinstance(i, dict)
+    ]
+    sp = a.get("suggested_prompt") or {}
+    prompt = sp.get("suggested_prompt") if isinstance(sp, dict) else (sp or "")
+    nu = a.get("note_usage") or {}
+    notes = {
+        "good": [ins._text(x) for x in (nu.get("good_usages") or [])]
+        if isinstance(nu, dict)
+        else [],
+        "bad": [ins._text(x) for x in (nu.get("bad_usages") or [])] if isinstance(nu, dict) else [],
+    }
+    return {
+        "issues": issues,
+        "actions": actions,
+        "timeline": timeline,
+        "prompt": prompt or "",
+        "notes": notes,
+        "empty": not (issues or actions or timeline or prompt),
+    }
+
+
+def _insight_modal(
+    table: list[dict[str, Any]], listed: list[dict[str, Any]], view: str, q: dict[str, str]
+) -> dict[str, Any] | None:
+    """The one row a person asked to see, with Devin's analysis laid out from its JSON and the
+    JSON itself underneath, pretty-printed."""
+    row = next((x for x in table if x["sid"] == view and x["state"] == "view"), None)
+    if row is None:
+        return None
+    rec = next(r for r in listed if r.get("session_id") == view)
+    return {
+        **row,
+        "detail": _analysis_detail(rec),
+        "raw": json.dumps(rec.get("analysis"), indent=2, ensure_ascii=False),
+        "closeUrl": url("/devin/insights", panel=q.get("panel") or None),
+    }
+
+
+def insights(
+    store: Store, q: dict[str, str] | None = None, pending: set[str] | None = None
+) -> dict[str, Any]:
     """Devin's own read on the sessions it ran, mirrored here so the behaviour can be watched
     and the instructions improved. Everything on this page comes from Session Insights; nothing
     on it is our own measurement, which is the point of keeping it separate from the Report.
@@ -510,6 +584,8 @@ def insights(store: Store, q: dict[str, str] | None = None) -> dict[str, Any]:
     from swe_loop import insights as ins
 
     q = q or {}
+    pending = pending or set()
+    view = q.get("view") or ""
     open_panels = {x for x in (q.get("panel") or "").split(",") if x}
     rows = store.insights()
     started = ins.known_ids(store)
@@ -548,14 +624,38 @@ def insights(store: Store, q: dict[str, str] | None = None) -> dict[str, Any]:
     for r in store.list_scan_sessions():
         which[r["devin_session_id"]] = ("read the repository", "none")
 
+    # every session the loop started is a row, whether or not Devin's record has been fetched
+    # yet: the ones without a record can still be asked for an analysis
+    have = {r.get("session_id") for r in rows}
+    listed = rows + [
+        {"session_id": sid, "url": f"https://app.devin.ai/sessions/{sid}", "title": ""}
+        for sid in started
+        if sid not in have
+    ]
     table = []
-    for r in rows:
+    for r in listed:
         sid = r.get("session_id") or ""
         did, tk = which.get(sid, ("", "none"))
         cl = (r.get("analysis") or {}).get("classification") or {}
         conf = cl.get("confidence")
+        has = ins.written(r)
+        if has:
+            state = "view"
+        elif sid in pending:
+            state = "writing"
+        elif store.get_setting(f"insights.empty.{sid}"):
+            # asked before: Devin answered already_exists and wrote nothing
+            state = "empty"
+        else:
+            state = "generate"
         table.append(
             {
+                "sid": sid,
+                "state": state,
+                "open": has and view == sid,
+                "viewUrl": url("/devin/insights", view=sid, panel=q.get("panel") or None),
+                "generateUrl": f"/devin/insights/{sid}/generate",
+                "category": (cl.get("category") or "").replace("_", " ") or "uncategorised",
                 "id": sid[:12],
                 "url": r.get("url", ""),
                 "did": did or clip(r.get("title", ""), 40),
@@ -613,6 +713,12 @@ def insights(store: Store, q: dict[str, str] | None = None) -> dict[str, Any]:
         "advice": adv,
         "adviceEmpty": not (adv["issues"] or adv["actions"] or adv["prompts"] or adv["notes"]),
         "rows": table,
+        "written": sum(1 for x in table if x["state"] == "view"),
+        "modal": _insight_modal(table, listed, view, q),
+        "writing": sorted(pending),
+        "refreshUrl": url("/devin/insights", view=view or None, panel=q.get("panel") or None)
+        if pending
+        else "",
     }
 
 
@@ -885,12 +991,41 @@ def _pos(pat: str) -> int:
 
 
 # ---------------------------------------------------------------------------- home
+def _fold_findings(store: Store, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Several scanner findings waiting on the same decision become one row that opens. A board
+    with a hundred findings should say a hundred, not grow a hundred rows."""
+    finds = [r for r in rows if (store.get_ticket(r["ticket"]) or {}).get("source") == "code_scan"]
+    if len(finds) < 2:
+        return rows
+    rest = [r for r in rows if r not in finds]
+    oldest = min(finds, key=lambda r: r["ageSort"])
+    first = finds[0]
+    group = {
+        **first,
+        "ref": str(len(finds)),
+        "ticket": "",
+        "src": "security scan",
+        "what": f"{len(finds)} security findings · each is a question until a person confirms it",
+        "hover": "the scanner reported these; a person names the rule each one breaks, or dismisses it",
+        "age": oldest["age"],
+        "ageSort": oldest["ageSort"],
+        "go": url("/tickets-page"),
+        "answerUrl": "",
+        "mergeUrl": "",
+        "dismissUrl": "",
+        "group": finds,
+    }
+    at = rows.index(first)
+    out = rest[:]
+    out.insert(min(at, len(out)), group)
+    return out
+
+
 def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
     hide_sec = codescan.masked(store)
     h = pages.home(store)
     counts = h["counts"]
     tickets = store.list_tickets()
-    pats = {t["id"]: _pattern(store, t) for t in tickets}
     verdicts = [t for t in tickets if t.get("triage_verdict_json")]
     decided = [t for t in tickets if t.get("router_decision")]
     to_devin = [t for t in decided if t["router_decision"] == "devin"]
@@ -934,8 +1069,15 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
     verified_sessions = [
         x for x in passed if (store.latest_verdict(x["id"]) or {}).get("review_severity")
     ]
+    by_src = Counter(source_tag(t) for t in tickets)
     counts5 = [
-        (len(tickets), f"{len(tickets)} issue{'s' if len(tickets) != 1 else ''} filed"),
+        (
+            len(tickets),
+            f"{len(tickets)} filed · "
+            + " · ".join(f"{n} {name}" for name, n in by_src.most_common())
+            if by_src
+            else "0 filed",
+        ),
         (
             len(verdicts),
             f"{len(verdicts)} plan{'s' if len(verdicts) != 1 else ''} · {len(to_devin)} to the AI · {len(to_person)} to your team",
@@ -953,36 +1095,6 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
     loop = []
     for i, (name, meaning, covers) in enumerate(STAGE5):
         actor = STAGE5_ACTOR[i]
-        dots = []
-        for t in tickets:
-            pat = pats[t["id"]]
-            pos = _pos(pat)
-            if pos not in covers:
-                continue
-            st = pat[pos]
-            d = dot(store, t["id"], st == "d")
-            issue = (
-                (t.get("external_ref") or "").rsplit("#", 1)[-1]
-                if t.get("external_ref") and "#" in t["external_ref"]
-                else ""
-            )
-            state = (
-                "done here"
-                if st == "d"
-                else ("held for your team" if st == "b" else "waiting here")
-            )
-            dots.append(
-                {
-                    **d,
-                    "L": d["ref"],
-                    "bg": d["dotBg"],
-                    "fg": d["dotFg"],
-                    "ring": d["color"],
-                    "title": f"{d['ref']} {clip(codescan.safe_title(t, hide_sec), 70)} · {state}"
-                    + (f" · issue #{issue}" if issue else ""),
-                    "go": url("/tickets-page", open=t["id"]),
-                }
-            )
         loop.append(
             {
                 "name": name,
@@ -993,7 +1105,6 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                 "count": str(counts5[i][0]),
                 "context": counts5[i][1],
                 "numColor": PL["person"][0] if i == 4 else INK,
-                "dots": dots,
             }
         )
     needs = []
@@ -1018,22 +1129,32 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
     on, off = ("#e2e9f6", "#2457a8"), ("transparent", "#8f97a3")
     b = store.budget_state()
     sp0 = cost.spend(store)
-    human_hours = 0.0
-    for x in passed:
-        wo = store.get_work_order(x["work_order_id"]) or {}
-        human_hours += SIZE_HOURS.get(str(wo.get("est_size") or "S").upper(), 1.0)
-    conc = next((r["concurrency"] for r in store.list_automations() if r["kind"] == "repair"), 4)
+    # every kind of session counts as working: a ticket being scoped is Devin at work too
+    working_now = counts["running"] + sum(
+        1
+        for x in store.list_triage_sessions() + store.list_scan_sessions()
+        if x.get("devin_session_id") and not x.get("terminal_at")
+    )
+    starting = sum(
+        1
+        for x in sess
+        if x.get("status") == "reserved"
+        and not x.get("devin_session_id")
+        and not x.get("terminal_at")
+    )
+    working_now += starting
     gate_n = len(passed)
     gate_total = sum(1 for x in sess if store.latest_verdict(x["id"]))
     verified = len(merged)
     blocking = [x for x in needs if x["kind"] != "ready to merge"]
     five = [
         {
-            "n": str(counts["running"]),
-            "of": f"of {conc} at once",
+            "n": str(working_now),
+            "of": f"{starting} starting" if starting else "",
             "label": "AI sessions working now",
-            "color": PL["run"][0] if counts["running"] else FAINT,
+            "color": PL["run"][0] if working_now else FAINT,
             "pct": None,
+            "live": bool(working_now),
         },
         {
             "n": str(counts["needs_human"] + len(blocking)),
@@ -1059,12 +1180,8 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                     if sp0["usd"] is not None
                     else "not yet in dollars"
                 ),
-                "label": "AI cost" if sp0["usd"] is not None else "AI working time",
+                "label": "",
                 "color": INK,
-                "help": _cost_help(sp0),
-                "human": human_hours,
-                "humanHelp": HUMAN_HELP
-                + f" Here: {len(passed)} fix(es) that passed the tests, {human_hours:g} h in total; the AI worked {sp0['active_min']:.0f} minutes for them.",
                 "pct": None,
             }
         ),
@@ -1137,8 +1254,8 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         {
             **five[1],
             "of": (f"oldest {_age(oldest_wait)}" if oldest_wait else ""),
-            "svg": "",
-            "note": "",
+            "svg": spark[3]["svg"],
+            "note": f"{spark[3]['last']} handed over in this span",
         },
         {**five[2], "svg": spark[1]["svg"], "note": spark[1]["span"]},
         {**five[3], "svg": spark[2]["svg"], "note": spark[2]["last"]},
@@ -1148,7 +1265,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
             "label": "fixes that needed no help",
             "color": PL["ok"][0] if quiet else FAINT,
             "pct": None,
-            "svg": "",
+            "svg": charts.bars([], [], PL["ok"][0]),
             "note": (f"{len(all_sessions) - quiet} needed an answer" if all_sessions else ""),
         },
     ]
@@ -1166,22 +1283,27 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         inbox.append(
             {
                 **dot(store, e["ticket_id"], False),
+                "ticket": e["ticket_id"],
+                "src": source_tag(t),
                 "kind": KIND_PLAIN.get(e["kind"], e["kind"]),
                 **pill("bad"),
                 "what": clip(plain(codescan.safe_title(t, hide_sec) or e["reason"]), 70),
                 "hover": plain(e["reason"]),
                 "age": _age(e["created_at"]),
+                "ageSort": e["created_at"] or "",
                 "go": url("/tickets-page", open=e["ticket_id"]),
                 "answerUrl": f"/tickets/{e['ticket_id']}/answer" if can_answer else "",
                 "mergeUrl": "",
                 "dismissUrl": f"/escalations/{e['id']}/resolve",
             }
         )
+    inbox = _fold_findings(store, inbox)
     for tid in h["summary"]["ready"]:
         mn = reduce_mod.merge_notes(store, tid)
         inbox.append(
             {
                 **dot(store, tid, False),
+                "src": source_tag(store.get_ticket(tid)),
                 "kind": KIND_PLAIN["ready to merge"],
                 **pill("ok"),
                 "what": plain(
@@ -1311,6 +1433,7 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
         if len(tickets) != 1
         else "one issue, left to right from received to shipped",
         "loop": loop,
+        "inboxCount": sum(len(n["group"]) if n.get("group") else 1 for n in inbox),
         "needs": needs,
         "events": events,
         "groups": groups,
@@ -1379,12 +1502,23 @@ def _sparklines(store: Store, rng: str = "run") -> list[dict[str, Any]]:
             verdicts.append((datetime.fromisoformat(v["created_at"]), v["gate_result"]))
         except (TypeError, ValueError):
             pass
+    asks: list[datetime] = []
+    for e in store._all("SELECT created_at FROM escalations"):
+        try:
+            asks.append(datetime.fromisoformat(e["created_at"]))
+        except (TypeError, ValueError):
+            pass
     times = [t for t, _ in starts] + [t for t, _ in verdicts]
     if not times:
-        empty = charts.sparkline([], PURPLE)
+        empty = charts.bars([], [], PURPLE)
         return [
             {"label": k, "svg": empty, "span": "no sessions yet", "last": "0"}
-            for k in ("sessions started", "ACU" if metered else "AI minutes", "checks passed")
+            for k in (
+                "sessions started",
+                "ACU" if metered else "AI minutes",
+                "checks passed",
+                "handed to your team",
+            )
         ]
     now_ = datetime.now(UTC)
     if rng == "24h":
@@ -1403,8 +1537,11 @@ def _sparklines(store: Store, rng: str = "run") -> list[dict[str, Any]]:
 
     labels = [(lo + timedelta(seconds=width * i)).strftime("%d %b %H:%M") for i in range(bins)]
 
-    s_bins, a_bins, g_bins = [0.0] * bins, [0.0] * bins, [0.0] * bins
+    s_bins, a_bins, g_bins, e_bins = [0.0] * bins, [0.0] * bins, [0.0] * bins, [0.0] * bins
     fails = 0
+    for t in asks:
+        if lo <= t <= hi:
+            e_bins[bucket(t)] += 1
     for t, acu in starts:
         if lo <= t <= hi:
             s_bins[bucket(t)] += 1
@@ -1435,6 +1572,12 @@ def _sparklines(store: Store, rng: str = "run") -> list[dict[str, Any]]:
             "svg": charts.bars(g_bins, labels, TEAL, unit="passes"),
             "span": span,
             "last": f"{int(sum(g_bins))} passed · {fails} failed",
+        },
+        {
+            "label": "handed to your team",
+            "svg": charts.bars(e_bins, labels, PL["bad"][0], unit="handed over"),
+            "span": span,
+            "last": str(int(sum(e_bins))),
         },
     ]
 
@@ -1670,7 +1813,12 @@ def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
             else "Waiting for a session to read the issue."
         )
     if st in ("triaged", "routed"):
-        return f"Scoped by the AI: {row.get('count') or 'the sites are known'}. Waiting for a repair session."
+        tail = (
+            "Starting the repair session; Devin is setting up its machine."
+            if row.get("starting")
+            else "Waiting for a repair session."
+        )
+        return f"Scoped by the AI: {row.get('count') or 'the sites are known'}. {tail}"
     if st in ("dispatched", "running"):
         el = (sd or {}).get("elapsed") or ""
         since = f", {el} so far" if el else ""
@@ -1687,6 +1835,11 @@ def _summary(t: dict[str, Any], row: dict[str, Any]) -> str:
             return (
                 "Every check passed on a clean copy. The AI reviewer is reading it now, and the "
                 "pull request is held as a draft until it is done."
+            )
+        if "found" in review:
+            return plain(
+                f"Every check passed on a clean copy; {review_txt}. The remarks go back to the "
+                "session, and the checks and the reviewer run again before this is ready."
             )
         return plain(f"Every check passed on a clean copy; {review_txt}. Waiting on your decision.")
     return row.get("note") or ""
@@ -1765,6 +1918,9 @@ def tickets(store: Store, cfg: TargetConfig, q: dict[str, str], note: str = "") 
         if not _passes({"route": t.get("router_decision"), "status": t.get("status")}, f):
             continue
         sd = r.get("sd")
+        # between the verdict and Devin answering POST /sessions the loop is asking for a
+        # machine; that is work in progress, not a wait for a person
+        r["starting"] = bool(sd and sd.get("status") == "reserved" and not sd.get("devin_id"))
         files = i.get("files") or []
         sites = i.get("sites") or 0
         # Nothing has been read yet, so the size of the work is not zero, it is unknown. A row
@@ -2049,9 +2205,17 @@ def tracker(
                 "pad": "10px",
                 "cells": cells,
                 "classes": ", ".join(r.get("classes") or []),
-                "status": STATUS_PLAIN.get(r["status"], r["status"]),
-                "stBg": PL[st_kind][1],
-                "stFg": PL[st_kind][0],
+                "status": (
+                    "starting"
+                    if r.get("starting")
+                    else (
+                        "in review"
+                        if r["status"] == "reviewed" and not r["ready"] and not r["merged"]
+                        else STATUS_PLAIN.get(r["status"], r["status"])
+                    )
+                ),
+                "stBg": PL["run" if r.get("starting") else st_kind][1],
+                "stFg": PL["run" if r.get("starting") else st_kind][0],
                 "note": r.get("last_event") or "",
                 "open": is_open,
                 "chev": "▲" if is_open else "▼",
@@ -2413,6 +2577,9 @@ def _run_line(res: dict[str, Any]) -> str:
         )
     if res.get("scan") == "ran, nothing new":
         return f"the schedule ran ({res.get('scheduled_runs', 1)}), nothing new to file"
+    if res.get("started_by") == "a new issue on GitHub":
+        n_new = len(res.get("new_tickets") or [])
+        return f"a new issue on GitHub · {plural(n_new, 'ticket')} filed, nothing started"
     parts = []
     if "issues" in res:
         n_new = len(res.get("new_tickets") or [])
@@ -2420,7 +2587,7 @@ def _run_line(res: dict[str, Any]) -> str:
     if "triaged" in res:
         parts.append(f"{plural(res['triaged'], 'ticket')} scoped")
     if "dispatched" in res:
-        parts.append(f"{plural(res['dispatched'], 'fix')} started")
+        parts.append(f"{plural(res['dispatched'], 'fix', 'fixes')} started")
     if "gated" in res:
         parts.append(f"{res['gated']} checked")
     if res.get("escalated"):
@@ -2442,7 +2609,6 @@ def automations(
     a = pages.automations(store, cfg, settings, client, running)
     add_open = q.get("add") == "1" or err
     mono = "'JetBrains Mono',monospace"
-    tk_numbers = {t["id"]: t.get("number") for t in store.list_tickets()}
     autos = []
     for r in a["rows"]:
         is_next = r["availability"] == "next"
@@ -2455,7 +2621,11 @@ def automations(
         src = t.get("source", "")
         if src == "github" and t.get("event") == "issues":
             trig = f"issues on {r['target']} with label {t.get('issue_label') or 'any'}"
-            how = "on click, by webhook" + (f", {r['schedule']}" if r.get("schedule") else "")
+            how = (
+                "on click, or when a new labelled issue appears; looked for every 2 min"
+                if a["live"]
+                else "on click, by webhook"
+            ) + (f", {r['schedule']}" if r.get("schedule") else "")
         elif src == "github":
             trig = f"{t.get('event', '')} on {r['target']}" + (
                 " · " + ", ".join(f"{k}={v}" for k, v in (t.get("match") or {}).items())
@@ -2483,11 +2653,6 @@ def automations(
             trig = f"{src}:{t.get('event', '')}"
             how = "by webhook"
         runs = store.list_automation_runs(r["id"], 8)
-        produced: list[str] = []
-        for run in runs:
-            for tid in run["result"].get("new_tickets") or []:
-                if tid not in produced:
-                    produced.append(tid)
         kind_label = {
             "repair": "event-based · default",
             "scan": "finds the work itself",
@@ -2541,17 +2706,15 @@ def automations(
                 "removable": r["kind"] in ("custom", "scan") and r["id"] != "auto_scan",
                 "removeUrl": f"/automations/{r['id']}/delete",
                 "desc": r.get("kind_note") or "",
-                "notes": r.get("notes") or "",
                 "rows": [
                     {"k": "what starts it", "v": trig, "mono": True},
                     {"k": "how it runs", "v": how, "mono": False},
-                    {"k": "repository", "v": r["target"], "mono": True},
                     {"k": "playbook", "v": r["playbook"] or "none", "mono": True},
                     *(
                         [
                             {
                                 "k": "tickets per run",
-                                "v": f"at most {r['max_findings']}, the most important first",
+                                "v": f"at most {r['max_findings']}",
                                 "mono": False,
                             }
                         ]
@@ -2560,10 +2723,7 @@ def automations(
                     ),
                     {
                         "k": "per session",
-                        "v": f"Devin's limit {int(r['max_acu'])} ACU · "
-                        + f"{plural(r['concurrency'], 'session')} at once"
-                        if r.get("max_acu")
-                        else f"{plural(r['concurrency'], 'session')} at once",
+                        "v": f"{int(r['max_acu'])} ACU" if r.get("max_acu") else "Devin's default",
                         "mono": False,
                     },
                     {
@@ -2584,14 +2744,6 @@ def automations(
                     for run in runs
                 ],
                 "hasRuns": bool(runs),
-                "produced": [
-                    {
-                        "id": ref(tk_numbers.get(tid)),
-                        "go": url("/tickets-page", open=tid),
-                        "color": tk_color(tid),
-                    }
-                    for tid in produced
-                ],
             }
         )
     return {
@@ -2800,6 +2952,116 @@ def _plain_funnel(rows: list[tuple[str, int, Any]]) -> list[tuple[str, int, int]
     return out
 
 
+METRICS: list[tuple[str, str, str, str]] = [
+    # key, label, unit, colour
+    ("prs", "Pull requests opened", "", PURPLE),
+    ("merged", "Pull requests merged", "", PL["person"][0]),
+    ("cost", "Cost, dollars", "$", INK),
+    ("sessions", "Sessions started", "", PURPLE),
+    ("tickets", "Tickets filed", "", "#5b6f8a"),
+    ("passed", "Checks passed", "", TEAL),
+    ("handed", "Handed to your team", "", PL["bad"][0]),
+]
+METRIC_RANGES: list[tuple[str, str]] = [("1d", "last day"), ("7d", "7 days"), ("30d", "30 days")]
+
+
+def _metric_points(store: Store, key: str) -> list[tuple[datetime, float]]:
+    """Every event of one kind with its time and weight, from the store's own tables."""
+
+    def t(iso: str | None) -> datetime | None:
+        try:
+            return datetime.fromisoformat(iso) if iso else None
+        except (TypeError, ValueError):
+            return None
+
+    pts: list[tuple[datetime, float]] = []
+    if key == "tickets":
+        pts = [(x, 1.0) for r in store.list_tickets() if (x := t(r["created_at"]))]
+    elif key == "sessions":
+        rows = (
+            store._all("SELECT created_at FROM sessions")
+            + store.list_triage_sessions()
+            + store.list_scan_sessions()
+        )
+        pts = [(x, 1.0) for r in rows if (x := t(r["created_at"]))]
+    elif key == "prs":
+        # the moment this app first saw the pull request: its first check, else the session's end
+        for r in store._all("SELECT * FROM sessions WHERE pull_request_url IS NOT NULL"):
+            first = store._all(
+                "SELECT MIN(created_at) AS at FROM verdicts WHERE session_id=?", r["id"]
+            )
+            when = (first[0]["at"] if first else None) or r["terminal_at"] or r["created_at"]
+            if x := t(when):
+                pts.append((x, 1.0))
+    elif key == "merged":
+        pts = [
+            (x, 1.0)
+            for r in store._all("SELECT at FROM human_actions WHERE kind='merge'")
+            if (x := t(r["at"]))
+        ]
+    elif key == "passed":
+        pts = [
+            (x, 1.0)
+            for r in store._all("SELECT created_at FROM verdicts WHERE gate_result='pass'")
+            if (x := t(r["created_at"]))
+        ]
+    elif key == "handed":
+        pts = [
+            (x, 1.0)
+            for r in store._all("SELECT created_at FROM escalations")
+            if (x := t(r["created_at"]))
+        ]
+    elif key == "cost":
+        kr = cost.rates(store)
+        for kind, rows in (
+            ("rep", store._all("SELECT * FROM sessions")),
+            ("tri", store.list_triage_sessions()),
+            ("scn", store.list_scan_sessions()),
+        ):
+            for r in rows:
+                if x := t(r["created_at"]):
+                    pts.append((x, cost.session_usd(store, r, kind, kr)[0]))
+    return pts
+
+
+def metric_series(store: Store, key: str, rng: str) -> dict[str, Any]:
+    """One metric against time for the Report: hourly bins over the last day, six-hour bins over
+    seven days, daily bins over thirty. The total in the range sits beside the picker."""
+    from datetime import timedelta
+
+    key = key if key in {m[0] for m in METRICS} else METRICS[0][0]
+    rng = rng if rng in {r[0] for r in METRIC_RANGES} else "7d"
+    _, label, unit, color = next(m for m in METRICS if m[0] == key)
+    now_ = datetime.now(UTC)
+    if rng == "1d":
+        lo, bins, step, fmt = now_ - timedelta(hours=24), 24, timedelta(hours=1), "%d %b %H:%M"
+    elif rng == "30d":
+        lo, bins, step, fmt = now_ - timedelta(days=30), 30, timedelta(days=1), "%d %b"
+    else:
+        lo, bins, step, fmt = now_ - timedelta(days=7), 28, timedelta(hours=6), "%d %b %H:%M"
+    vals = [0.0] * bins
+    total = 0.0
+    for when, weight in _metric_points(store, key):
+        if when < lo or when > now_:
+            continue
+        i = min(bins - 1, int((when - lo) / step))
+        vals[i] += weight
+        total += weight
+    labels = [(lo + step * i).strftime(fmt) for i in range(bins)]
+    shown = f"${total:.2f}" if unit == "$" else f"{int(total)}"
+    return {
+        "key": key,
+        "range": rng,
+        "label": label,
+        "unit": unit,
+        "svg": charts.series(vals, labels, color, unit=unit),
+        "total": shown,
+        "caption": f"{shown} in the {dict(METRIC_RANGES)[rng]}"
+        + (" · by the session's start" if key == "cost" else ""),
+        "empty": total == 0,
+    }
+
+
 def report(
     store: Store, cfg: TargetConfig, inventory_dir: Path, q: dict[str, Any]
 ) -> dict[str, Any]:
@@ -2821,6 +3083,9 @@ def report(
     # working, which is what "panel" holds
     open_panels = {x for x in (q.get("panel") or "").split(",") if x}
 
+    metric = q.get("metric") or METRICS[0][0]
+    mrange = q.get("range") or "7d"
+
     def keep(**extra: Any) -> dict[str, Any]:
         """Everything else on the page stays where it was when one panel is opened."""
         return {
@@ -2828,8 +3093,12 @@ def report(
             "log": "1" if log_open else None,
             "lt": log_ticket or None,
             "panel": ",".join(sorted(open_panels)) or None,
+            "metric": metric if metric != METRICS[0][0] else None,
+            "range": mrange if mrange != "7d" else None,
             **extra,
         }
+
+    series_ = metric_series(store, metric, mrange)
 
     def card(
         key: str,
@@ -2959,6 +3228,23 @@ def report(
     )
     return {
         "window": rates.window(store),
+        "metric": {
+            **series_,
+            "options": [
+                {"key": k, "label": lbl, "on": k == series_["key"]} for k, lbl, _u, _c in METRICS
+            ],
+            "ranges": [
+                {
+                    "key": k,
+                    "label": lbl,
+                    "on": k == series_["range"],
+                    "href": url("/report", **keep(range=k)),
+                }
+                for k, lbl in METRIC_RANGES
+            ],
+            # the picker is a select; htmx sends its value as `metric` and these ride along
+            "vals": json.dumps({k: v for k, v in keep(metric=None).items() if v is not None}),
+        },
         "live": {
             **live,
             "runningLabel": f"{live['running']} session{'s' if live['running'] != 1 else ''} working now"

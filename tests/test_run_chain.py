@@ -45,7 +45,7 @@ def test_run_pulls_issues_triages_and_dispatches(fresh):
     # the page shows the run and the tickets it created
     html = c.get("/automations?open=auto_repair").text
     assert "5 issues found, 5 new tickets" in html and "5 tickets scoped" in html
-    assert "tkt_A" in html and "tickets it created" in html
+    assert "tickets it created" not in html, "no chip per ticket; the run line carries the count"
     # a second run finds nothing new and touches no ticket
     before = {t["id"]: t["status"] for t in st.list_tickets()}
     c.post("/automations/auto_repair/run")
@@ -106,7 +106,8 @@ def test_pages_poll_while_something_runs(fresh):
     )
     for path in ("/", "/tickets-page", "/automations", "/devin/sessions"):
         html = c.get(path).text
-        assert 'hx-trigger="every 1s"' in html, path  # a session is working: follow it closely
+        assert 'hx-trigger="every 1s [' in html, path  # a session is working: follow it closely
+        assert "details[open] form" in html, path  # but never while a person has a form open
     # the tickets page says what the ticket is doing, and links the live session
     html = c.get("/tickets-page").text
     assert "The AI is working on the fix" in html and "open the session" in html

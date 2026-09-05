@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from swe_loop import cost
+from swe_loop import reduce as reduce_mod
 from swe_loop.config import Settings, TargetConfig
 from swe_loop.devin import DevinClient
 from swe_loop.dispatch import dispatch
@@ -49,6 +50,7 @@ def _ctx():
     settings = Settings.from_env()
     cfg = TargetConfig.load(settings.config_path)
     store = Store(settings.db_path)
+    reduce_mod.remember_review_policy(store, cfg)
     client = DevinClient.from_settings(settings)
     return settings, cfg, store, client
 
@@ -408,6 +410,17 @@ def run_once(
     return out
 
 
+def cmd_insights(args: argparse.Namespace) -> int:
+    """Session Insights, the analysis half: Devin's own read of what went wrong in a session and
+    what the prompt or the knowledge should have said. Written only when asked; free."""
+    from swe_loop import insights as ins
+
+    _settings, _cfg, store, client = _ctx()
+    out = ins.generate(store, client, args.session_ids, wait_s=args.wait, log=print)
+    print(json.dumps(out, indent=1))
+    return 0 if not out["missing"] else 2
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     settings, cfg, store, client = _ctx()
     if not settings.live:
@@ -741,6 +754,12 @@ def main(argv: list[str] | None = None) -> int:
     rs.add_argument("--no-push", action="store_true", help="restore in the local clone only")
     rs.set_defaults(fn=cmd_reset_shard)
     sub.add_parser("receipts").set_defaults(fn=cmd_receipts)
+    ig = sub.add_parser(
+        "insights", help="ask Devin to analyse finished sessions and keep the result"
+    )
+    ig.add_argument("session_ids", nargs="+", help="Devin session ids")
+    ig.add_argument("--wait", type=float, default=240.0, help="seconds to wait for the analyses")
+    ig.set_defaults(fn=cmd_insights)
     ac = sub.add_parser("apply-config")
     ac.add_argument(
         "--dry-run", action="store_true", help="print what would be created; create nothing"

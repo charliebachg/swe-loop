@@ -69,31 +69,17 @@
   {% endfor %}
 </div>
 
-<div style="{{ CARD }};padding:16px 18px;margin-bottom:16px">
-  <div style="{{ LBL }}">What Devin would change</div>
-  <div style="font-size:12.5px;color:#8f97a3;margin-top:4px">Devin's own read of each session, which is how the instructions get better rather than the code · {{ i.advice.analysed }} of {{ i.advice.total }} analysed</div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:12px">
-    {% for group, title in [(i.advice.issues, 'Problems it hit'), (i.advice.actions, 'Worth doing'), (i.advice.prompts, 'A better prompt'), (i.advice.notes, 'Knowledge it used')] %}
-    <div>
-      <div style="{{ LBL }}">{{ title }} <span style="color:#c9c5bb">{{ group | length }}</span></div>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
-        {% for x in group %}<div style="font-size:12.5px;text-wrap:pretty"><a href="{{ x.url }}" target="_blank" style="{{ MONO }};font-size:11px">{{ x.session }}</a> {{ x.text }}</div>{% endfor %}
-        {% if not group %}<div style="font-size:12.5px;color:#8f97a3">none reported</div>{% endif %}
-      </div>
-    </div>
-    {% endfor %}
-  </div>
-</div>
-
 <div style="{{ CARD }};overflow:hidden">
   <div style="display:flex;align-items:baseline;gap:10px;padding:12px 16px;border-bottom:1px solid #e2dfd8">
     <span style="{{ LBL }}">Every session</span>
-    <span style="font-size:12px;color:#8f97a3">as Devin records it</span>
+    <span style="font-size:12px;color:#8f97a3">as Devin records it · {{ i.written }} of {{ i.rows | length }} analysed</span>
     {% if i.constants %}<span style="margin-left:auto;font-size:11.5px;color:#8f97a3">same on all of them: {% for c in i.constants %}{{ c.field }} {{ c.value }}{% if not loop.last %} · {% endif %}{% endfor %}</span>{% endif %}
   </div>
-  {% set G = "104px 68px 150px 62px 60px 60px 1fr 80px" if i.showSize else "104px 68px 168px 60px 60px 1fr 80px" %}
+  {% set G = "104px 68px 150px 62px 60px 60px 1fr 72px 92px" if i.showSize else "104px 68px 168px 60px 60px 1fr 72px 92px" %}
+  {% if i.refreshUrl %}<div hx-get="{{ i.refreshUrl }}" hx-trigger="every 15s" hx-target="#page" hx-swap="innerHTML" hidden></div>{% endif %}
   <div style="display:grid;grid-template-columns:{{ G }};gap:10px;padding:9px 16px;border-bottom:1px solid #e2dfd8;{{ LBL }};font-size:9.5px;white-space:nowrap">
     <span>session</span><span>ticket</span><span>what it did</span>{% if i.showSize %}<span>size</span>{% endif %}<span title="messages the loop sent it">we sent</span><span title="messages Devin sent back">it sent</span><span>tools it named</span><span title="how sure Devin is of the way it classified the session" style="text-align:right">confidence</span>
+  <span style="text-align:right">analysis</span>
   </div>
   {% for r in i.rows %}
   <div style="display:grid;grid-template-columns:{{ G }};gap:10px;padding:9px 16px;align-items:center;font-size:12.5px;{% if not loop.last %}border-bottom:1px solid #f0efe9{% endif %}">
@@ -105,8 +91,56 @@
     <span style="{{ MONO }};text-align:center;font-variant-numeric:tabular-nums">{{ r.devin }}</span>
     <span style="{{ MONO }};color:#626b78;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.tools }}{% if r.playbook == 'none' %} <span style="color:#b8862a">· no playbook</span>{% endif %}</span>
     <span style="{{ MONO }};color:#626b78;text-align:right;white-space:nowrap">{{ r.sure }}</span>
+    <span style="text-align:right;white-space:nowrap">
+      {% if r.state == 'view' %}<a href="{{ r.viewUrl }}" hx-get="{{ r.viewUrl }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="display:inline-block;padding:3px 10px;border-radius:6px;border:1px solid {{ '#2457a8' if r.open else '#d6d2c9' }};background:{{ '#2457a8' if r.open else '#fff' }};color:{{ '#fff' if r.open else '#14181f' }};font:500 12px/1.2 'Instrument Sans',system-ui,sans-serif;text-decoration:none">{{ 'Close' if r.open else 'View' }}</a>
+      {% elif r.state == 'writing' %}<span style="{{ MONO }};font-size:11px;color:#8f97a3" title="Devin is writing its analysis; about a minute">writing…</span>
+      {% elif r.state == 'empty' %}<span style="{{ MONO }};font-size:11px;color:#a3a9b3" title="Devin marked its analysis complete and wrote nothing; asking again is answered with already_exists">nothing written</span>
+      {% else %}<button hx-post="{{ r.generateUrl }}" hx-target="#page" hx-swap="innerHTML" style="padding:3px 10px;border-radius:6px;border:1px solid #d6d2c9;background:#fff;color:#14181f;font:500 12px/1.2 'Instrument Sans',system-ui,sans-serif;cursor:pointer" title="ask Devin to analyse this session; free, about a minute">Generate</button>{% endif %}
+    </span>
   </div>
   {% endfor %}
-  {% if not i.rows %}<div style="padding:16px;font-size:13px;color:#8f97a3">No insights stored yet. They are fetched at the end of a run.</div>{% endif %}
+  {% if not i.rows %}<div style="padding:16px;font-size:13px;color:#8f97a3">No sessions yet.</div>{% endif %}
 </div>
+
+{% if i.modal %}{% set m = i.modal %}
+<div style="position:fixed;inset:0;z-index:40;background:rgba(20,24,31,.45);display:flex;align-items:flex-start;justify-content:center;padding:48px 24px;overflow:auto">
+  <a href="{{ m.closeUrl }}" hx-get="{{ m.closeUrl }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" aria-label="close" style="position:fixed;inset:0;z-index:0"></a>
+  <div role="dialog" aria-modal="true" style="position:relative;z-index:1;width:min(960px,100%);background:#fff;border:1px solid #e2dfd8;border-radius:12px;box-shadow:0 24px 64px rgba(20,24,31,.25)">
+    <div style="display:flex;align-items:baseline;gap:12px;padding:14px 18px;border-bottom:1px solid #ecebe6">
+      <span style="{{ LBL }}">Session insights</span>
+      <a href="{{ m.url }}" target="_blank" style="{{ MONO }}">{{ m.id }}</a>
+      <span style="font-size:12.5px;color:#626b78">{{ m.did }}{% if m.ref != 'none' %} · {{ m.ref }}{% endif %}</span>
+      <span style="{{ MONO }};color:#8f97a3;margin-left:auto">{{ m.size }} · {{ m.category }} · {{ m.sure }} sure</span>
+      <a href="{{ m.closeUrl }}" hx-get="{{ m.closeUrl }}" hx-target="#page" hx-swap="innerHTML" hx-push-url="true" style="margin-left:8px;padding:3px 10px;border-radius:6px;border:1px solid #d6d2c9;background:#fff;color:#14181f;font:500 12px/1.2 'Instrument Sans',system-ui,sans-serif;text-decoration:none">Close</a>
+    </div>
+    <div style="padding:16px 18px 18px;display:grid;grid-template-columns:1.1fr 1fr;gap:16px 28px;align-items:start;font-size:12.5px">
+      <div>
+        <div style="{{ LBL }};margin-bottom:8px">Detected issues <span style="color:#c9c5bb">{{ m.detail.issues | length }}</span></div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          {% for x in m.detail.issues %}<div style="display:grid;grid-template-columns:62px 1fr;gap:10px;align-items:baseline"><span style="{{ MONO }};font-size:10.5px;color:{{ x.color }};text-transform:uppercase;letter-spacing:.06em">{{ x.impact or 'noted' }}</span><div style="text-wrap:pretty"><b>{{ x.title }}</b>{% if x.label %} <span style="color:#8f97a3">· {{ x.label }}</span>{% endif %}<div style="color:#626b78;margin-top:2px">{{ x.text }}</div></div></div>{% endfor %}
+          {% if not m.detail.issues %}<div style="color:#8f97a3">none reported</div>{% endif %}
+        </div>
+        <div style="{{ LBL }};margin:16px 0 8px">Action items <span style="color:#c9c5bb">{{ m.detail.actions | length }}</span></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          {% for x in m.detail.actions %}<div style="display:grid;grid-template-columns:128px 1fr;gap:10px;align-items:baseline"><span style="{{ MONO }};font-size:10.5px;color:#626b78;background:#f3f1ec;border-radius:4px;padding:1px 7px;justify-self:start;white-space:nowrap">{{ x.type }}</span><span style="text-wrap:pretty">{{ x.text }}</span></div>{% endfor %}
+          {% if not m.detail.actions %}<div style="color:#8f97a3">none suggested</div>{% endif %}
+        </div>
+        {% if m.detail.prompt %}<div style="{{ LBL }};margin:16px 0 8px">Suggested prompt</div><div style="{{ MONO }};font-size:11.5px;color:#626b78;white-space:pre-wrap;background:#faf9f6;border:1px solid #e2dfd8;border-radius:8px;padding:10px 12px;max-height:220px;overflow:auto">{{ m.detail.prompt }}</div>{% endif %}
+        {% if m.detail.notes.good or m.detail.notes.bad %}<div style="{{ LBL }};margin:16px 0 8px">Knowledge notes</div><div style="display:flex;flex-direction:column;gap:6px">{% for x in m.detail.notes.good %}<div style="text-wrap:pretty"><span style="color:#2e7d4f">helped</span> · {{ x }}</div>{% endfor %}{% for x in m.detail.notes.bad %}<div style="text-wrap:pretty"><span style="color:#b4452e">got in the way</span> · {{ x }}</div>{% endfor %}</div>{% endif %}
+      </div>
+      <div>
+        <div style="{{ LBL }};margin-bottom:8px">Timeline <span style="color:#c9c5bb">{{ m.detail.timeline | length }}</span></div>
+        <div style="display:flex;flex-direction:column">
+          {% for x in m.detail.timeline %}<div style="padding:5px 0 5px 12px;border-left:2px solid #e2dfd8;position:relative"><span style="position:absolute;left:-4px;top:11px;width:6px;height:6px;border-radius:3px;background:#8f97a3"></span><b>{{ x.title }}</b><div style="color:#626b78;margin-top:1px;text-wrap:pretty">{{ x.text }}</div></div>{% endfor %}
+          {% if not m.detail.timeline %}<div style="color:#8f97a3">no timeline written</div>{% endif %}
+        </div>
+      </div>
+      <details style="grid-column:1 / -1;border-top:1px solid #ecebe6;padding-top:12px">
+        <summary style="cursor:pointer;{{ LBL }};list-style:none">Raw JSON, as Devin returned it ▾</summary>
+        <pre style="{{ MONO }};font-size:11px;line-height:1.5;color:#14181f;background:#faf9f6;border:1px solid #e2dfd8;border-radius:8px;padding:12px 14px;margin:10px 0 0;overflow:auto;max-height:420px;white-space:pre-wrap;overflow-wrap:anywhere">{{ m.raw }}</pre>
+      </details>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}

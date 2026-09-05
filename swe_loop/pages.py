@@ -594,10 +594,10 @@ TRIGGER_CHOICES = [
     ("schedule", "Periodically, on a schedule"),
 ]
 KIND_NOTES = {
-    "repair": "Run pulls the open issues with the label, makes a ticket of each new one, starts one session per ticket to scope it, routes them, starts the sessions that write the fix, checks every pull request from a clean copy and asks Devin Review. You merge.",
-    "scan": "Run points a session at the repository itself. It reads, finds places the upgrade changes behaviour, and files each one as a ticket. From there they go through the same scoping, checks and review as anything else. The session changes nothing.",
-    "code_scan": "Run starts one of Devin's own code scans. Devin ships a scanner, so this does not describe one: the scan is started against the repository with an area to look in, never a defect to look for, it runs its own session, and its findings arrive here as tickets. Every security finding goes to a person, because this repository requires such a finding to name the capability row in SECURITY.md it violates and the principal the attacker holds, and Devin's scanner returns neither.",
-    "custom": "Run does the same as the default: issues to tickets, triage, route, repair, gate, review. You merge.",
+    "repair": "Issues with the label become tickets. One session scopes each, one writes the fix; the checks and Devin Review run before you merge.",
+    "scan": "A session reads the repository and files what the upgrade breaks as tickets. It changes nothing itself.",
+    "code_scan": "Devin's own scanner reads the repository. Its findings arrive as tickets, and each goes to a person, as this repository requires of automated security findings.",
+    "custom": "Same loop as the default: tickets, scoping, fix, checks, review. You merge.",
 }
 
 

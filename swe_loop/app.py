@@ -40,9 +40,11 @@ def build_app(
         app.state.settings = settings
         app.state.cfg = cfg
         app.state.store = store or Store(settings.db_path)
+        reduce_mod.remember_review_policy(app.state.store, cfg)
         app.state.client = DevinClient.from_settings(settings)
         app.state.run_lock = threading.Lock()
         app.state.run_thread = None
+        app.state.insight_jobs = set()
         st0: Store = app.state.store
         stuck = st0._all("SELECT id, automation_id FROM automation_runs WHERE status='running'")
         for r in stuck:
@@ -165,6 +167,8 @@ def build_app(
             else "",
             # while a session is actually writing code, follow it closely; otherwise idle back
             "refreshEvery": "1s" if working else "5s",
+            # the name a person last signed a merge or an answer with; forms start filled in
+            "person": st.get_setting("person.name") or "",
             **ctx,
         }
         if request.headers.get("HX-Request"):
@@ -475,6 +479,8 @@ def build_app(
         form = parse_qs((await request.body()).decode())
         actor = (form.get("actor") or [""])[0].strip()
         st: Store = request.app.state.store
+        if actor:
+            st.set_setting("person.name", actor)
         note = _do_merge(st, ticket_id, actor, request)
         return _page(
             request,
@@ -777,14 +783,45 @@ def build_app(
             {"i": v2.insights(request.app.state.store, _q(request))},
         )
 
-    @app.get("/devin/insights", response_class=HTMLResponse)
-    def insights_page(request: Request) -> HTMLResponse:
+    def _insights_page(request: Request) -> HTMLResponse:
         return _page(
             request,
             "insights",
             "insights.html",
-            {"i": v2.insights(request.app.state.store, _q(request))},
+            {"i": v2.insights(request.app.state.store, _q(request), app.state.insight_jobs)},
         )
+
+    @app.get("/devin/insights", response_class=HTMLResponse)
+    def insights_page(request: Request) -> HTMLResponse:
+        return _insights_page(request)
+
+    @app.post("/devin/insights/{devin_id}/generate", response_class=HTMLResponse)
+    def insights_generate(devin_id: str, request: Request) -> HTMLResponse:
+        """Ask Devin for its analysis of one session. Free, about a minute; the page shows the
+        row as writing until the analysis is stored, then offers View."""
+        from swe_loop import insights as ins
+
+        st: Store = request.app.state.store
+        if devin_id not in ins.known_ids(st):
+            raise HTTPException(status_code=404, detail="not a session this loop started")
+        jobs: set[str] = app.state.insight_jobs
+        if devin_id not in jobs:
+            jobs.add(devin_id)
+
+            def work() -> None:
+                try:
+                    ins.generate(st, app.state.client, [devin_id])
+                except Exception as ex:  # noqa: BLE001 - reported on the timeline, never fatal
+                    st.log(
+                        "insights",
+                        "Devin's analysis could not be fetched",
+                        detail=f"{devin_id}: {type(ex).__name__}: {ex}"[:300],
+                    )
+                finally:
+                    jobs.discard(devin_id)
+
+            threading.Thread(target=work, name=f"insights-{devin_id[:8]}", daemon=True).start()
+        return _insights_page(request)
 
     @app.get("/tickets/{ticket_id}/changes", response_class=HTMLResponse)
     def ticket_changes(ticket_id: str, request: Request) -> HTMLResponse:
