@@ -300,9 +300,11 @@ def run_automation(
         if held:
             result["refused_reserved"] = len(held)
             log(f"refused {plural(len(held), 'ticket')} in files another change already owns")
-        if stop_after == "intake":
+        if stop_after == "intake" or only_if_scheduled:
+            # asked to stop, or a watcher tick that recorded what Devin's schedule did: either
+            # way nothing paid starts from here. Scoping and repair start when a person clicks Run.
             result["stopped_after"] = "intake"
-            log("stopping after intake, as asked: nothing is scoped or repaired")
+            log("stopping after intake: nothing is scoped or repaired")
             store.finish_automation_run(rid, result)
             return result
         inv = cfg.triage.get("inventory_url") or None
@@ -318,5 +320,7 @@ def run_automation(
         store.finish_automation_run(rid, result, status="failed")
         raise
     finally:
-        store.set_automation(aid, last_run=now(), last_result=result)
+        # a look that found nothing is not a run and leaves the header's "last run" alone
+        if result.get("scan") != "nothing scheduled":
+            store.set_automation(aid, last_run=now(), last_result=result)
     return result

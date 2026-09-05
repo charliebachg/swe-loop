@@ -223,6 +223,11 @@ def release_waiting(store: Store, cfg: TargetConfig) -> list[str]:
             claimed.update(w.get("files") or [])
     out = []
     for t in store.list_tickets("refused"):
+        # only a ticket refused for the file being busy is waiting; one refused for what it is
+        # (no sites, no contract, forbidden paths) stays refused, or it would be scoped, and
+        # paid for, again on every run
+        if not (t.get("router_reason") or "").startswith("waiting"):
+            continue
         ev = store._one("SELECT payload_json FROM events WHERE ticket_id=?", t["id"])
         if not ev:
             continue

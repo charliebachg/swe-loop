@@ -256,3 +256,18 @@ def test_no_token_means_github_is_not_looked_at(tmp_path, monkeypatch):
         _live_settings(monkeypatch), CFG, st, _client_with_schedule(False), threading.Lock()
     )
     assert w.look_for_issues()["looked"] is False
+
+
+def test_an_observed_run_keeps_the_finish_time_it_was_given(tmp_path):
+    """The watcher records what Devin's schedule did with status `observed`; the row must not
+    render as running forever."""
+    st = _store(tmp_path)
+    rid = st.record_observed_run(
+        "auto_codescan",
+        started_at="2026-09-05T01:00:00+00:00",
+        result={"started_by": "Devin's schedule", "orchestrator": "orch-1", "sessions": 3},
+        status="observed",
+        finished_at="2026-09-05T01:20:00+00:00",
+    )
+    run = next(r for r in st.list_automation_runs("auto_codescan") if r["id"] == rid)
+    assert run["finished_at"] == "2026-09-05T01:20:00+00:00"

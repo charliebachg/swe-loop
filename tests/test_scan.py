@@ -617,6 +617,15 @@ def test_waiting_is_a_state_work_passes_through_not_where_it_dies(tmp_path):
     st.insert_event("scan", {"file": cfg.scan["reserved_paths"][0], "line": 1}, ticket_id="tkt_res")
     st.set_router_decision("tkt_res", "refuse", "held back")
     assert scan_mod.release_waiting(st, cfg) == []
+    # a ticket refused for what it is, not for a busy file, stays refused: releasing it would
+    # scope it, and pay for it, again on every run
+    st.upsert_ticket(id="tkt_nowork", source="scan", title="nothing to do", status="new")
+    st.insert_event("scan", {"file": "superset/utils/free.py", "line": 1}, ticket_id="tkt_nowork")
+    st.set_router_decision(
+        "tkt_nowork", "refuse", "no work order and no triage verdict; nothing to route"
+    )
+    assert scan_mod.release_waiting(st, cfg) == []
+    assert st.get_ticket("tkt_nowork")["status"] == "refused"
 
 
 def test_a_scan_devins_schedule_started_is_picked_up_without_starting_another(tmp_path):

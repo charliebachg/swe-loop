@@ -932,6 +932,23 @@ class Store:
             session_id=e["session_id"],
             detail=(note or "")[:200],
         )
+        # a dismissed question is a decision: the ticket is closed as refused with the note as
+        # its reason, instead of sitting at "escalated" where no part of the loop reads it
+        t = self.get_ticket(e["ticket_id"])
+        if (
+            by_hand
+            and t
+            and t.get("status") == "escalated"
+            and not self._all(
+                "SELECT id FROM escalations WHERE ticket_id=? AND resolved_at IS NULL",
+                e["ticket_id"],
+            )
+        ):
+            self.set_router_decision(
+                e["ticket_id"],
+                "refuse",
+                f"dismissed by a person: {note}" if note else "dismissed by a person",
+            )
         return e
 
     def list_escalations(self, unresolved_only: bool = True) -> list[dict[str, Any]]:
@@ -1088,7 +1105,7 @@ class Store:
                 rid,
                 aid,
                 started_at,
-                finished_at if status == "done" else None,
+                finished_at if status in ("done", "observed") else None,
                 status,
                 json.dumps(result),
             ),

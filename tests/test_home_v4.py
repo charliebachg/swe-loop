@@ -80,3 +80,20 @@ def test_answer_wakes_the_triage_session(client):
     assert any(
         ev["event"] == "answered by a person" for ev in st.timeline(ticket_id="tkt_Q", limit=20)
     )
+
+
+def test_dismissing_the_last_question_closes_the_ticket(client):
+    """Dismiss answers the question with "no action". The ticket must not sit at `escalated`,
+    a status no part of the loop reads; it is closed as refused, with the note as the reason."""
+    c, st = client
+    st.upsert_ticket(id="tkt_Z", source="github", title="a question", status="new")
+    st.set_router_decision("tkt_Z", "human_only", "needs a person")
+    eid = st.insert_escalation("tkt_Z", None, "human_only", "which rule does this break?")
+    assert st.get_ticket("tkt_Z")["status"] == "escalated"
+    r = c.post(f"/escalations/{eid}/resolve", data={"note": "not a defect, see SECURITY.md row 3"})
+    assert r.status_code == 200
+    t = st.get_ticket("tkt_Z")
+    assert t["status"] == "refused" and "not a defect" in (t["router_reason"] or "")
+    assert st.list_escalations() == [] or all(
+        e["ticket_id"] != "tkt_Z" for e in st.list_escalations()
+    )
