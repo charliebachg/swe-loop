@@ -1,0 +1,8 @@
+$ git diff --name-only master..HEAD
+# cwd=<tmp>/swe-loop-gate-kzk7bmuw tree=60111433ce19c8363dba40643b6f2c532011b179 exit=0
+
+changed: ['superset/utils/csv.py']
+forbidden touched: []
+out of scope: []
+tests touched, for a person to confirm: []
+claimed but missing: []

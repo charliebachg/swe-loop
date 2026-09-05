@@ -1,0 +1,8 @@
+$ git diff --name-only master..HEAD
+# cwd=<tmp>/swe-loop-gate-z2go9_ex tree=d114d5e80d0ccc23b5dfe5dce9e80691821ebf0e exit=1
+
+changed: ['superset/daos/database.py', 'superset/utils/pandas_postprocessing/compare.py', 'superset/views/sql_lab/views.py', 'tests/unit_tests/databases/api_test.py', 'tests/unit_tests/databases/dao/dao_tests.py']
+forbidden touched: []
+out of scope: ['superset/daos/database.py', 'superset/views/sql_lab/views.py']
+tests touched, for a person to confirm: ['tests/unit_tests/databases/api_test.py', 'tests/unit_tests/databases/dao/dao_tests.py']
+claimed but missing: []

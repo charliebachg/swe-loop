@@ -1,0 +1,7 @@
+$ git diff --name-only master..HEAD
+# cwd=<tmp>/swe-loop-gate-m4obifsm tree=5bbc1014a80616c81f083f5f04153403ec288214 exit=0
+
+changed: ['superset/result_set.py']
+forbidden touched: []
+out of scope: []
+claimed but missing: []

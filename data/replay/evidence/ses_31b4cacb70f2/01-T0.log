@@ -1,0 +1,8 @@
+$ git diff --name-only master..HEAD
+# cwd=<tmp>/swe-loop-gate-74r394tr tree=fe8df81d498921ee7ec7474ac024207a98ad20d9 exit=1
+
+changed: ['superset/daos/database.py', 'tests/unit_tests/databases/dao/dao_tests.py']
+forbidden touched: []
+out of scope: ['superset/daos/database.py']
+tests touched, for a person to confirm: ['tests/unit_tests/databases/dao/dao_tests.py']
+claimed but missing: []

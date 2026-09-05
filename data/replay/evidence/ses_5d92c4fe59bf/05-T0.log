@@ -1,0 +1,7 @@
+$ git diff --name-only master..HEAD
+# cwd=<tmp>/swe-loop-gate-n5_7dehi tree=5177d74d48f585b933cc5058c99a00355a5913e3 exit=0
+
+changed: ['superset/utils/pandas_postprocessing/pivot.py', 'superset/utils/pandas_postprocessing/rolling.py', 'superset/utils/pandas_postprocessing/utils.py']
+forbidden touched: []
+out of scope: []
+claimed but missing: []

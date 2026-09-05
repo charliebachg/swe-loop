@@ -1,0 +1,4 @@
+$ pandas_3_0_5_perf_gate: SUPERSET_SECRET_KEY=not-a-secret ../superset-fork/.venv-p3/bin/python -c 'import time, numpy as np, pandas as pd; from superset.utils.csv import df_to_escaped_csv; rng=np.random.default_rng(0); df=pd.DataFrame({f'"'"'c{i}'"'"': rng.choice(['"'"'=cmd()'"'"', '"'"'safe'"'"', '"'"'-10'"'"', '"'"'+x'"'"', None], 200000) for i in range(4)}); assert str(df.dtypes.iloc[0])=='"'"'str'"'"', df.dtypes.iloc[0]; t=time.perf_counter(); df.to_csv(escapechar='"'"'\\'"'"', index=False); base=time.perf_counter()-t; t=time.perf_counter(); df_to_escaped_csv(df, index=False); esc=time.perf_counter()-t; print(f'"'"'to_csv={base:.2f}s df_to_escaped_csv={esc:.2f}s ratio={esc/base:.1f}'"'"'); raise SystemExit(0 if esc < 5*base else 1)'
+# cwd=<tmp>/swe-loop-gate-kzk7bmuw tree=60111433ce19c8363dba40643b6f2c532011b179 exit=0
+
+to_csv=0.12s df_to_escaped_csv=0.42s ratio=3.4

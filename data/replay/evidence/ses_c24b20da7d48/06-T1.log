@@ -1,0 +1,14 @@
+$ pytest_pandas2_warn_as_error: ../superset-fork/.venv-p2/bin/python -m pytest -c pytest.ini -p no:cacheprovider -o addopts= -W error::FutureWarning tests/unit_tests/reports/notifications/slack_tests.py::test_slack_mixin_get_body_truncates_large_table tests/unit_tests/reports/notifications/slack_tests.py::test_slack_mixin_truncated_body_omits_cta_when_include_cta_is_false
+# cwd=<tmp>/swe-loop-gate-peodusvu tree=e93fc887d4d2f4a87108211ec605ec8e9e802a22 exit=0
+
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-7.4.4, pluggy-1.5.0
+rootdir: <tmp>/swe-loop-gate-peodusvu
+configfile: pytest.ini
+plugins: asyncio-0.23.8, cov-6.0.0, anyio-4.11.0, xdist-3.8.0, mock-3.10.0, pyfakefs-5.3.5
+asyncio: mode=Mode.AUTO
+collected 2 items
+
+tests/unit_tests/reports/notifications/slack_tests.py ..                 [100%]
+
+============================== 2 passed in 0.66s ===============================

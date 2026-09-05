@@ -1,0 +1,3 @@
+$ repro_pandas_3_0_5: PYTHONHASHSEED=0 SUPERSET_SECRET_KEY=not-a-secret ../superset-fork/.venv-p3/bin/python -c 'import pandas as pd; from superset.utils.core import DateColumn, normalize_dttm_col; df = pd.DataFrame({"ds": ["2021-03-20T12:00:00-04:00", "2021-12-01T12:00:00-05:00"]}); normalize_dttm_col(df, (DateColumn(col_label="ds"),)); assert pd.api.types.is_datetime64_any_dtype(df["ds"]), df["ds"].dtype; df2 = pd.DataFrame({"ds": ["2021-03-20T12:00:00-04:00", "2021-12-01T12:00:00-05:00"]}); normalize_dttm_col(df2, (DateColumn(col_label="ds", timestamp_format="%Y-%m-%dT%H:%M:%S%z"),)); assert pd.api.types.is_datetime64_any_dtype(df2["ds"]), df2["ds"].dtype'
+# cwd=<tmp>/swe-loop-gate-gnqpc1lj tree=702e7464e4f242c09e2ac0a0c2a770954875e8fc exit=0
+

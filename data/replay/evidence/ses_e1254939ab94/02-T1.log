@@ -1,0 +1,5 @@
+$ lint: ../superset-fork/.venv-p2/bin/ruff check superset/utils/pandas_postprocessing/aggregate.py superset/utils/pandas_postprocessing/histogram.py superset/utils/pandas_postprocessing/resample.py && ../superset-fork/.venv-p2/bin/ruff format --check superset/utils/pandas_postprocessing/aggregate.py superset/utils/pandas_postprocessing/histogram.py superset/utils/pandas_postprocessing/resample.py
+# cwd=<tmp>/swe-loop-gate-hrtnxdyr tree=7d9e82d079aa1cc7bd43fa44031dda81fbfc5897 exit=0
+
+All checks passed!
+3 files already formatted

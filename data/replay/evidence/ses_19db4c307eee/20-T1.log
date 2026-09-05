@@ -1,0 +1,5 @@
+$ lint: ../superset-fork/.venv-p2/bin/ruff check superset/utils/core.py && ../superset-fork/.venv-p2/bin/ruff format --check superset/utils/core.py
+# cwd=<tmp>/swe-loop-gate-kkylplsb tree=702e7464e4f242c09e2ac0a0c2a770954875e8fc exit=0
+
+All checks passed!
+1 file already formatted

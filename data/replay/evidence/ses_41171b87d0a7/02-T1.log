@@ -1,0 +1,4 @@
+$ lint: ../superset-fork/.venv-p2/bin/ruff check superset/views/sql_lab/views.py
+# cwd=<tmp>/swe-loop-gate-kjisglsa tree=5923538736a922e97a36e4845fbc8e8e75d1555a exit=0
+
+All checks passed!

@@ -1,0 +1,7 @@
+$ git diff --name-only master..HEAD
+# cwd=<tmp>/swe-loop-gate-pv_00e5s tree=a4bfa71845cc4330598e0bf304fd922c3d0a40a7 exit=0
+
+changed: ['superset/common/utils/dataframe_utils.py']
+forbidden touched: []
+out of scope: []
+claimed but missing: []

@@ -1,0 +1,8 @@
+$ git diff --name-only master..HEAD
+# cwd=<tmp>/swe-loop-gate-kix6okbw tree=7702f41b75e2eef1fa9df12f6b049499dec083df exit=0
+
+changed: ['superset/utils/pandas_postprocessing/compare.py']
+forbidden touched: []
+out of scope: []
+tests touched, for a person to confirm: []
+claimed but missing: []

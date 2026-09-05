@@ -1,0 +1,137 @@
+$ truncation_pandas2: env -u SUPERSET_CONFIG_PATH SUPERSET_TESTENV=true SUPERSET_CONFIG=tests.integration_tests.superset_test_config ../superset-fork/.venv-p2/bin/python -W error::FutureWarning -c '
+import pandas as pd
+from unittest.mock import patch
+from superset.app import create_app
+app = create_app()
+with app.app_context(), patch('"'"'superset.reports.notifications.slackv2.g'"'"') as g:
+    g.logs_context = {}
+    from superset.reports.models import ReportRecipients, ReportRecipientType
+    from superset.reports.notifications.base import NotificationContent
+    from superset.reports.notifications.slackv2 import SlackV2Notification
+    from superset.reports.notifications.slack_mixin import MAXIMUM_MESSAGE_SIZE
+    df = pd.DataFrame({'"'"'col_%d'"'"' % i: range(100) for i in range(10)})
+    hd = {'"'"'notification_format'"'"':'"'"'TEXT'"'"','"'"'notification_type'"'"':'"'"'Alert'"'"','"'"'owners'"'"':[1],'"'"'notification_source'"'"':None,'"'"'chart_id'"'"':None,'"'"'dashboard_id'"'"':None,'"'"'slack_channels'"'"':None}
+    c = NotificationContent(name='"'"'t'"'"', header_data=hd, embedded_data=df, description='"'"'d'"'"')
+    n = SlackV2Notification(recipient=ReportRecipients(type=ReportRecipientType.SLACKV2, recipient_config_json='"'"'{"target": "c"}'"'"'), content=c)
+    body = n._get_body(content=c)
+    assert '"'"'(table was truncated)'"'"' in body
+    assert '"'"'...'"'"' in body, '"'"'marker row missing: full df rendered'"'"'
+    assert len(body) <= MAXIMUM_MESSAGE_SIZE, len(body)
+    print('"'"'ok'"'"', len(body))
+'
+# cwd=<tmp>/swe-loop-gate-peodusvu tree=e93fc887d4d2f4a87108211ec605ec8e9e802a22 exit=0
+
+Loaded TEST config for INTEGRATION tests
+ok 3919
+SQLite Database support for metadata databases will be removed in a future version of Superset.
+2026-09-05 01:09:19,635:WARNING:superset.initialization:--------------------------------------------------------------------------------
+                                    WARNING
+--------------------------------------------------------------------------------
+2026-09-05 01:09:19,635:WARNING:superset.initialization:SQLALCHEMY_ENCRYPTED_FIELD_ENGINE is set to the legacy 'aes' engine (AES-CBC, unauthenticated). App-encrypted fields — database passwords, SSH tunnel credentials, OAuth2 tokens, and similar — would benefit from the authenticated 'aes-gcm' engine instead.
+Switching engines on a populated database requires re-encrypting existing values first, since the two ciphertext formats are not interchangeable:
+  1. Back up the metadata database.
+  2. superset re-encrypt-secrets --engine aes-gcm
+  3. Set SQLALCHEMY_ENCRYPTED_FIELD_ENGINE = 'aes-gcm' in superset_config.py.
+  4. Restart Superset, then re-run the command above once more to sweep up any values written during the cutover.
+See UPDATING.md and docs/sip/authenticated-encryption-at-rest.md for the full runbook.
+2026-09-05 01:09:19,635:WARNING:superset.initialization:--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+2026-09-05 01:09:19,662:WARNING:superset.initialization:We haven't found any Content Security Policy (CSP) defined in the configurations. Please make sure to configure CSP using the TALISMAN_ENABLED and TALISMAN_CONFIG keys or any other external software. Failing to configure CSP have serious security implications. Check https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP for more information. You can disable this warning using the CONTENT_SECURITY_POLICY_WARNING key.
+2026-09-05 01:09:19,691:WARNING:flask_appbuilder.security.manager:No user yet created, use flask fab command to do it.
+2026-09-05 01:09:20,367:WARNING:flask_appbuilder.models.filters:Filter type not supported for column: roles.name
+2026-09-05 01:09:20,368:WARNING:flask_appbuilder.models.filters:Filter type not supported for column: roles.id
+2026-09-05 01:09:20,368:WARNING:flask_appbuilder.models.filters:Filter type not supported for column: users.id
+2026-09-05 01:09:20,368:WARNING:flask_appbuilder.models.filters:Filter type not supported for column: users.username
+2026-09-05 01:09:20,403:INFO:superset.subjects.hooks:Subject sync hooks registered
+2026-09-05 01:09:20,434:INFO:alembic.runtime.migration:Context impl SQLiteImpl.
+2026-09-05 01:09:20,435:INFO:alembic.runtime.migration:Will assume non-transactional DDL.
+2026-09-05 01:09:20,834:INFO:superset.app:Pending database migrations: run 'superset db upgrade'
+2026-09-05 01:09:21,779:WARNING:flask_appbuilder.models.filters:Filter type not supported for column: uuid
+2026-09-05 01:09:22,033:WARNING:flask_appbuilder.base:View already exists LogRestApi ignoring
+2026-09-05 01:09:24,576:INFO:superset.core.mcp.core_mcp_injection:MCP dependency injection initialized successfully
+2026-09-05 01:09:25,947:INFO:superset.mcp_service.app:Created FastMCP instance: MCP Server
+2026-09-05 01:09:25,949:INFO:superset.core.mcp.core_mcp_injection:MCP dependency injection initialized successfully
+2026-09-05 01:09:25,950:INFO:superset.core.mcp.core_mcp_injection:MCP service app imported - host tools registered
+2026-09-05 01:09:26,200:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_annotation_layer_info (protected, host)
+2026-09-05 01:09:26,203:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_layer_annotation_info (protected, host)
+2026-09-05 01:09:26,209:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: list_annotation_layers (protected, host)
+2026-09-05 01:09:26,216:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: list_layer_annotations (protected, host)
+2026-09-05 01:09:26,220:INFO:superset.core.mcp.core_mcp_injection:Registered MCP prompt: create_chart_guided (protected, host)
+2026-09-05 01:09:26,227:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: delete_chart (protected, host)
+2026-09-05 01:09:26,261:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: generate_chart (protected, host)
+2026-09-05 01:09:26,272:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_chart_data (protected, host)
+2026-09-05 01:09:26,278:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_chart_info (protected, host)
+2026-09-05 01:09:26,289:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_chart_preview (protected, host)
+2026-09-05 01:09:26,297:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_chart_sql (protected, host)
+2026-09-05 01:09:26,299:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_chart_type_schema (protected, host)
+2026-09-05 01:09:26,309:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: list_charts (protected, host)
+2026-09-05 01:09:26,310:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: restore_chart (protected, host)
+2026-09-05 01:09:26,331:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: update_chart (protected, host)
+2026-09-05 01:09:26,349:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: update_chart_preview (protected, host)
+2026-09-05 01:09:26,395:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: add_chart_to_existing_dashboard (protected, host)
+2026-09-05 01:09:26,399:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: delete_dashboard (protected, host)
+2026-09-05 01:09:26,403:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: duplicate_dashboard (protected, host)
+2026-09-05 01:09:26,405:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: generate_dashboard (protected, host)
+2026-09-05 01:09:26,408:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_dashboard_datasets (protected, host)
+2026-09-05 01:09:26,414:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_dashboard_info (protected, host)
+2026-09-05 01:09:26,418:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_dashboard_layout (protected, host)
+2026-09-05 01:09:26,423:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: list_dashboards (protected, host)
+2026-09-05 01:09:26,427:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: manage_dashboard_certification (protected, host)
+2026-09-05 01:09:26,430:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: manage_dashboard_owners (protected, host)
+2026-09-05 01:09:26,432:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: manage_dashboard_roles (protected, host)
+2026-09-05 01:09:26,436:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: manage_native_filters (protected, host)
+2026-09-05 01:09:26,441:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: remove_chart_from_dashboard (protected, host)
+2026-09-05 01:09:26,444:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: restore_dashboard (protected, host)
+2026-09-05 01:09:26,448:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: update_dashboard (protected, host)
+2026-09-05 01:09:26,461:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_database_info (protected, host)
+2026-09-05 01:09:26,465:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: list_databases (protected, host)
+2026-09-05 01:09:26,493:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: create_dataset (protected, host)
+2026-09-05 01:09:26,498:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: create_virtual_dataset (protected, host)
+2026-09-05 01:09:26,503:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_dataset_info (protected, host)
+2026-09-05 01:09:26,509:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: list_datasets (protected, host)
+2026-09-05 01:09:26,517:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: query_dataset (protected, host)
+2026-09-05 01:09:26,522:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: update_dataset_metric (protected, host)
+2026-09-05 01:09:26,542:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: generate_explore_link (protected, host)
+2026-09-05 01:09:26,549:WARNING:py.warnings:<tmp>/swe-loop-gate-peodusvu/superset/mcp_service/query/schemas.py:95: UserWarning: Field name "schema" in "QueryInfo" shadows an attribute in parent "BaseModel"
+  class QueryInfo(BaseModel):
+
+2026-09-05 01:09:26,555:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_query_info (protected, host)
+2026-09-05 01:09:26,560:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: list_queries (protected, host)
+2026-09-05 01:09:26,735:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_report_info (protected, host)
+2026-09-05 01:09:26,745:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: list_reports (protected, host)
+2026-09-05 01:09:26,758:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_rls_filter_info (protected, host)
+2026-09-05 01:09:26,763:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: list_rls_filters (protected, host)
+2026-09-05 01:09:26,779:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_role_info (protected, host)
+2026-09-05 01:09:26,784:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: list_roles (protected, host)
+2026-09-05 01:09:26,790:WARNING:py.warnings:<tmp>/swe-loop-gate-peodusvu/superset/mcp_service/saved_query/schemas.py:73: UserWarning: Field name "schema" in "SavedQueryInfo" shadows an attribute in parent "BaseModel"
+  class SavedQueryInfo(BaseModel):
+
+2026-09-05 01:09:26,795:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_saved_query_info (protected, host)
+2026-09-05 01:09:26,800:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: list_saved_queries (protected, host)
+2026-09-05 01:09:26,819:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_compatible_dimensions (protected, host)
+2026-09-05 01:09:26,827:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_compatible_metrics (protected, host)
+2026-09-05 01:09:26,834:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_table (protected, host)
+2026-09-05 01:09:26,842:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: list_metrics (protected, host)
+2026-09-05 01:09:26,850:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: execute_sql (protected, host)
+2026-09-05 01:09:26,851:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: open_sql_lab_with_context (protected, host)
+2026-09-05 01:09:26,852:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: save_sql_query (protected, host)
+2026-09-05 01:09:26,857:INFO:superset.core.mcp.core_mcp_injection:Registered MCP prompt: quickstart (protected, host)
+2026-09-05 01:09:26,865:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: find_users (protected, host)
+2026-09-05 01:09:26,867:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: generate_bug_report (public, host)
+2026-09-05 01:09:26,872:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_instance_info (protected, host)
+2026-09-05 01:09:26,876:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_schema (protected, host)
+2026-09-05 01:09:26,877:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: health_check (protected, host)
+2026-09-05 01:09:26,884:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_tag_info (protected, host)
+2026-09-05 01:09:26,889:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: list_tags (protected, host)
+2026-09-05 01:09:26,899:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_task_info (protected, host)
+2026-09-05 01:09:26,904:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: list_tasks (protected, host)
+2026-09-05 01:09:26,911:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: create_theme (protected, host)
+2026-09-05 01:09:26,913:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_theme_info (protected, host)
+2026-09-05 01:09:26,918:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: list_themes (protected, host)
+2026-09-05 01:09:26,930:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: get_user_info (protected, host)
+2026-09-05 01:09:26,935:INFO:superset.core.mcp.core_mcp_injection:Registered MCP tool: list_users (protected, host)
+2026-09-05 01:09:26,935:INFO:superset.core.mcp.core_mcp_injection:MCP service app imported - host tools registered
+2026-09-05 01:09:26,935:WARNING:superset.initialization:versioning: CELERY_CONFIG.beat_schedule is missing the 'version_history.prune_old_versions' entry — the retention task will not fire and shadow tables will grow unbounded. Either inherit from the default CeleryConfig or add the entry to your override.
+2026-09-05 01:09:26,935:WARNING:superset.initialization:versioning: CELERY_CONFIG.imports is missing 'superset.tasks.version_history_retention' — workers will not register the retention task, so a scheduled run fails with NotRegistered. Either inherit from the default CeleryConfig or add the module to your override.
+2026-09-05 01:09:26,935:WARNING:superset.initialization:soft-delete: CELERY_CONFIG.beat_schedule is missing the 'deletion_retention.purge_soft_deleted' entry — archived objects will never be purged and will accumulate indefinitely. Either inherit from the default CeleryConfig or add the entry to your override.
+2026-09-05 01:09:26,935:WARNING:superset.initialization:soft-delete: CELERY_CONFIG.imports is missing 'superset.tasks.deletion_retention' — workers will not register the purge task, so a scheduled run fails with NotRegistered and archived objects are never purged. Either inherit from the default CeleryConfig or add the module to your override.

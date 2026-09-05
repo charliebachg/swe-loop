@@ -1,0 +1,16 @@
+$ tests api_test.py: ../superset-fork/.venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider -o addopts= tests/unit_tests/databases/api_test.py
+# cwd=<tmp>/swe-loop-gate-0mx4o_7c tree=436b4618c0d870eeceaad82f7ead5828d52bc189 exit=0
+
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-7.4.4, pluggy-1.5.0
+rootdir: <tmp>/swe-loop-gate-0mx4o_7c
+configfile: pytest.ini
+plugins: asyncio-0.23.8, cov-6.0.0, anyio-4.11.0, xdist-3.8.0, mock-3.10.0, pyfakefs-5.3.5
+asyncio: mode=Mode.AUTO
+collected 128 items
+
+tests/unit_tests/databases/api_test.py ....s............................ [ 25%]
+........................................................................ [ 82%]
+.......................                                                  [100%]
+
+======================= 127 passed, 1 skipped in 11.74s ========================

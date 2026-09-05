@@ -1,0 +1,38 @@
+$ pandas_3_0_5: ../superset-fork/.venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= -W error::PerformanceWarning tests/unit_tests/pandas_postprocessing/test_compare.py
+# cwd=<tmp>/swe-loop-gate-kix6okbw tree=7702f41b75e2eef1fa9df12f6b049499dec083df exit=4
+
+../superset-fork/.venv-p3/lib/python3.12/site-packages/_pytest/config/__init__.py:331: PluggyTeardownRaisedWarning: A plugin raised an exception during an old-style hookwrapper teardown.
+Plugin: helpconfig, Hook: pytest_cmdline_parse
+UsageError: while parsing the following warning configuration:
+
+  error::PerformanceWarning
+
+This error occurred:
+
+Traceback (most recent call last):
+  File "../superset-fork/.venv-p3/lib/python3.12/site-packages/_pytest/config/__init__.py", line 1761, in parse_warning_filter
+    category: Type[Warning] = _resolve_warning_category(category_)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "../superset-fork/.venv-p3/lib/python3.12/site-packages/_pytest/config/__init__.py", line 1800, in _resolve_warning_category
+    cat = getattr(m, klass)
+          ^^^^^^^^^^^^^^^^^
+AttributeError: module 'builtins' has no attribute 'PerformanceWarning'
+
+For more information see https://pluggy.readthedocs.io/en/stable/api_reference.html#pluggy.PluggyTeardownRaisedWarning
+  config = pluginmanager.hook.pytest_cmdline_parse(
+ERROR: while parsing the following warning configuration:
+
+  error::PerformanceWarning
+
+This error occurred:
+
+Traceback (most recent call last):
+  File "../superset-fork/.venv-p3/lib/python3.12/site-packages/_pytest/config/__init__.py", line 1761, in parse_warning_filter
+    category: Type[Warning] = _resolve_warning_category(category_)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "../superset-fork/.venv-p3/lib/python3.12/site-packages/_pytest/config/__init__.py", line 1800, in _resolve_warning_category
+    cat = getattr(m, klass)
+          ^^^^^^^^^^^^^^^^^
+AttributeError: module 'builtins' has no attribute 'PerformanceWarning'
+
+

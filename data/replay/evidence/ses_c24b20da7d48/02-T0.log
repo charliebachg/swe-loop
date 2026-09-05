@@ -1,0 +1,8 @@
+$ git diff --name-only master..HEAD
+# cwd=<tmp>/swe-loop-gate-peodusvu tree=e93fc887d4d2f4a87108211ec605ec8e9e802a22 exit=0
+
+changed: ['superset/reports/notifications/slack_mixin.py']
+forbidden touched: []
+out of scope: []
+tests touched, for a person to confirm: []
+claimed but missing: []

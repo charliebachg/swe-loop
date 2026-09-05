@@ -1,0 +1,5 @@
+$ pandas_3_0_5: ../superset-fork/.venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= tests/unit_tests/pandas_postprocessing/test_boxplot.py tests/unit_tests/pandas_postprocessing/test_histogram.py tests/unit_tests/pandas_postprocessing/test_resample.py
+# cwd=<tmp>/swe-loop-gate-hnjfqwcn tree=6f97fd1e48272de36d21158f6deee30d63c9f501 exit=0
+
+...............................                                          [100%]
+31 passed in 1.87s

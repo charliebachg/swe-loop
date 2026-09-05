@@ -1,0 +1,4 @@
+$ lint: ../superset-fork/.venv-p2/bin/ruff check superset/databases/api.py
+# cwd=<tmp>/swe-loop-gate-0mx4o_7c tree=436b4618c0d870eeceaad82f7ead5828d52bc189 exit=0
+
+All checks passed!

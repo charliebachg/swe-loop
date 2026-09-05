@@ -1,0 +1,8 @@
+$ git diff --name-only master..HEAD
+# cwd=<tmp>/swe-loop-gate-kjisglsa tree=5923538736a922e97a36e4845fbc8e8e75d1555a exit=0
+
+changed: ['superset/views/sql_lab/views.py']
+forbidden touched: []
+out of scope: []
+tests touched, for a person to confirm: []
+claimed but missing: []

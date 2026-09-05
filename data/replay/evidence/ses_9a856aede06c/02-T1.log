@@ -1,0 +1,5 @@
+$ pandas_3_0_5: SUPERSET_SECRET_KEY=not-a-secret ../superset-fork/.venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= -W error::FutureWarning tests/unit_tests/utils/csv_tests.py -k df_to_escaped_csv
+# cwd=<tmp>/swe-loop-gate-kzk7bmuw tree=60111433ce19c8363dba40643b6f2c532011b179 exit=0
+
+...                                                                      [100%]
+3 passed, 9 deselected in 1.29s

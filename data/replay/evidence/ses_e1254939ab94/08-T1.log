@@ -1,0 +1,5 @@
+$ pandas_2_3_3_warnings_as_errors: ../superset-fork/.venv-p2/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= -W error::FutureWarning tests/unit_tests/pandas_postprocessing/test_boxplot.py tests/unit_tests/pandas_postprocessing/test_histogram.py tests/unit_tests/pandas_postprocessing/test_resample.py
+# cwd=<tmp>/swe-loop-gate-hnjfqwcn tree=6f97fd1e48272de36d21158f6deee30d63c9f501 exit=0
+
+...............................                                          [100%]
+31 passed in 1.69s

@@ -1,0 +1,5 @@
+$ pandas_3_0_5: ../superset-fork/.venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= tests/unit_tests/common/test_time_shifts.py
+# cwd=<tmp>/swe-loop-gate-fjnz_fwv tree=f139815fff953893d742e5fd233cc871b5b57447 exit=0
+
+...................................................                      [100%]
+51 passed in 2.33s

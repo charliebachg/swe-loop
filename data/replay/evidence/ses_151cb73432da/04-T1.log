@@ -1,0 +1,5 @@
+$ pandas_2_3_3_warnings_as_errors: ../superset-fork/.venv-p2/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= -W error::FutureWarning tests/unit_tests/common/test_time_shifts.py
+# cwd=<tmp>/swe-loop-gate-sfjj2ii6 tree=dd2d22211aee4515c045611e03d4211a87f5bab9 exit=0
+
+...................................................                      [100%]
+51 passed in 0.89s

@@ -1,0 +1,5 @@
+$ lint: ../superset-fork/.venv-p2/bin/ruff check superset/utils/pandas_postprocessing/pivot.py superset/utils/pandas_postprocessing/rolling.py superset/utils/pandas_postprocessing/utils.py && ../superset-fork/.venv-p2/bin/ruff format --check superset/utils/pandas_postprocessing/pivot.py superset/utils/pandas_postprocessing/rolling.py superset/utils/pandas_postprocessing/utils.py
+# cwd=<tmp>/swe-loop-gate-cj5c87mg tree=a28efb5b7e3813353ebbadd7a17f2937189b0aba exit=0
+
+All checks passed!
+3 files already formatted

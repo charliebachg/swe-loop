@@ -1,0 +1,5 @@
+$ pandas_3_0_5: PYTHONHASHSEED=0 SUPERSET_SECRET_KEY=not-a-secret ../superset-fork/.venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= tests/unit_tests/result_set_test.py
+# cwd=<tmp>/swe-loop-gate-m4obifsm tree=5bbc1014a80616c81f083f5f04153403ec288214 exit=0
+
+....................                                                     [100%]
+20 passed in 1.04s

@@ -1,0 +1,5 @@
+$ lint: ../superset-fork/.venv-p2/bin/ruff check superset/models/helpers.py && ../superset-fork/.venv-p2/bin/ruff format --check superset/models/helpers.py
+# cwd=<tmp>/swe-loop-gate-sfjj2ii6 tree=dd2d22211aee4515c045611e03d4211a87f5bab9 exit=0
+
+All checks passed!
+1 file already formatted

@@ -1,0 +1,14 @@
+$ p2_pandas_2_3_3: ../superset-fork/.venv-p2/bin/python -m pytest -c pytest.ini -p no:cacheprovider -o addopts= -W error::FutureWarning tests/unit_tests/pandas_postprocessing/test_boxplot.py
+# cwd=<tmp>/swe-loop-gate-omz78h68 tree=9fd6724c62516ba8ab51d57414c272b923e30837 exit=0
+
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-7.4.4, pluggy-1.5.0
+rootdir: <tmp>/swe-loop-gate-omz78h68
+configfile: pytest.ini
+plugins: asyncio-0.23.8, cov-6.0.0, anyio-4.11.0, xdist-3.8.0, mock-3.10.0, pyfakefs-5.3.5
+asyncio: mode=Mode.AUTO
+collected 7 items
+
+tests/unit_tests/pandas_postprocessing/test_boxplot.py .......           [100%]
+
+============================== 7 passed in 0.66s ===============================

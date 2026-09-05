@@ -1,0 +1,14 @@
+$ p3_existing_test: ../superset-fork/.venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider -o addopts= tests/unit_tests/common/test_dataframe_utils.py
+# cwd=<tmp>/swe-loop-gate-pv_00e5s tree=a4bfa71845cc4330598e0bf304fd922c3d0a40a7 exit=0
+
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-7.4.4, pluggy-1.5.0
+rootdir: <tmp>/swe-loop-gate-pv_00e5s
+configfile: pytest.ini
+plugins: asyncio-0.23.8, cov-6.0.0, anyio-4.11.0, xdist-3.8.0, mock-3.10.0, pyfakefs-5.3.5
+asyncio: mode=Mode.AUTO
+collected 2 items
+
+tests/unit_tests/common/test_dataframe_utils.py ..                       [100%]
+
+============================== 2 passed in 0.77s ===============================

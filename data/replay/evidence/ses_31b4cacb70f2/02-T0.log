@@ -1,0 +1,8 @@
+$ git diff --name-only master..HEAD
+# cwd=<tmp>/swe-loop-gate-0mx4o_7c tree=436b4618c0d870eeceaad82f7ead5828d52bc189 exit=0
+
+changed: ['superset/databases/api.py', 'tests/unit_tests/databases/api_test.py']
+forbidden touched: []
+out of scope: []
+tests touched, for a person to confirm: ['tests/unit_tests/databases/api_test.py']
+claimed but missing: []

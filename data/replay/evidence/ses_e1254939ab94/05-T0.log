@@ -1,0 +1,7 @@
+$ git diff --name-only master..HEAD
+# cwd=<tmp>/swe-loop-gate-hnjfqwcn tree=6f97fd1e48272de36d21158f6deee30d63c9f501 exit=0
+
+changed: ['superset/utils/pandas_postprocessing/aggregate.py', 'superset/utils/pandas_postprocessing/histogram.py', 'superset/utils/pandas_postprocessing/resample.py']
+forbidden touched: []
+out of scope: []
+claimed but missing: []

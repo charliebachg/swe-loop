@@ -1,0 +1,5 @@
+$ pandas_3_0_5: PYTHONHASHSEED=0 SUPERSET_SECRET_KEY=not-a-secret ../superset-fork/.venv-p3/bin/python -m pytest -c pytest.ini -p no:cacheprovider -q -o addopts= tests/unit_tests/utils/test_core.py tests/unit_tests/utils/test_date_parsing.py -k 'normalize_dttm or date_parsing or datetime or format or warning or edge or epoch' --deselect tests/unit_tests/utils/test_date_parsing.py::test_epoch_format_invalid_values
+# cwd=<tmp>/swe-loop-gate-h2q6odh8 tree=702e7464e4f242c09e2ac0a0c2a770954875e8fc exit=0
+
+.........................................                                [100%]
+41 passed, 124 deselected in 1.42s

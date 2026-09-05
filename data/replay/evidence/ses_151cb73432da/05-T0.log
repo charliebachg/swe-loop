@@ -1,0 +1,8 @@
+$ git diff --name-only master..HEAD
+# cwd=<tmp>/swe-loop-gate-fjnz_fwv tree=f139815fff953893d742e5fd233cc871b5b57447 exit=0
+
+changed: ['superset/models/helpers.py']
+forbidden touched: []
+out of scope: []
+tests touched, for a person to confirm: []
+claimed but missing: []
