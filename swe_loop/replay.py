@@ -35,7 +35,13 @@ TABLES = (
     "budget",
     "timeline",
     "settings",
+    "automations",
+    "automation_runs",
+    "insights",
 )
+
+# settings that belong to the machine or the person, never to a recording
+PRIVATE_SETTINGS = ("person.name", "watch.started_at", "watch.last_tick", "watch.last_issue_look")
 
 
 def redactions(extra: list[tuple[str, str]] | None = None) -> list[tuple[str, str]]:
@@ -58,15 +64,52 @@ def redactions(extra: list[tuple[str, str]] | None = None) -> list[tuple[str, st
 
 
 def record(
-    store: Store, path: Path | str, redact: list[tuple[str, str]] | None = None
+    store: Store,
+    path: Path | str,
+    redact: list[tuple[str, str]] | None = None,
+    *,
+    evidence_from: Path | str | None = None,
 ) -> dict[str, int]:
+    """Write the store to one JSON file, paths made portable, personal settings left out. With
+    evidence_from, the check logs are copied beside it under evidence/, scrubbed the same way, and
+    every output_path in the recording points at the copy, so a fresh clone can open them."""
     dump = {t: store._all(f"SELECT * FROM {t}") for t in TABLES}
+    dump["settings"] = [r for r in dump["settings"] if r.get("key") not in PRIVATE_SETTINGS]
+    path = Path(path)
+    pairs = redactions(redact)
+    copied = 0
+    if evidence_from:
+        src_root = Path(evidence_from).resolve()
+        dst_root = path.parent / "evidence"
+        for r in dump["evidence"]:
+            op = r.get("output_path") or ""
+            if not op:
+                continue
+            src = Path(op)
+            if not src.is_absolute():
+                src = (Path(__file__).resolve().parents[1] / src).resolve()
+            try:
+                rel = src.resolve().relative_to(src_root)
+            except ValueError:
+                continue
+            if not src.exists():
+                continue
+            dst = dst_root / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            body = src.read_text(errors="replace")
+            for a, b in pairs:
+                body = body.replace(a, b)
+            dst.write_text(body)
+            r["output_path"] = str(Path("data") / "replay" / "evidence" / rel)
+            copied += 1
     text = json.dumps(dump, indent=1, default=str)
-    for src, dst in redactions(redact):
-        text = text.replace(src, dst)
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text(text)
-    return {t: len(rows) for t, rows in dump.items()}
+    for a, b in pairs:
+        text = text.replace(a, b)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    out = {t: len(rows) for t, rows in dump.items()}
+    out["evidence_files"] = copied
+    return out
 
 
 def restore(store: Store, path: Path | str) -> dict[str, int]:

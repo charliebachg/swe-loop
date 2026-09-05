@@ -197,8 +197,11 @@ def cmd_budget(args: argparse.Namespace) -> int:
 
 
 def cmd_record(args: argparse.Namespace) -> int:
-    _, _, store, _ = _ctx()
-    print(json.dumps(record(store, args.path)))
+    settings, _, store, _ = _ctx()
+    evidence = settings.db_path.parent / "evidence"
+    print(
+        json.dumps(record(store, args.path, evidence_from=evidence if evidence.is_dir() else None))
+    )
     return 0
 
 

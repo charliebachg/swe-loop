@@ -369,14 +369,14 @@ class FakeTransport:
         shard = next((t.split(":", 1)[1] for t in tags if t.startswith("shard:")), "X")
         if "scan" in tags:
             out = {
-                "searched": "synthesised by FakeTransport; no repository was read",
+                "searched": "simulated in replay mode; no repository was read",
                 "findings": [
                     {
                         "title": "pandas 3: synthesised finding in superset/synthesised.py",
                         "file": "superset/synthesised.py",
                         "line": 1,
                         "class": "synthesised",
-                        "why": "synthesised by FakeTransport; replace with a recorded fixture",
+                        "why": "simulated in replay mode; not a real session",
                         "tests": ["tests/unit_tests/synthesised_test.py"],
                         "confidence": "unsure",
                     }
@@ -387,7 +387,7 @@ class FakeTransport:
             ticket_id = next((t for t in tags if t.startswith("tkt_")), "tkt_X")
             out: dict[str, Any] = {
                 "ticket_id": ticket_id,
-                "summary": "synthesised by FakeTransport; replace with a recorded fixture",
+                "summary": "simulated in replay mode; not a real session",
                 "classes": ["synthesised"],
                 "sites": [
                     {
@@ -416,7 +416,7 @@ class FakeTransport:
             "tests_passed": 0,
             "pr_url": f"https://github.com/{repo}/pull/{900 + self._counter}",
             "needs_human": [],
-            "notes": "synthesised by FakeTransport; replace with a recorded fixture",
+            "notes": "simulated in replay mode; not a real session",
         }
         return self._timeline(sid, out, pr_url=out["pr_url"])
 
