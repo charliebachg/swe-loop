@@ -970,3 +970,39 @@ def test_a_running_scan_shows_on_home_and_on_its_automation_row(tmp_path, monkey
         home = c.get("/").text
         assert "Working now" in home and "reading the repository" in home
         st.finish_automation_run(rid, {"issues": 0, "new_tickets": []})
+
+
+def test_a_scan_still_reading_is_picked_up_not_paid_for_twice(tmp_path, monkeypatch):
+    """A restart, or a second click, left a scan session of ours reading. The next run follows
+    that session to its findings instead of starting another one."""
+    from swe_loop import scan as scan_mod
+    from swe_loop.config import Settings
+    from swe_loop.devin import DevinClient, FakeTransport
+
+    st = Store(tmp_path / "s.sqlite")
+    cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+    client = DevinClient(FakeTransport())
+    settings = Settings(mode="live", devin_api_key="x")
+    # a first scan session exists on Devin and in the store, still working
+    spec = scan_mod.build_spec(cfg, 3, None, [], "performance")
+    first = client.start(spec)
+    sid = st.insert_scan_session(
+        devin_session_id=first.session_id,
+        url=first.url,
+        status="running",
+        status_detail="working",
+        playbook_id=None,
+        tags=list(spec.tags),
+    )
+    starts_before = sum(1 for c in client.t.calls if c[0] == "create_session")
+    out = scan_mod.run_scan(
+        settings, cfg, st, client, limit=3, area="performance", log=lambda m: None
+    )
+    starts_after = sum(1 for c in client.t.calls if c[0] == "create_session")
+    assert starts_after == starts_before, "no second scan session was started"
+    assert any(
+        e["event"] == "picked up the scan already reading" for e in st.timeline(session_id=sid)
+    )
+    assert out.get("session", "").startswith(first.session_id[:8]) or out.get("kind")
+    row = next(r for r in st.list_scan_sessions() if r["id"] == sid)
+    assert row["terminal_at"], "the adopted scan was followed to its end"

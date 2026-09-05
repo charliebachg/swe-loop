@@ -424,6 +424,27 @@ def run_scan(
         else _time.sleep
     )
     spec = build_spec(cfg, limit, playbook_id, known_sites(store), area)
+    # a scan of ours still reading, left behind by a restart or a second click, is picked up
+    # rather than paid for twice
+    for row in store.list_scan_sessions():
+        if not row.get("devin_session_id") or row.get("terminal_at"):
+            continue
+        try:
+            live = client.status(row["devin_session_id"])
+        except Exception as ex:  # noqa: BLE001 - a session that cannot be read is not adopted
+            log(f"scan: could not read {row['devin_session_id'][:12]}: {ex}")
+            continue
+        if live.alive:
+            store.log(
+                "scan",
+                "picked up the scan already reading",
+                session_id=row["id"],
+                detail=f"{row['devin_session_id']} · started {row['created_at'][11:16]} UTC",
+            )
+            log(f"scan: picking up {row['devin_session_id'][:12]}, still reading")
+            return _follow(
+                settings, cfg, store, client, live, row["id"], limit, sleep, wall_clock, log
+            )
     state = client.start(spec)
     sid = _record(store, state, spec.tags, playbook_id)
     store.log(
