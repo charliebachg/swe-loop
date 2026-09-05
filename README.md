@@ -71,46 +71,31 @@ repository, five from Devin's scanner. Twelve changes were written and checked; 
 were merged by a person, 1 waits on one, and 3 tickets were refused before anything was spent on
 them. Cost: $62.75 across 29 sessions and 160 minutes of active AI work.
 
-Four tickets are worth a look, because they are where the loop is honest rather than lucky:
+Where the loop is honest rather than lucky: **#00001** hit tests it may not edit, so it asked, a
+maintainer answered on the issue, and it re-scoped from that answer. **#00004** it refused, because
+whether fifteen failing tests or the code is wrong is a product decision. **#00019** it could not
+verify, because a broken acceptance command meant nothing ran, and it recorded that as unverified
+rather than a pass. **#00012**, a security finding, went to a person, because this repository
+requires such a finding to name the `SECURITY.md` row it violates and be filed as a question when
+it cannot.
 
-- **#00001 asked a question.** Its scoping session found the fix sat behind tests it may not edit,
-  so it returned notes and the router filed it for a person. A maintainer answered on the issue, a
-  scoping session re-scoped from that answer in under two minutes, and the fix followed.
-- **#00004 was refused and stays refused.** Fifteen test files assert pandas 2 results; whether a
-  test or the code is wrong is a product decision, so the session said so and stopped.
-- **#00019 could not be checked, which is more useful than one that failed.** Its acceptance command
-  named a warning class by a path pytest could not resolve, so nothing ran. The gate recorded that
-  as unverified, never a pass; a person fixed the command, the checks re-ran and passed, and it
-  merged. The change was right; the instrument was broken, and the system said so.
-- **#00012 came from Devin's scanner and still went to a person**, because this repository requires
-  a security finding to name the `SECURITY.md` row it violates and the attacker principal, and to
-  be filed as a question when it cannot. Every security finding here is a question until answered.
-
-Measured, not asserted: 25 unit tests failed on pandas 3.0.5 before any of this; with the merged
-changes, 11 pass. The 14 that still fail are all in test files, which is the ticket the system
-refused. Run it yourself from `data/inventory/2026-09-04-closing/` and you get the same numbers.
+Measured: 25 unit tests failed on pandas 3.0.5 before any of this; with the merged changes, 11
+pass, and the 14 that still fail are all in the test file the system refused to touch.
 
 ## Why an agent
 
-Detection was never the missing piece. Three tools were already running on `apache/superset#42671`
-and none moved it: Dependabot opened the pull request and stopped, because its job ends where code
-changes begin; a review bot described the migration correctly on day one; CI went red and stayed
-red. The gap is not finding the work. It is doing it, and being able to trust what comes back.
+Detection was never the missing piece: three tools were already running on
+`apache/superset#42671` and none moved it. Dependabot opened the pull request and stopped, because
+its job ends where code changes begin. The gap is doing the work and being able to trust what comes
+back, and that cannot be scripted. pandas ships no migration tool; its own guidance is a loop, fix
+what the warnings fire and run it again. The work order even carried pandas' own prescribed remedy,
+quoted from the warning text, and the acceptance command rejected it: the rule is right in general
+and wrong in this file, so the session had to iterate to a fix clean on both versions
+([#13](https://github.com/charliebachg/superset/pull/13)). No static analysis finds that.
 
-Doing it cannot be scripted. pandas ships no migration tool, and its own guidance is a loop: switch
-the deprecation warnings on, fix what fires, run it again, review what is left. A codemod is open
-loop. The work order for `client_processing.py` even carried pandas' own prescribed remedy, quoted
-from the warning text; the acceptance command rejected it, because the rule is right in general and
-wrong in this file, and the session had to iterate to a fix clean on both versions
-([#13](https://github.com/charliebachg/superset/pull/13)). No static analysis finds that, because
-finding it means running the test and reading what came back.
-
-And most of this repository is deliberately not an agent. The detector, the router, the shard caps,
-the gate and every number on the Report are code. The gate is what makes the volume safe: every
-change is checked out into a worktree the session cannot write to, diffed for the paths it may not
-touch, and run against the ticket's acceptance commands on both pandas versions. Work that does not
-pass never reaches a person. The agent is the part that reads a failing test and decides what to do;
-everything around it exists to check that decision.
+Most of this repository is deliberately not an agent. The detector, the router, the gate and every
+number on the Report are code; the agent is only the part that reads a failing test and decides
+what to do, and everything around it exists to check that decision.
 
 ## What this uses of Devin
 
@@ -126,36 +111,23 @@ Devin is the worker at every step that needs judgement, and the primitives are u
 | **Code scans** | Devin ships a scanner, so this runs it rather than describing one. A scan is started with an *area* to look in, never a defect to look for |
 | **Remediation** | `findings/{id}/remediate`: Devin fixes its own finding and opens the pull request |
 | **Auto-scan schedules** | the recurrence is Devin's, registered against the scan and backed by an Automation. This app keeps no timer of its own; Devin has no outbound webhook, so the app polls and records what the schedule did |
-| **Session Insights** | Devin's own read of each session: the classification arrives with every session, and the analysis of what to change next is generated per session from the Insights page |
+| **Session Insights** | used in full: the classification and message counts that arrive with every session, plus Devin's analysis generated per session, its detected issues by impact, action items by kind (knowledge, prompt, repo config, machine setup), timeline, note usage and a suggested prompt, gathered on the Insights page as the change list for the next run |
 
 ## How it works
 
-```
-event (GitHub webhook: a dependency bot's PR, a labelled issue, a failed check)
-  │
-  ▼ intake            code      any event becomes one ticket; one adapter per source
-  ▼ scan session      Devin     the second way in: reads the repository and files what it finds
-  ▼ code scan         Devin     the third: Devin's own scanner, on a recurrence Devin holds
-  ▼ triage session    Devin     reads the ticket, decides one session or several, or asks
-  ▼ ticket store      SQLite    the row exists before any session does
-  ▼ route             code      policy from configs/*.yaml: refuse, human-only, or Devin, with the reason
-  ▼ repair sessions   Devin     one per shard, bounded by max_acu_limit, typed by structured_output_schema
-  ▼ gate              code      T0: tests untouched, change in scope. T1: acceptance commands re-run from a clean checkout
-  ▼ Devin Review      Devin     requested only on work the gate passed; remarks go back to the session
-  ▼ merge             code      cross-shard conflicts; a person records the merge
-  ▼ report            code      the app: every number is a query
-```
+![The loop: work arrives three ways, Devin scopes and fixes, code checks, a person merges](docs/flow.png)
+
+Blue is a Devin session, green is code, amber is a person. The event layer on the left is the three
+ways in; the closed loop on the right is the gate feeding failures and review remarks back to the
+session that wrote the fix.
 
 The gate never trusts a session's own report. It checks out the pull request head into a detached
-worktree, diffs it against the base for the paths a session may not touch (`tests/`, `.github/`,
-migrations, dependency files), and runs the acceptance commands itself. Evidence is bound to the
-tree hash it ran on. A session that finishes without structured output is a failure, not a pass.
-
-Two things a session can do that the loop handles without a person: ask a question, and receive
-review remarks. A triage session that needs a decision ends its turn waiting; the answer goes back
-to that session, or a fresh one starts with the answer in hand. Devin Review's remarks on a passed
-pull request go back to the repair session that opened it, and the revised head is gated again
-before anyone sees it.
+worktree, diffs it for the paths a session may not touch (`tests/`, `.github/`, migrations,
+dependency files), and runs the acceptance commands itself; evidence is bound to the tree hash it
+ran on, and a session with no structured output is a failure, not a pass. When a triage session
+needs a decision it ends its turn and asks; the answer goes back to it. Devin Review's remarks on a
+passed pull request go back to the repair session, and the revised head is gated again before
+anyone sees it.
 
 ## Running it live
 
