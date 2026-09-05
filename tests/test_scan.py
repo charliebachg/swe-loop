@@ -936,3 +936,37 @@ def test_a_quiet_watcher_tick_leaves_no_run_behind(tmp_path, monkeypatch):
         )
         assert out["scan"] == "nothing scheduled"
     assert len(st.list_automation_runs("auto_codescan", limit=100)) == before
+
+
+def test_a_running_scan_shows_on_home_and_on_its_automation_row(tmp_path, monkeypatch):
+    """While a scan session reads the repository, the Automations row says so with the session's
+    link and how long it has been at it, and Home's Working now lists it. A row that says "no
+    result recorded" for twenty minutes tells nobody anything."""
+    from fastapi.testclient import TestClient
+
+    from swe_loop import v2
+    from swe_loop.app import build_app
+    from swe_loop.config import Settings
+
+    monkeypatch.delenv("DEVIN_API_KEY", raising=False)
+    st = Store(tmp_path / "s.sqlite")
+    app = build_app(Settings.from_env(), st, seed_replay=False)
+    with TestClient(app) as c:
+        rid = st.start_automation_run("auto_scan")
+        sid = st.insert_scan_session(
+            devin_session_id="dev-scan-live",
+            url="https://app.devin.ai/sessions/dev-scan-live",
+            status="running",
+            status_detail="working",
+            playbook_id=None,
+            tags=["swe-loop", "scan"],
+        )
+        st.log("scan", "running/working", session_id=sid)
+        line = v2._live_run_line(st, st.list_automation_runs("auto_scan")[0]["started_at"])
+        assert "reading the repository" in line["line"] and line["url"].endswith("dev-scan-live")
+        html = c.get("/automations?open=auto_scan").text
+        assert "reading the repository" in html and "no result recorded" not in html
+        assert 'href="https://app.devin.ai/sessions/dev-scan-live"' in html
+        home = c.get("/").text
+        assert "Working now" in home and "reading the repository" in home
+        st.finish_automation_run(rid, {"issues": 0, "new_tickets": []})

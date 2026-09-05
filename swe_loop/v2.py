@@ -1359,6 +1359,28 @@ def home(store: Store, cfg: TargetConfig, q: dict[str, str]) -> dict[str, Any]:
                 "go": url("/tickets-page", open=tid),
             }
         )
+    for x in store.list_scan_sessions():
+        if not x.get("devin_session_id") or x.get("terminal_at"):
+            continue
+        inflight.append(
+            {
+                "ref": "scan",
+                "color": TEAL,
+                "ticket": "",
+                "stage": "reading the repository",
+                "elapsed": ops._elapsed(x["created_at"], None),
+                "acu": _fmt_acu(x.get("acus_consumed"))
+                if sp_home["metered"]
+                else _usd_or_min(store, x, "scn", kind_rates_home),
+                "cap": "",
+                "pct": "0",
+                "last": _said(
+                    (store.timeline(session_id=x["id"], limit=1) or [{}])[0].get("event", "")
+                ),
+                "needsInput": False,
+                "go": x.get("url") or url("/devin/sessions"),
+            }
+        )
     enabled = [r for r in store.list_automations() if r["enabled"] and r["availability"] == "live"]
     next_trigger = (
         f"a pull request on {enabled[0]['target']}"
@@ -2540,6 +2562,43 @@ def _run_kind(status: str) -> str:
     return "ok"
 
 
+def _live_run_line(store: Store, started_at: str) -> dict[str, str]:
+    """What a run still going is doing right now: the session it is on, how long that session
+    has been at it, and the last thing the log said about it. A running row that says "no
+    result recorded" tells a reader nothing; this tells them where to look."""
+    live: list[tuple[str, str, str, str]] = []  # (created_at, kind, id, url)
+    for x in store.list_scan_sessions():
+        if x.get("devin_session_id") and not x.get("terminal_at") and x["created_at"] >= started_at:
+            live.append(
+                (
+                    x["created_at"],
+                    "a scan session is reading the repository",
+                    x["id"],
+                    x.get("url") or "",
+                )
+            )
+    for x in store.list_triage_sessions():
+        if x.get("devin_session_id") and not x.get("terminal_at") and x["created_at"] >= started_at:
+            live.append(
+                (x["created_at"], "a session is scoping a ticket", x["id"], x.get("url") or "")
+            )
+    for x in store.live_sessions():
+        if x["created_at"] >= started_at:
+            live.append(
+                (x["created_at"], "a session is writing a fix", x["id"], x.get("url") or "")
+            )
+    if not live:
+        last = (store.timeline(limit=1) or [{}])[0]
+        return {"line": _said(last.get("event", "")) or "starting", "url": ""}
+    created, what, sid, url_ = max(live)
+    last = (store.timeline(session_id=sid, limit=1) or [{}])[0]
+    said = _said(last.get("event", ""))
+    return {
+        "line": f"{what} · {ops._elapsed(created, None)}" + (f" · {said}" if said else ""),
+        "url": url_,
+    }
+
+
 def _run_line(res: dict[str, Any]) -> str:
     if not res:
         return "no result recorded"
@@ -2712,7 +2771,11 @@ def automations(
                     {
                         "when": run["started_at"][:16].replace("T", " "),
                         "took": _took(run["started_at"], run.get("finished_at")),
-                        "line": _run_line(run["result"]),
+                        **(
+                            _live_run_line(store, run["started_at"])
+                            if run["status"] == "running"
+                            else {"line": _run_line(run["result"]), "url": ""}
+                        ),
                         **pill(_run_kind(run["status"])),
                         "status": "Devin's" if run["status"] == "observed" else run["status"],
                     }
