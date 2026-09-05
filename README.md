@@ -158,7 +158,7 @@ ship rather than reimplemented:
 | **Code scans** | Devin ships a scanner, so this runs it rather than describing one. A scan is started with an *area* to look in, never a defect to look for |
 | **Remediation** | `findings/{id}/remediate`: Devin fixes its own finding and opens the pull request |
 | **Auto-scan schedules** | the recurrence is Devin's, registered against the scan and backed by an Automation on the organisation. This app does not keep a timer of its own |
-| **Session Insights** | Devin's own read of each session, on its own page, kept separate from anything this app measures |
+| **Session Insights** | Devin's own read of each session. The classification arrives with every session; the analysis, what went wrong and what the prompt or the knowledge should have said, is generated per session from the Insights page and gathered there as action items by kind |
 
 **The schedule is theirs, and the watching is ours.** `POST` on a scan's `auto-scan` registers a
 recurrence and Devin backs it with an Automation. It is created switched off, and the switch on
@@ -194,6 +194,10 @@ docker compose up
 # open http://localhost:8000
 ```
 
+Replay reads a saved copy of the repository's issues rather than GitHub, so the run reproduces
+exactly however the repository has moved since; every ticket still links to the real issue and the
+real pull request. Nothing in replay reaches the network.
+
 Or without Docker:
 
 ```
@@ -202,8 +206,20 @@ python -m swe_loop seed      # fills an empty store from the recorded run
 python -m swe_loop serve     # the app on :8000, intake on /intake/github
 ```
 
-Live mode needs three things: a Devin org-scoped service user key, a GitHub token that can read
-and write the fork, and a local clone of the fork for the gate. The gate checks each pull request
+Live mode needs a Devin org-scoped service user key, and gets more with two more things: a GitHub
+token, and a local clone of the fork for the gate. What each one unlocks:
+
+| with | you get |
+| --- | --- |
+| no keys | replay: every page, the recorded run, nothing on the network |
+| `DEVIN_API_KEY` | live sessions: the playbooks and Knowledge notes go to your org on the first run, tickets are scoped and repaired, Devin opens pull requests through its GitHub App on the repository, the reviewer reads them back. Intake and review read-back read a public repository without a token |
+| `GITHUB_TOKEN` as well | merging from the dashboard and closing the source issue, marking a pull request draft while the reviewer reads it, the "What changed" view above the anonymous rate limit |
+| the clone with two environments | the independent checks: every acceptance command re-run on a clean copy the session cannot write to |
+
+Devin pushes through the Devin GitHub App installed on the target repository, so a repository you
+do not own needs forking first: fork it, install the app on your copy with "Only select
+repositories", and set `repo` in the seam to it. Forks carry no issues, so on a fresh copy start
+with the scan agent, which finds work itself. The gate checks each pull request
 out into a detached worktree of that clone and runs the acceptance commands through its own
 interpreters, so the clone lives at `gate.repo_root` in the seam (by default `../superset-fork`,
 beside this repository) and carries `.venv-p2` and `.venv-p3`, built as
@@ -227,8 +243,12 @@ python -m swe_loop record data/replay/run.json            # capture the run for 
 python -m swe_loop receipts                 # the table at the top of this file, from the store
 python -m swe_loop schedule                 # hand the code scan's recurrence to Devin, switched off
 python -m swe_loop schedule --on            # arm it;  --remove takes it off Devin again
-python -m swe_loop watch                    # wait for Devin's schedule to fire, then run the loop
+python -m swe_loop insights <session id>... # ask Devin for its analysis of finished sessions
 ```
+
+The app looks by itself, every two minutes, for two things: a run Devin's schedule made, which it
+records and files, and a new labelled issue on the repository, which becomes a ticket. Neither
+starts a session; Run does. Do not run a second watcher beside the app.
 
 Or open Automations and click Run: it is the same chain from a button, and the pages refresh
 while it works. Without `DEVIN_API_KEY` the mode is forced to replay. No key, no sessions.
@@ -344,7 +364,7 @@ data/inventory/    the measured inventory and the tickets drafted from it
 data/replay/       the recorded run, redacted
 templates/         the app
 static/            htmx, served by the app so the dashboard works with no internet
-tests/             198 tests; the checks are tested against a real git fixture
+tests/             213 tests; the checks are tested against a real git fixture
 ```
 
 ## Development
