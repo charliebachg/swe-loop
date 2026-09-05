@@ -187,16 +187,21 @@ Devin's scanner. Where the API forces a choice this says so rather than claiming
 
 ## Run it
 
-Replay mode needs no credentials. It renders the app from the recorded run.
+There are two ways to run this, and the first needs nothing from you.
+
+### Simulate: replay the recorded run
 
 ```
 docker compose up
 # open http://localhost:8000
 ```
 
-Replay reads a saved copy of the repository's issues rather than GitHub, so the run reproduces
-exactly however the repository has moved since; every ticket still links to the real issue and the
-real pull request. Nothing in replay reaches the network.
+No keys, no accounts. The app plays back a recorded live run: twenty three tickets from three
+sources, the sessions that scoped and fixed them, every check's log, the reviews, the merges,
+Devin's analysis of each session. Every page works, Run works, and nothing reaches the network:
+anything the replay has to make up says "simulated in replay mode" on it. Replay reads a saved copy
+of the repository's issues rather than GitHub, so the run reproduces however the repository has
+moved since; every ticket still links to the real issue and the real pull request.
 
 Or without Docker:
 
@@ -206,40 +211,63 @@ python -m swe_loop seed      # fills an empty store from the recorded run
 python -m swe_loop serve     # the app on :8000, intake on /intake/github
 ```
 
-Live mode needs a Devin org-scoped service user key, and gets more with two more things: a GitHub
-token, and a local clone of the fork for the gate. What each one unlocks:
+### Run it for real, on a fork you own
+
+Devin reads any public repository, but it pushes only where its GitHub App is installed, and
+that installation belongs to one Devin organisation. So a live run needs a repository your Devin
+can push to, which for a repository you do not own means a fork. Three things are attached, all
+on your side; nothing here is shared.
+
+1. **Your fork to your Devin.** Fork this project's target repository, `charliebachg/superset`,
+   into your account. Install the Devin GitHub App on it with "Only select repositories".
+2. **Your Devin to this app.** In your Devin organisation, Settings, Service users: create one
+   and copy its `cog_` key and the organisation id. Copy `.env.example` to `.env`, fill in
+   `DEVIN_API_KEY` and `DEVIN_ORG_ID`, set `SWE_LOOP_MODE=live`. Optionally a fine-grained
+   `GITHUB_TOKEN` scoped to your fork; the table below says what it unlocks.
+3. **Your fork to this app.** In `configs/superset-pandas3.yaml`, set `repo:` to your fork. The
+   first live run puts this project's playbooks and Knowledge notes on your organisation by itself.
+
+Then give it work. Forks carry no issues, so either file one on your fork with the `swe-loop` label,
+which the app sees within two minutes and files as a ticket, or open Automations and click Run on
+the scan agent, which finds work itself. Issues #1 and #4 on `charliebachg/superset` are kept open
+on purpose as standing demo issues; copy one to your fork to see the loop take a real one. Run on
+"Issues from repo" scopes it, fixes it, checks it, has Devin Review read it, and the pull request
+opens on your fork, because that is where your Devin can push. The merge is yours to click.
+
+With a key and no fork, "Scope only" on any automation runs the loop up to the point where writing
+would begin: real sessions scope every new ticket and the router decides, nothing is pushed
+anywhere. It is the two-dollar way to watch Devin size the work.
 
 | with | you get |
 | --- | --- |
 | no keys | replay: every page, the recorded run, nothing on the network |
-| `DEVIN_API_KEY` | live sessions: the playbooks and Knowledge notes go to your org on the first run, tickets are scoped and repaired, Devin opens pull requests through its GitHub App on the repository, the reviewer reads them back. Intake and review read-back read a public repository without a token |
+| `DEVIN_API_KEY` and a fork | live sessions: tickets scoped and repaired, Devin opens pull requests on your fork through its GitHub App, the reviewer reads them back, and the app looks after your fork by itself. Intake and review read-back read a public repository without a token |
 | `GITHUB_TOKEN` as well | merging from the dashboard and closing the source issue, marking a pull request draft while the reviewer reads it, the "What changed" view above the anonymous rate limit |
 | the clone with two environments | the independent checks: every acceptance command re-run on a clean copy the session cannot write to |
 
-Devin pushes through the Devin GitHub App installed on the target repository, so a repository you
-do not own needs forking first: fork it, install the app on your copy with "Only select
-repositories", and set `repo` in the seam to it. Forks carry no issues, so on a fresh copy start
-with the scan agent, which finds work itself. The gate checks each pull request
-out into a detached worktree of that clone and runs the acceptance commands through its own
-interpreters, so the clone lives at `gate.repo_root` in the seam (by default `../superset-fork`,
-beside this repository) and carries `.venv-p2` and `.venv-p3`, built as
-`knowledge/superset-pandas-test-environments.md` describes. Settings shows whether it is ready
-before a run, and a live run that cannot verify says so on the ticket instead of implying a pass.
-In Docker, point `SWE_LOOP_FORK` at a clone whose two environments were built inside the
-container.
+**The checks.** The loop re-runs each ticket's acceptance commands itself, on a clean checkout the
+session never touched, through interpreters it controls. That needs a local clone of your fork at
+`gate.repo_root` in the config, `../superset-fork` beside this repository by default, carrying
+`.venv-p2` (pandas 2.3.3) and `.venv-p3` (pandas 3.0.5), built as
+`knowledge/superset-pandas-test-environments.md` describes: two `uv venv` calls and three `uv pip
+install` calls, about twenty minutes. Settings shows whether the clone is ready. Without it, a
+live run still scopes and fixes; the pull request then comes to a person with "the checks could
+not run here" on the ticket, never an implied pass, and Devin Review is not asked until they have. In Docker, point `SWE_LOOP_FORK` at a clone whose two environments were built
+inside the container.
 
-Copy `.env.example` to `.env`, fill it in, set `SWE_LOOP_MODE=live`, then:
+The command line does the same things as the pages:
 
 ```
 python -m swe_loop apply-config --dry-run   # what would be created on the org; creates nothing
 python -m swe_loop apply-config             # the playbooks and Knowledge notes; the first live run does this itself
 python -m swe_loop seed --as-new            # the fork's open tickets, untriaged
+python -m swe_loop automation --id auto_repair --stop-after scoping   # scope and route, write nothing
 python -m swe_loop triage                   # one triage session per new ticket
 python -m swe_loop triage --ticket tkt_A --answer "..."   # answer a question; wakes the ticket's session, or starts one with the answer
 python -m swe_loop run                      # route, dispatch, poll, gate, review, reduce: one pass
 python -m swe_loop review-followup --ticket tkt_B         # send Devin Review's remarks back, re-gate
 python -m swe_loop cost --set 58d404d2=1.78 # the console's figure for a session
-python -m swe_loop record data/replay/run.json            # capture the run for replay, redacted
+python -m swe_loop record data/replay/run.json            # capture the run for replay, redacted, logs beside it
 python -m swe_loop receipts                 # the table at the top of this file, from the store
 python -m swe_loop schedule                 # hand the code scan's recurrence to Devin, switched off
 python -m swe_loop schedule --on            # arm it;  --remove takes it off Devin again
@@ -248,10 +276,8 @@ python -m swe_loop insights <session id>... # ask Devin for its analysis of fini
 
 The app looks by itself, every two minutes, for two things: a run Devin's schedule made, which it
 records and files, and a new labelled issue on the repository, which becomes a ticket. Neither
-starts a session; Run does. Do not run a second watcher beside the app.
-
-Or open Automations and click Run: it is the same chain from a button, and the pages refresh
-while it works. Without `DEVIN_API_KEY` the mode is forced to replay. No key, no sessions.
+starts a session; Run does. Do not run a second watcher beside the app. Without `DEVIN_API_KEY` the
+mode is forced to replay. No key, no sessions.
 
 ## What happens, in order
 
