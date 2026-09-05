@@ -209,3 +209,20 @@ def test_github_refusing_the_draft_change_is_reported(monkeypatch):
     assert (
         rd.set_pr_draft("https://github.com/o/r/pull/1", "tok", True, post=call) == "not permitted"
     )
+
+
+def test_a_github_error_object_reads_as_unreadable_not_as_a_crash():
+    """GitHub answers a bad token, a rate limit or a missing pull request with an object, not a
+    list. Both readers treat that as "cannot be read": no outcome, no remarks, no exception."""
+    from swe_loop.followup import fetch_review_remarks
+    from swe_loop.reduce import _github_review_outcome
+
+    err = {
+        "message": "Bad credentials",
+        "documentation_url": "https://docs.github.com",
+        "status": "401",
+    }
+    assert (
+        _github_review_outcome("https://github.com/o/r/pull/1", "tok", fetch=lambda u: err) is None
+    )
+    assert fetch_review_remarks("https://github.com/o/r/pull/1", "tok", fetch=lambda u: err) == []

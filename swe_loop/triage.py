@@ -130,6 +130,16 @@ def apply_verdict(
         cls=",".join(verdict.get("classes", [])) or t.get("class"),
         triage_verdict=verdict,
     )
+    # a second verdict on the same ticket (a person answered, the session was asked again) is a
+    # new plan; the old plan's work orders must not be dispatched beside the new ones
+    set_aside = store.supersede_work_orders(ticket_id)
+    if set_aside:
+        store.log(
+            "triage",
+            f"{set_aside} earlier work order{'s' if set_aside != 1 else ''} set aside",
+            ticket_id=ticket_id,
+            detail="a new plan replaces the old one; nothing from the old plan is dispatched",
+        )
     ids: list[str] = []
     if verdict["split"] == "parallel":
         for sh in verdict["shards"]:

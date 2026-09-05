@@ -172,7 +172,11 @@ def route_ticket(store: Store, ticket_id: str, cfg: TargetConfig) -> list[Decisi
     if not t:
         raise KeyError(ticket_id)
     verdict = json.loads(t["triage_verdict_json"]) if t.get("triage_verdict_json") else None
-    wos = store.work_orders_for(ticket_id)
+    # routing decides about the current plan; work orders set aside by a later verdict, or
+    # already replaced by their shards, are history and keep the status they have
+    wos = [
+        wo for wo in store.work_orders_for(ticket_id) if wo["status"] not in ("superseded", "split")
+    ]
     decisions: list[Decision] = []
 
     if not wos:

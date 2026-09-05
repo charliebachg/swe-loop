@@ -40,9 +40,12 @@ def fetch_review_remarks(pr_url: str, token: str, fetch: Any = None) -> list[dic
         comments = get(f"https://api.github.com/repos/{owner_repo}/pulls/{num}/comments")
     except Exception:  # noqa: BLE001 - no remarks is a valid answer
         return []
+    if not isinstance(comments, list):
+        # GitHub answered with an error object; there are no remarks to read
+        return []
     out = []
-    for c in comments or []:
-        if (c.get("user") or {}).get("login") != REVIEW_BOT:
+    for c in comments:
+        if not isinstance(c, dict) or (c.get("user") or {}).get("login") != REVIEW_BOT:
             continue
         out.append(
             {

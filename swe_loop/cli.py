@@ -253,7 +253,15 @@ def settle_reviews(
     deadline = clock() + wait_s
     while True:
         if _pending_reviews(store):
-            out["read_back"] += refresh_reviews(store, client, settings.github_token)
+            try:
+                out["read_back"] += refresh_reviews(store, client, settings.github_token)
+            except Exception as ex:  # noqa: BLE001 - a read-back that fails is retried next loop
+                log(f"review read-back failed, will retry: {type(ex).__name__}: {ex}")
+                store.log(
+                    "review",
+                    "read-back failed; will retry",
+                    detail=f"{type(ex).__name__}: {ex}"[:200],
+                )
             if _pending_reviews(store):
                 if clock() > deadline:
                     out["timed_out"] = True

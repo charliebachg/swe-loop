@@ -141,3 +141,28 @@ def test_review_required_on_a_shard_is_lifted_for_the_router(tmp_path):
     d = route_all(st, cfg)["tkt_pu42671"]
     assert d and d[0].review == "required"
     assert "review required" in st.get_ticket("tkt_pu42671")["router_reason"]
+
+
+def test_a_second_verdict_sets_the_first_plans_work_orders_aside(tmp_path):
+    """A person answers, the ticket is scoped again, and the new verdict is the plan. The old
+    plan's work orders must not be dispatched beside the new ones: they are set aside, the
+    dispatch loop skips them, and readiness does not count them as shards."""
+    from swe_loop.reduce import readiness
+    from swe_loop.router import route_all
+
+    st = Store(tmp_path / "t.sqlite")
+    st.upsert_ticket(id="tkt_pu42671", source="github", title="bump pandas", status="triaged")
+    first = apply_verdict(st, "tkt_pu42671", GOOD, CFG)
+    route_all(st, CFG)
+    assert [w["status"] for w in st.work_orders_for("tkt_pu42671")] == ["devin", "devin"]
+
+    second = apply_verdict(st, "tkt_pu42671", GOOD, CFG)
+    route_all(st, CFG)
+    wos = st.work_orders_for("tkt_pu42671")
+    by_id = {w["id"]: w["status"] for w in wos}
+    assert all(by_id[i] == "superseded" for i in first), "the old plan is set aside"
+    assert all(by_id[i] == "devin" for i in second), "only the new plan is live"
+    live = [w for w in wos if w["status"] in ("devin", "dispatched")]
+    assert len(live) == 2, "exactly one plan's worth of work orders can be dispatched"
+    assert readiness(st, "tkt_pu42671").shards == 2
+    assert any("set aside" in e["event"] for e in st.timeline(limit=20))

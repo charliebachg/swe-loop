@@ -462,6 +462,17 @@ class Store:
             row["acceptance"] = json.loads(row.pop("acceptance_json"))
         return row
 
+    def supersede_work_orders(self, ticket_id: str) -> int:
+        """A new plan for a ticket replaces the work orders of the old one. Those not yet merged
+        are set aside so nothing dispatches them again; a merged one is history and stays."""
+        cur = self.conn.execute(
+            "UPDATE work_orders SET status='superseded' WHERE ticket_id=? "
+            "AND status IN ('devin','dispatched')",
+            (ticket_id,),
+        )
+        self.conn.commit()
+        return cur.rowcount
+
     def work_orders_for(self, ticket_id: str) -> list[dict[str, Any]]:
         return [
             self.get_work_order(r["id"])

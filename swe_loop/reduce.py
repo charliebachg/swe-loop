@@ -125,7 +125,7 @@ def readiness(store: Store, ticket_id: str) -> TicketReadiness:
     r = TicketReadiness(ticket_id, t["status"])
     files_by_shard: dict[str, set[str]] = {}
     for wo in store.work_orders_for(ticket_id):
-        if wo["status"] in ("split", "refuse", "human_only"):
+        if wo["status"] in ("split", "refuse", "human_only", "superseded"):
             continue
         r.shards += 1
         files_by_shard[wo["shard_id"]] = set(wo["files"])
@@ -148,7 +148,7 @@ def readiness(store: Store, ticket_id: str) -> TicketReadiness:
                 ((_latest_pass(store, wo["id"]) or {}).get("verdict") or {}).get("review_severity"),
             )
             for wo in store.work_orders_for(ticket_id)
-            if wo["status"] not in ("split", "refuse", "human_only")
+            if wo["status"] not in ("split", "refuse", "human_only", "superseded")
         )
     )
     open_oracle = [
@@ -174,7 +174,7 @@ def detect_conflicts(store: Store) -> list[dict[str, Any]]:
         if t["status"] in ("merged", "refused"):
             continue
         for wo in store.work_orders_for(t["id"]):
-            if wo["status"] in ("split", "refuse", "human_only"):
+            if wo["status"] in ("split", "refuse", "human_only", "superseded"):
                 continue
             for f in wo["files"]:
                 owners[f].append((t["id"], wo["shard_id"]))
@@ -405,11 +405,23 @@ def _github_review_outcome(
         comments = get(f"https://api.github.com/repos/{owner_repo}/pulls/{num}/comments")
     except Exception:  # noqa: BLE001 - the review stays 'completed' without detail
         return None
-    mine = [r for r in reviews if (r.get("user") or {}).get("login") == _REVIEW_BOT]
+    # an error from GitHub (bad token, rate limit, missing pull request) is an object with a
+    # message, not a list; it is the same "cannot be read" as a network failure
+    if not isinstance(reviews, list) or not isinstance(comments, list):
+        return None
+    mine = [
+        r
+        for r in reviews
+        if isinstance(r, dict) and (r.get("user") or {}).get("login") == _REVIEW_BOT
+    ]
     if not mine:
         return None
     body = mine[-1].get("body") or ""
-    inline = [c for c in comments if (c.get("user") or {}).get("login") == _REVIEW_BOT]
+    inline = [
+        c
+        for c in comments
+        if isinstance(c, dict) and (c.get("user") or {}).get("login") == _REVIEW_BOT
+    ]
     if since:
         # only what this review round added: the request time is the verdict's; GitHub timestamps are UTC
         inline = [
