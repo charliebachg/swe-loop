@@ -50,8 +50,14 @@ run the scan agent. The full steps, and what a GitHub token and a local test clo
 
 ## What it did
 
-Every row comes out of the store, printed by `python -m swe_loop receipts`, so this table and the
-app cannot drift apart.
+Nineteen tickets from three ways in, printed from the store by `python -m swe_loop receipts` so the
+table and the app cannot drift apart:
+
+- **19 tickets:** 4 from the fork's issues, 10 from a session pointed at the code, 5 from Devin's scanner.
+- **12 changes** written and checked, all 12 passed; **11 merged** by a person, 1 waiting, 3 refused before any spend.
+- **$62.75** across 29 sessions and 160 minutes of active AI work.
+- **25 unit tests** failed on pandas 3.0.5 before this; **11 pass** now, and the 14 still failing are all in the test file the system refused to touch.
+- Honest, not lucky: **#00001** asked when it hit tests it may not edit; **#00004** it refused, because whether the tests or the code is wrong is a product decision; **#00019** it marked unverified when a broken command meant nothing ran; **#00012**, a security finding, went to a person under this repository's `SECURITY.md` rule.
 
 | ticket | issue | scope | went to | checks | Devin Review | where it is |
 |---|---|---|---|---|---|---|
@@ -65,22 +71,6 @@ app cannot drift apart.
 | #00012 | filed by a scan | `api.py` | a person | passed | 0 comments | merged, [#17](https://github.com/charliebachg/superset/pull/17) |
 | #00016 | filed by a scan | `csv.py` | Devin | passed | 1 comment | merged, [#19](https://github.com/charliebachg/superset/pull/19) |
 | #00019 | filed by a scan | `compare.py` | Devin | passed | no issues | merged, [#22](https://github.com/charliebachg/superset/pull/22) |
-
-Nineteen tickets from three ways in: four from the fork's issues, ten from a session pointed at the
-repository, five from Devin's scanner. Twelve changes were written and checked; twelve passed; 11
-were merged by a person, 1 waits on one, and 3 tickets were refused before anything was spent on
-them. Cost: $62.75 across 29 sessions and 160 minutes of active AI work.
-
-Where the loop is honest rather than lucky: **#00001** hit tests it may not edit, so it asked, a
-maintainer answered on the issue, and it re-scoped from that answer. **#00004** it refused, because
-whether fifteen failing tests or the code is wrong is a product decision. **#00019** it could not
-verify, because a broken acceptance command meant nothing ran, and it recorded that as unverified
-rather than a pass. **#00012**, a security finding, went to a person, because this repository
-requires such a finding to name the `SECURITY.md` row it violates and be filed as a question when
-it cannot.
-
-Measured: 25 unit tests failed on pandas 3.0.5 before any of this; with the merged changes, 11
-pass, and the 14 that still fail are all in the test file the system refused to touch.
 
 ## Why an agent
 
@@ -193,25 +183,17 @@ Every number is a count with its denominator, never a percentage on its own; the
 the page says so. It also states plainly what it cannot tell you. The person who merges is recorded
 as a hash, never a named engineer.
 
-## Cost, security, and layout
+## Notes
 
-**Cost on a self-serve plan.** Self-serve Devin plans are billed in dollar credits and the API
-reports `acus_consumed` as 0.0, so the loop measures cost itself: active minutes from its own polls
-times a rate per session kind, refined by the console's per-session figures entered on Settings.
-That makes the figure a floor rather than a total, and the Report says so. On an ACU-metered plan
-the same pages show ACU.
-
-**What it runs, and where.** The acceptance commands come from a scoping session's structured
-output, which is a model's writing, and the loop runs them: treat this like a build script from a
-pull request. Point it at a repository you trust and run it in the container. The commands run in a
-detached worktree the session cannot reach, which stops a session marking its own homework; it does
-not sandbox the command itself. The dashboard has no sign-in and merges with whatever token is
-loaded, so `compose.yaml` publishes it on loopback only.
-
-**The seam.** Everything specific to a target lives in `configs/superset-pandas3.yaml`: the
-repository, the trigger, the acceptance commands, the router policy, and the session caps.
-`configs/example-minimal.yaml` is a second seam the router tests run against, to keep the code
-target-agnostic.
+- **Cost.** Self-serve Devin plans report `acus_consumed` as 0.0, so the loop measures active
+  minutes from its own polls and prices them, refined by the console's per-session figures. The
+  figure is a floor, and the Report says so. ACU-metered plans show ACU instead.
+- **Security.** The acceptance commands are a model's writing, run like a build script: point it at
+  a repository you trust and run it in the container. They run in a worktree the session cannot
+  reach, which stops it marking its own homework, but the command itself is not sandboxed. The
+  dashboard has no sign-in, so `compose.yaml` publishes it on loopback only.
+- **The seam.** Everything target-specific lives in `configs/superset-pandas3.yaml`; a second seam,
+  `example-minimal.yaml`, keeps the code target-agnostic.
 
 **Layout.**
 
