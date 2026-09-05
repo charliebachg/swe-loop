@@ -2676,6 +2676,7 @@ def automations(
                 "runnable": bool(r["runnable"]),
                 "canRun": bool(r["enabled"]) and not r["running"] and not running,
                 "runUrl": f"/automations/{r['id']}/run",
+                "scopeUrl": f"/automations/{r['id']}/run?stop_after=scoping",
                 "runLabel": "Running…" if r["running"] else "Run",
                 "removable": r["kind"] in ("custom", "scan") and r["id"] != "auto_scan",
                 "removeUrl": f"/automations/{r['id']}/delete",

@@ -316,6 +316,17 @@ def run_automation(
         verdicts = triage_all(store, client, cfg, inventory_path=inv, playbook_id=pid_tri)
         result["triaged"] = len(verdicts)
         log(f"scoping: {plural(len(verdicts), 'session')}")
+        if stop_after == "scoping":
+            # the loop up to the point where writing would begin: every new ticket scoped by a
+            # session and routed, nothing dispatched. This is the live run for someone with a
+            # Devin key and no repository their Devin can push to: it reads, it never writes.
+            from swe_loop.router import route_all
+
+            route_all(store, cfg)
+            result["stopped_after"] = "scoping"
+            log("stopping after scoping, as asked: nothing is repaired")
+            store.finish_automation_run(rid, result)
+            return result
         pid_rep = store.get_setting("playbook_id.repair-pandas3")
         result.update(run_once(settings, cfg, store, client, playbook_id=pid_rep, log=log))
         store.finish_automation_run(rid, result)

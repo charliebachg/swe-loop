@@ -112,3 +112,21 @@ def test_pages_poll_while_something_runs(fresh):
     html = c.get("/tickets-page").text
     assert "The AI is working on the fix" in html and "open the session" in html
     assert 'href="https://app.devin.ai/sessions/d1"' in html
+
+
+def test_scope_only_scopes_and_routes_and_writes_nothing(fresh):
+    """Scope only is the live run for someone with a Devin key and nowhere their Devin can push:
+    every new ticket gets a triage session and a routing decision, and no repair session starts."""
+    c, st = fresh
+    r = c.post("/automations/auto_repair/run?stop_after=scoping")
+    assert r.status_code == 200
+    c.app.state.run_thread.join(120)
+    runs = st.list_automation_runs("auto_repair")
+    assert runs[0]["result"]["stopped_after"] == "scoping"
+    assert runs[0]["result"]["triaged"] == 5 and "dispatched" not in runs[0]["result"]
+    assert len(st.list_triage_sessions()) == 5
+    assert all(t["router_decision"] for t in st.list_tickets()), "every ticket was routed"
+    assert st._all("SELECT id FROM sessions") == [], "no repair session was started"
+    calls = [x[0] for x in c.app.state.client.t.calls]
+    assert calls.count("create_session") == 5, "five scoping sessions, nothing else"
+    assert c.post("/automations/auto_repair/run?stop_after=merge").status_code == 400

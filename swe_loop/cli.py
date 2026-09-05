@@ -753,8 +753,9 @@ def main(argv: list[str] | None = None) -> int:
     au.add_argument("--area", help="which area a scan searches in; the seam's own area by default")
     au.add_argument(
         "--stop-after",
-        choices=["intake"],
-        help="file the tickets and stop; nothing is scoped or repaired",
+        choices=["intake", "scoping"],
+        help="intake: file the tickets and stop. scoping: scope and route every new ticket, then "
+        "stop before anything is written; a live run that never pushes",
     )
     au.set_defaults(fn=cmd_automation)
     w = sub.add_parser("watch", help="wait for Devin's schedule to fire, then run the loop")

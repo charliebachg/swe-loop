@@ -365,7 +365,10 @@ def build_app(
 
     @app.post("/automations/{aid}/run", response_class=HTMLResponse)
     def automations_run_v2(aid: str, request: Request) -> HTMLResponse:
-        _run_automation(request, aid)
+        stop = request.query_params.get("stop_after") or None
+        if stop not in (None, "intake", "scoping"):
+            raise HTTPException(status_code=400, detail="stop_after is intake or scoping")
+        _run_automation(request, aid, stop_after=stop)
         return _auto_page(request, sel=aid)
 
     @app.post("/devin/playbooks", response_class=HTMLResponse)
@@ -658,7 +661,7 @@ def build_app(
         st.delete_automation(aid)
         st.log("automation", f"removed {a['name']}")
 
-    def _run_automation(request: Request, aid: str) -> None:
+    def _run_automation(request: Request, aid: str, stop_after: str | None = None) -> None:
         st: Store = request.app.state.store
         a = st.get_automation(aid)
         if not a:
@@ -674,13 +677,20 @@ def build_app(
         st.set_setting("automation.running", aid)
         st.log(
             "automation",
-            f"{a['name']}: run",
-            detail="issues to tickets, triage, route, repair, gate, review",
+            f"{a['name']}: run" + (f", stopping after {stop_after}" if stop_after else ""),
+            detail="issues to tickets, triage, route, repair, gate, review"
+            if not stop_after
+            else {
+                "intake": "tickets filed, nothing scoped",
+                "scoping": "tickets scoped and routed, nothing written",
+            }[stop_after],
         )
 
         def _go() -> None:
             try:
-                runner.run_automation(settings, cfg, st, client, aid, log=lambda m: None)
+                runner.run_automation(
+                    settings, cfg, st, client, aid, log=lambda m: None, stop_after=stop_after
+                )
             except Exception as ex:  # noqa: BLE001 - surfaced on the page, never silent
                 st.log("automation", "run failed", detail=f"{type(ex).__name__}: {ex}"[:300])
             finally:
