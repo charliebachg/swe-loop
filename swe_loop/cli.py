@@ -629,8 +629,22 @@ def apply_config(settings: Settings, cfg: TargetConfig, store: Store, client: De
     ):
         pb = load_playbook(ROOT / "playbooks" / f"{name}.md", ROOT / "schemas" / schema)
         if pb.name in existing_pb:
-            skipped[name] = existing_pb[pb.name]
             pid = existing_pb[pb.name]
+            # the file is the source of truth: when its text moved on, the org's copy follows
+            try:
+                theirs = client.t.get_playbook(pid) or {}
+            except Exception:  # noqa: BLE001 - a read that fails leaves the org's copy alone
+                theirs = {}
+            if theirs and (theirs.get("body") or "") != pb.body:
+                client.t.update_playbook(pid, pb.to_payload())
+                made[f"{name} (updated)"] = pid
+                store.log(
+                    "triage",
+                    f"playbook {name} updated on the organisation",
+                    detail="the file's text changed; sessions created from now on read the new one",
+                )
+            else:
+                skipped[name] = pid
         else:
             pid = client.t.create_playbook(pb.to_payload()).get("playbook_id")
             made[name] = pid

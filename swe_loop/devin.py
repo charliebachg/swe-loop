@@ -149,6 +149,8 @@ class Transport(Protocol):
     def create_pr_review(self, pr_url: str) -> dict[str, Any]: ...
     def get_pr_review(self, pr_url: str) -> dict[str, Any]: ...
     def create_playbook(self, payload: dict[str, Any]) -> dict[str, Any]: ...
+    def get_playbook(self, playbook_id: str) -> dict[str, Any]: ...
+    def update_playbook(self, playbook_id: str, payload: dict[str, Any]) -> dict[str, Any]: ...
     def create_knowledge_note(self, payload: dict[str, Any]) -> dict[str, Any]: ...
     def start_code_scan(self, payload: dict[str, Any]) -> dict[str, Any]: ...
     def list_code_scans(self) -> list[dict[str, Any]]: ...
@@ -320,6 +322,13 @@ class HttpTransport:
     def create_playbook(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._req("POST", "/playbooks", json=payload)
 
+    def get_playbook(self, playbook_id: str) -> dict[str, Any]:
+        return self._req("GET", f"/playbooks/{playbook_id}")
+
+    def update_playbook(self, playbook_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """The same body as create; the organisation's copy takes the file's text."""
+        return self._req("PUT", f"/playbooks/{playbook_id}", json=payload)
+
     def create_knowledge_note(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._req("POST", "/knowledge/notes", json=payload)
 
@@ -329,6 +338,7 @@ class FakeTransport:
     """Replays fixtures; synthesises when none exist. Records every call in `calls`."""
 
     def __init__(self, replay_dir: Path | str | None = None, *, synthesize: bool = True):
+        self._playbooks: dict[str, dict[str, Any]] = {}
         self.replay_dir = Path(replay_dir) if replay_dir else None
         self.synthesize = synthesize
         self.calls: list[tuple[str, Any]] = []
@@ -557,7 +567,7 @@ class FakeTransport:
 
     def list_playbooks(self) -> list[dict[str, Any]]:
         self.calls.append(("list_playbooks", None))
-        return []
+        return list(getattr(self, "_playbooks", {}).values())
 
     def list_knowledge_notes(self) -> list[dict[str, Any]]:
         self.calls.append(("list_knowledge_notes", None))
@@ -581,7 +591,18 @@ class FakeTransport:
 
     def create_playbook(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.calls.append(("create_playbook", payload))
-        return {"playbook_id": f"pb-{len(self.calls)}", **payload}
+        pid = f"pb-{len(self.calls)}"
+        self._playbooks[pid] = {"playbook_id": pid, **payload}
+        return self._playbooks[pid]
+
+    def get_playbook(self, playbook_id: str) -> dict[str, Any]:
+        self.calls.append(("get_playbook", playbook_id))
+        return dict(self._playbooks.get(playbook_id) or {})
+
+    def update_playbook(self, playbook_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        self.calls.append(("update_playbook", playbook_id))
+        self._playbooks[playbook_id] = {"playbook_id": playbook_id, **payload}
+        return self._playbooks[playbook_id]
 
     def create_knowledge_note(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.calls.append(("create_knowledge_note", payload))

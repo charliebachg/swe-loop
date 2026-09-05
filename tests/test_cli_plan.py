@@ -97,3 +97,40 @@ def test_apply_config_creates_only_what_is_missing(tmp_path, monkeypatch, capsys
     st = Store(db)
     assert st.get_setting("playbook_id.repair-pandas3") == "pb-old"
     assert st.get_setting("playbook_id.triage-pandas3", "").startswith("pb-")
+
+
+def test_apply_config_updates_a_playbook_whose_text_moved_on(tmp_path, monkeypatch, capsys):
+    """The file is the source of truth. A playbook already on the organisation with older text
+    is updated in place, the same id kept, so the next session reads the new instructions."""
+    from swe_loop import cli as _cli
+    from swe_loop.cli import main as _main
+    from swe_loop.store import Store
+
+    monkeypatch.setenv("SWE_LOOP_MODE", "live")
+    monkeypatch.setenv("DEVIN_API_KEY", "cog_test")
+    monkeypatch.setenv("DEVIN_ORG_ID", "org-test")
+    db = tmp_path / "u.sqlite"
+    monkeypatch.setenv("SWE_LOOP_DB", str(db))
+    t = FakeTransport()
+    old = t.create_playbook(
+        {"title": "Repair one shard of a major-version dependency upgrade", "body": "older text"}
+    )
+    monkeypatch.setattr(
+        _cli,
+        "_ctx",
+        lambda: (
+            _cli.Settings.from_env(),
+            _cli.TargetConfig.load(_cli.Settings.from_env().config_path),
+            Store(db),
+            DevinClient(t),
+        ),
+    )
+    assert _main(["apply-config"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["created"]["repair-pandas3 (updated)"] == old["playbook_id"]
+    assert ("update_playbook", old["playbook_id"]) in t.calls
+    assert "knowledge note on the test environments" in t.get_playbook(old["playbook_id"])["body"]
+    # unchanged next time: nothing is written twice
+    assert _main(["apply-config"]) == 0
+    out2 = json.loads(capsys.readouterr().out)
+    assert out2["already_on_the_org"]["repair-pandas3"] == old["playbook_id"]

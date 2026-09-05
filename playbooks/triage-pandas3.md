@@ -19,6 +19,11 @@ be split. The result is a structured verdict. You will not change any code.
    acceptance command. If not, split it and say why.
 6. Name the acceptance command for each group as a pytest invocation over the impacted tests
    only, with warnings promoted to errors, and a second invocation on the new library version.
+   A `-W error::` filter must name the warning class with its full module path, for example
+   `-W error::pandas.errors.PerformanceWarning`; pytest cannot resolve a bare class name and
+   exits with a usage error before any test runs, which a later session then has to diagnose.
+   The acceptance commands are for the loop's own checks to run on a clean copy; you name them,
+   you do not have to run them here.
 7. List anything that needs a person under `needs_human`, and say which kind it is with
    `blocking`. Set `blocking: true` when a session must not do the work at all: the site is a
    test or CI file, or the change is one the repository reserves for a person. Set

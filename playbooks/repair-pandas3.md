@@ -37,6 +37,9 @@ are one of several sessions working in parallel on disjoint files; stay inside y
 
 ## Advice and Pointers
 
+- Before building any test environment, read the knowledge note on the test environments for the
+  two library versions. It says which packages to leave out and why; sessions that built first
+  and read second lost the first attempt to missing system headers.
 - `obj[col].method(value, inplace=True)` never works under copy-on-write. The library's message
   gives the two replacements; prefer `obj[col] = obj[col].method(value)`.
 - Where `replace` used to downcast, call `.infer_objects(copy=False)` afterwards if the tests
