@@ -83,7 +83,11 @@ scan:
   area_says: >-
     behaviour that changes when this repository moves between the two library versions named
     below. What that looks like in this code is the session's to work out
-  max_findings: 5
+  # Tickets the scan agent may file per run. Raised from 5 on 2026-09-05.
+  max_findings: 8
+  # Devin's limit for one scan session. Reading a codebase this size for a new area took a
+  # session past 4 ACU on 2026-09-05 without a finding; 8 gives it room. Raised from 4.
+  max_acu_limit: 8
   # Devin ships its own scanner. It takes an area from a fixed list and never a defect:
   # security, performance, db-queries, test-coverage, dead-code, code-quality, telemetry,
   # accessibility, general, migration-docs. Only security runs without a profile.
@@ -92,6 +96,9 @@ scan:
   # answers 405 and the API has no operation that creates one. Make it there, put its id here,
   # and set devin_area to the profile's own scan type.
   devin_profile_id:
+  # Tickets a Devin scan may file per run. Raised from 3 on 2026-09-05, when a scan read four
+  # findings and one was left past the cap.
+  devin_max_findings: 6
   # Files another piece of work already owns. A scan may read them, but it may not file against
   # them: two open changes to one file collide at the merge, and these carry work already in
   # flight. The loop refuses such a finding rather than trusting the session to remember.

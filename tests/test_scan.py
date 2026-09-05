@@ -143,9 +143,12 @@ def test_the_automation_carries_the_number(tmp_path, monkeypatch):
     app = build_app(Settings.from_env(), st, seed_replay=False)
     with TestClient(app) as c:
         a = st.get_automation("auto_scan")
-        assert a["max_findings"] == 5  # the seam says five; the page and the prompt follow it
+        cfg = TargetConfig.load(ROOT / "configs" / "superset-pandas3.yaml")
+        n = int(cfg.scan["max_findings"])
+        assert a["max_findings"] == n  # the seam's number; the page and the prompt follow it
+        assert a["max_acu"] == int(cfg.scan["max_acu_limit"])  # and so does Devin's limit
         html = c.get("/automations?open=auto_scan").text
-        assert "at most 5 tickets a run" in html  # the header line; there is no settings table
+        assert f"at most {n} tickets a run" in html  # the header line; there is no settings table
 
 
 def test_the_scan_session_is_visible_and_counted(tmp_path, monkeypatch):

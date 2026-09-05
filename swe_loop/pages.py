@@ -633,6 +633,21 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
     sc = store.get_automation("auto_scan")
     if sc and sc["kind"] == "scan" and not sc.get("max_findings"):
         store.set_automation("auto_scan", max_findings=int(cfg.scan.get("max_findings", 3)))
+    # the seam is the source of truth for the two scans' caps: a change to the file reaches a
+    # store that was seeded before it, on the next start
+    if sc and sc["kind"] == "scan":
+        want_acu = int(cfg.scan.get("max_acu_limit", 4))
+        want_n = int(cfg.scan.get("max_findings", 3))
+        if (sc.get("max_acu") or 0) != want_acu or sc.get("max_findings") != want_n:
+            store.set_automation("auto_scan", max_acu=want_acu, max_findings=want_n)
+    cs = store.get_automation("auto_codescan")
+    if cs and cs.get("max_findings") != int(
+        cfg.scan.get("devin_max_findings", cfg.scan.get("max_findings", 5))
+    ):
+        store.set_automation(
+            "auto_codescan",
+            max_findings=int(cfg.scan.get("devin_max_findings", cfg.scan.get("max_findings", 5))),
+        )
     if sc and sc["availability"] == "next":
         # a store written before the scan existed: the row becomes the real thing
         store.conn.execute(
@@ -641,7 +656,7 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
             (
                 "Scan agent",
                 "scan-pandas3 then triage and repair",
-                4,
+                int(cfg.scan.get("max_acu_limit", 4)),
                 int(cfg.scan.get("max_findings", 3)),
             ),
         )
@@ -676,7 +691,7 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
             trigger={"source": "schedule", "event": "recurring"},
             target=cfg.repo,
             playbook="scan-pandas3 then triage and repair",
-            max_acu=4,
+            max_acu=int(cfg.scan.get("max_acu_limit", 4)),
             max_findings=int(cfg.scan.get("max_findings", 3)),
             concurrency=1,
             schedule="every weekday at 06:00",
@@ -693,7 +708,7 @@ def seed_automations(store: Store, cfg: TargetConfig) -> None:
             target=cfg.repo,
             playbook=f"Devin's own code scan, {cfg.scan.get('devin_area', 'security')}",
             max_acu=0,
-            max_findings=int(cfg.scan.get("max_findings", 5)),
+            max_findings=int(cfg.scan.get("devin_max_findings", cfg.scan.get("max_findings", 5))),
             concurrency=1,
             schedule="every weekday at 06:00",
             notes=(

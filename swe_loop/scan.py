@@ -135,7 +135,7 @@ def build_spec(
         prompt=build_prompt(cfg, limit, known, area),
         tags=(cfg.session.get("tags_prefix", "swe-loop"), "scan"),
         repos=(cfg.repo,),
-        max_acu_limit=min(SCAN_ACU_CAP, cfg.max_acu_limit),
+        max_acu_limit=int(cfg.scan.get("max_acu_limit", SCAN_ACU_CAP)),
         structured_output_schema=load_schema(),
         playbook_id=playbook_id,
         title=f"scan {cfg.repo}: {area or cfg.scan.get('area', '')}",
