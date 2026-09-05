@@ -673,9 +673,11 @@ def insights(
 
     n = len(rows)
     return {
-        "count": n,
+        # what this loop started against what Devin's record holds for those sessions; rows
+        # Devin's own listing added for other sessions do not count either way
+        "count": sum(1 for sid in started if sid in have),
         "started": len(started),
-        "missing": len(started) - n,
+        "missing": sum(1 for sid in started if sid not in have),
         "panels": [
             panel(
                 "turns",
@@ -710,8 +712,28 @@ def insights(
         "constants": ins.constants(rows),
         "showSize": len({(r.get("session_size") or "") for r in rows}) > 1,
         "noPlaybook": nopb,
-        "advice": adv,
-        "adviceEmpty": not (adv["issues"] or adv["actions"] or adv["prompts"] or adv["notes"]),
+        "advice": {
+            **adv,
+            "actions": [
+                {
+                    **g,
+                    "entries": [
+                        {**x, "view": url("/devin/insights", view=x["sid"])} for x in g["entries"]
+                    ],
+                }
+                for g in adv["actions"]
+            ],
+            "issues": [
+                {
+                    **g,
+                    "entries": [
+                        {**x, "view": url("/devin/insights", view=x["sid"])} for x in g["entries"]
+                    ],
+                }
+                for g in adv["issues"]
+            ],
+        },
+        "adviceEmpty": not (adv["n_actions"] or adv["n_issues"]),
         "rows": table,
         "written": sum(1 for x in table if x["state"] == "view"),
         "modal": _insight_modal(table, listed, view, q),

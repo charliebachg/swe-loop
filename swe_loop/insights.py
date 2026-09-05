@@ -147,28 +147,44 @@ def tools(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def advice(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """Devin's own analysis of what to change. Empty is a real answer and is said as one."""
-    issues, actions, prompts, notes = [], [], [], []
+    """What Devin says we should change, across every analysed session: the action items grouped
+    by the kind of change they ask for, and the issues grouped by the impact Devin gave them. Each
+    entry names the session it came from. Empty is a real answer and is said as one."""
+    kinds = ["knowledge", "prompt_improvement", "repo_config", "machine_setup", "external", "other"]
+    by_type: dict[str, list[dict[str, Any]]] = {k: [] for k in kinds}
+    by_impact: dict[str, list[dict[str, Any]]] = {"high": [], "medium": [], "low": []}
+    analysed = 0
     for r in rows:
+        if not written(r):
+            continue
+        analysed += 1
         a = r.get("analysis") or {}
-        sid = (r.get("session_id") or "")[:8]
-        for i in a.get("issues") or []:
-            issues.append({"session": sid, "url": r.get("url", ""), "text": _text(i)})
-        for i in a.get("action_items") or []:
-            actions.append({"session": sid, "url": r.get("url", ""), "text": _text(i)})
-        if a.get("suggested_prompt"):
-            prompts.append(
-                {"session": sid, "url": r.get("url", ""), "text": _text(a["suggested_prompt"])}
+        sid = r.get("session_id") or ""
+        src = {"session": sid[:12], "sid": sid, "url": r.get("url", "")}
+        for it in a.get("action_items") or []:
+            if not isinstance(it, dict):
+                continue
+            k = it.get("type") if it.get("type") in by_type else "other"
+            by_type[k].append({**src, "text": it.get("action_item") or _text(it)})
+        for it in a.get("issues") or []:
+            if not isinstance(it, dict):
+                continue
+            imp = (it.get("impact") or "").lower()
+            by_impact.setdefault(imp if imp in by_impact else "low", []).append(
+                {
+                    **src,
+                    "title": it.get("title") or it.get("label") or "issue",
+                    "text": it.get("issue") or _text(it),
+                }
             )
-        if a.get("note_usage"):
-            notes.append({"session": sid, "url": r.get("url", ""), "text": _text(a["note_usage"])})
-    done = sum(1 for r in rows if written(r))
     return {
-        "issues": issues,
-        "actions": actions,
-        "prompts": prompts,
-        "notes": notes,
-        "analysed": done,
+        "actions": [
+            {"type": k, "label": k.replace("_", " "), "entries": v} for k, v in by_type.items() if v
+        ],
+        "issues": [{"impact": k, "entries": v} for k, v in by_impact.items() if v],
+        "n_actions": sum(len(v) for v in by_type.values()),
+        "n_issues": sum(len(v) for v in by_impact.values()),
+        "analysed": analysed,
         "total": len(rows),
     }
 
